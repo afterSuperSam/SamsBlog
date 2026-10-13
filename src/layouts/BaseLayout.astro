@@ -1,0 +1,104 @@
+---
+import Header from '../components/Header.astro';
+import Footer from '../components/Footer.astro';
+import { siteConfig } from '../config/site';
+import '../styles/global.css';
+import '../styles/legacy-layout.css';
+import AmbientScene from '../components/AmbientScene.astro';
+
+interface Props {
+  title?: string;
+  description?: string;
+  image?: string;
+  bodyClass?: string;
+}
+
+const {
+  title,
+  description = siteConfig.description,
+  image = '/media/anime/hero/1719656915755.webp',
+  bodyClass = '',
+} = Astro.props;
+const pageTitle = title ? `${title} — ${siteConfig.name}` : siteConfig.name;
+const canonical = new URL(Astro.url.pathname, siteConfig.siteUrl);
+
+---
+
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="generator" content={Astro.generator} />
+    <meta name="description" content={description} />
+    <meta name="theme-color" content="#202123" data-theme-color />
+    <link rel="icon" href="/media/brand/logo.jpg" type="image/jpeg" />
+    <link rel="canonical" href={canonical} />
+    <meta property="og:title" content={pageTitle} />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={new URL(image, siteConfig.siteUrl)} />
+    <title>{pageTitle}</title>
+    <script is:inline>
+      const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      let initialTheme = systemDark ? 'dark' : 'light';
+      try {
+        const savedTheme = localStorage.getItem('samsblog-theme');
+        if (savedTheme === 'dark' || savedTheme === 'light') initialTheme = savedTheme;
+      } catch (error) { console.warn('Theme preference unavailable', error); }
+      document.documentElement.dataset.theme = initialTheme;
+      document.querySelector('meta[data-theme-color]')?.setAttribute('content', initialTheme === 'dark' ? '#202123' : '#f4fbfc');
+    </script>
+  </head>
+  <body class={bodyClass}>
+    {!bodyClass.includes('admin-page') && <div class="reading-progress" aria-hidden="true" data-reading-progress hidden></div>}
+    {!bodyClass.includes('admin-page') && <AmbientScene />}
+    <Header />
+    <a class="skip-link" href="#main-content">跳到主要内容</a>
+    <main id="main-content"><slot /></main>
+    <Footer />
+    <script>
+      document.querySelector('[data-theme-toggle]')?.addEventListener('click', () => {
+        const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+        document.documentElement.dataset.theme = next;
+        try { localStorage.setItem('samsblog-theme', next); }
+        catch (error) { console.warn('Theme preference unavailable', error); }
+        document.querySelector('meta[data-theme-color]')?.setAttribute('content', next === 'dark' ? '#202123' : '#f4fbfc');
+      });
+
+      const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const progress = document.querySelector<HTMLElement>('[data-reading-progress]');
+      if (progress) {
+        let progressFrame = 0;
+        const updateProgress = () => {
+          progressFrame = 0;
+          const distance = document.documentElement.scrollHeight - window.innerHeight;
+          progress.style.setProperty('--reading-progress', String(distance > 0 ? window.scrollY / distance : 1));
+        };
+        const scheduleProgress = () => {
+          if (!progressFrame) progressFrame = requestAnimationFrame(updateProgress);
+        };
+        progress.hidden = false;
+        window.addEventListener('scroll', scheduleProgress, { passive: true });
+        window.addEventListener('resize', scheduleProgress);
+        updateProgress();
+      }
+      const revealTargets = Array.from(document.querySelectorAll<HTMLElement>('[data-reveal]'));
+      if (!reducedMotion && 'IntersectionObserver' in window) {
+        const revealObserver = new IntersectionObserver((entries, observer) => {
+          entries.forEach((entry) => {
+            if (!entry.isIntersecting) return;
+            (entry.target as HTMLElement).classList.remove('reveal-pending');
+            observer.unobserve(entry.target);
+          });
+        }, { rootMargin: '0px 0px -9% 0px', threshold: 0.08 });
+        revealTargets.forEach((target) => {
+          revealObserver.observe(target);
+          target.classList.add('reveal-pending');
+        });
+      }
+
+    </script>
+  </body>
+</html>

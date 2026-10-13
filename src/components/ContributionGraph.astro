@@ -1,0 +1,110 @@
+---
+import type { ContributionCalendar } from '../lib/contributions';
+
+interface Props {
+  title: string;
+  eyebrow: string;
+  calendar: ContributionCalendar;
+  href?: string;
+  unit?: string;
+  period?: string;
+  showUsage?: boolean;
+}
+
+const { title, eyebrow, calendar, href, unit = '次', period = '过去一年', showUsage = false } = Astro.props;
+const formatCount = (count: number) => count >= 100000000 ? `${(count / 100000000).toFixed(1)}亿` : count >= 10000 ? `${(count / 10000).toFixed(1)}万` : count.toLocaleString('zh-CN');
+const totalLabel = calendar.available ? `${formatCount(calendar.total)} ${unit}` : '暂时离线';
+const detailId = `usage-${eyebrow.toLowerCase()}-${title.toLowerCase().replace(/\s+/g, '-')}`;
+---
+
+<article class="contribution-panel">
+  <header>
+    <div><span>{eyebrow}</span><h3>{title}</h3></div>
+    <strong>{totalLabel}</strong>
+  </header>
+  <div class="contribution-scroll" tabindex="0" aria-label={`${title}每日用量图，共 ${calendar.total.toLocaleString('zh-CN')} ${unit}`}>
+    <div class="contribution-grid">
+      {calendar.days.map((day) => (
+        <i
+          class={`contribution-cell contribution-cell--${day.level}`}
+          title={!showUsage ? `${day.date} · ${day.count.toLocaleString('zh-CN')} ${unit}` : undefined}
+          aria-label={showUsage && !day.usage ? `${day.date}，暂无记录` : `${day.date}，${day.count.toLocaleString('zh-CN')} ${unit}`}
+          aria-describedby={showUsage ? detailId : undefined}
+          tabindex={showUsage ? 0 : undefined}
+          data-token-cell={showUsage ? true : undefined}
+          data-date={showUsage ? day.date : undefined}
+          data-count={showUsage ? day.count : undefined}
+          data-recorded={showUsage ? String(Boolean(day.usage)) : undefined}
+          data-cache-hit={showUsage ? day.usage?.cacheHit || 0 : undefined}
+          data-cache-miss={showUsage ? day.usage?.cacheMiss || 0 : undefined}
+          data-output={showUsage ? day.usage?.output || 0 : undefined}
+        ></i>
+      ))}
+    </div>
+  </div>
+  {showUsage && <div id={detailId} class="contribution-detail-popover" popover="manual" role="tooltip">
+    <b data-usage-date></b>
+    <strong data-usage-total></strong>
+    <dl>
+      <div><dt>输入 · 命中缓存</dt><dd data-usage-hit></dd></div>
+      <div><dt>输入 · 未命中</dt><dd data-usage-miss></dd></div>
+      <div><dt>输出</dt><dd data-usage-output></dd></div>
+    </dl>
+  </div>}
+  <footer>
+    <span>{calendar.available ? period : '网络恢复后自动更新'}</span>
+    <div aria-label="活动强度"><small>少</small>{[0, 1, 2, 3, 4].map((level) => <i class={`contribution-cell contribution-cell--${level}`}></i>)}<small>多</small></div>
+    {href && <a href={href} target="_blank" rel="noreferrer">查看 GitHub</a>}
+  </footer>
+</article>
+
+<script>
+  document.querySelectorAll<HTMLElement>('.contribution-panel:has([data-token-cell]) .contribution-scroll').forEach((scroll) => {
+    let previousMaximum = 0;
+    new ResizeObserver(() => {
+      const wasAtEnd = Math.abs(scroll.scrollLeft - previousMaximum) <= 1;
+      previousMaximum = Math.max(0, scroll.scrollWidth - scroll.clientWidth);
+      if (wasAtEnd) scroll.scrollLeft = previousMaximum;
+    }).observe(scroll);
+    scroll.scrollLeft = scroll.scrollWidth;
+    previousMaximum = Math.max(0, scroll.scrollWidth - scroll.clientWidth);
+  });
+
+  const formatUsageNumber = (value: string | undefined) => Number(value || 0).toLocaleString('zh-CN');
+  document.querySelectorAll<HTMLElement>('.contribution-panel').forEach((panel) => {
+    const popover = panel.querySelector<HTMLElement>('.contribution-detail-popover');
+    if (!popover) return;
+    const hideDetails = () => {
+      if (popover.matches(':popover-open')) popover.hidePopover();
+    };
+    const writeDetail = (selector: string, value: string) => {
+      const field = popover.querySelector<HTMLElement>(selector);
+      if (field) field.textContent = value;
+    };
+    panel.querySelectorAll<HTMLElement>('[data-token-cell]').forEach((cell) => {
+      const showDetails = () => {
+        const recorded = cell.dataset.recorded === 'true';
+        writeDetail('[data-usage-date]', cell.dataset.date || '');
+        writeDetail('[data-usage-total]', recorded ? `${formatUsageNumber(cell.dataset.count)} Token` : '暂无记录');
+        writeDetail('[data-usage-hit]', recorded ? formatUsageNumber(cell.dataset.cacheHit) : '—');
+        writeDetail('[data-usage-miss]', recorded ? formatUsageNumber(cell.dataset.cacheMiss) : '—');
+        writeDetail('[data-usage-output]', recorded ? formatUsageNumber(cell.dataset.output) : '—');
+        if (!popover.matches(':popover-open')) popover.showPopover();
+        const rect = cell.getBoundingClientRect();
+        const detail = popover.getBoundingClientRect();
+        const top = rect.top >= detail.height + 20 ? rect.top - detail.height - 10 : rect.bottom + 10;
+        popover.style.left = `${Math.max(12, Math.min(rect.left + rect.width / 2 - detail.width / 2, window.innerWidth - detail.width - 12))}px`;
+        popover.style.top = `${Math.max(12, Math.min(top, window.innerHeight - detail.height - 12))}px`;
+      };
+      cell.addEventListener('pointerenter', showDetails);
+      cell.addEventListener('focus', showDetails);
+      cell.addEventListener('click', showDetails);
+      cell.addEventListener('pointerleave', () => { if (document.activeElement !== cell) hideDetails(); });
+      cell.addEventListener('blur', hideDetails);
+    });
+    panel.querySelector('.contribution-scroll')?.addEventListener('scroll', hideDetails);
+    window.addEventListener('scroll', hideDetails, { passive:true });
+    window.addEventListener('resize', hideDetails);
+    panel.addEventListener('keydown', (event) => { if (event.key === 'Escape') hideDetails(); });
+  });
+</script>

@@ -1,0 +1,212 @@
+/* 全站主题、基础元素与动效偏好 */
+
+:root {
+  color-scheme: dark;
+  --bg: #202123;
+  --bg-deep: #17191b;
+  --surface: #292a2c;
+  --surface-2: #333438;
+  --text: #f1e9dc;
+  --text-strong: #fff3e3;
+  --text-soft: #d7cbb9;
+  --muted: #ada596;
+  --accent: #d49a58;
+  --accent-2: #7f9fa6;
+  --summer-blue: #79b7c2;
+  --summer-pink: #cb8195;
+  --summer-orange: #d49a58;
+  --success: #8fab82;
+  --danger: #c98f7a;
+  --line: rgba(219, 204, 179, 0.14);
+  --line-strong: rgba(219, 204, 179, 0.24);
+  --hover: rgba(255, 242, 221, 0.055);
+  --header-bg: rgba(29, 31, 33, 0.9);
+  --on-media: #fff7eb;
+  --on-media-soft: rgba(255, 247, 235, 0.78);
+  --media-line: rgba(255, 247, 235, 0.18);
+  --media-bg: #111315;
+  --flow-bg:
+    radial-gradient(ellipse at 8% 18%, color-mix(in oklab, var(--accent) 5%, transparent), transparent 38rem),
+    radial-gradient(ellipse at 92% 72%, color-mix(in oklab, var(--accent-2) 4%, transparent), transparent 44rem),
+    linear-gradient(180deg, var(--bg), color-mix(in oklab, var(--bg) 98%, var(--surface) 2%) 52%, var(--bg));
+  --gradient-bg:
+    radial-gradient(circle at 14% 18%, color-mix(in oklab, var(--accent) 5%, transparent), transparent 42%),
+    linear-gradient(145deg, color-mix(in oklab, var(--bg) 98%, var(--surface) 2%), var(--bg));
+  --gradient-surface:
+    radial-gradient(circle at 82% 14%, color-mix(in oklab, var(--accent) 5%, transparent), transparent 40%),
+    linear-gradient(155deg, color-mix(in oklab, var(--surface) 98%, var(--surface-2) 2%), var(--surface));
+  --shadow: 0 24px 70px rgba(7, 4, 3, 0.2);
+  --playful: "Segoe Print", "KaiTi", "STKaiti", "Microsoft YaHei", sans-serif;
+  --display: var(--playful);
+  --serif: var(--playful);
+  --body: "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+  --sans: var(--body);
+  --max: 1360px;
+  --gutter: clamp(22px, 5vw, 82px);
+  --header-height: 76px;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease: var(--ease-out);
+  --motion-reveal: 800ms;
+  --motion-drift: 18s;
+  --reading-line-height: 2px;
+  --paper-tape-angle: -3deg;
+  --surface-paper: #303133;
+  --surface-paper-tape: rgba(200, 196, 185, 0.2);
+  --shadow-paper: 0 14px 30px rgba(7, 4, 3, 0.16), inset 0 1px rgba(255, 255, 255, 0.06);
+  --paper-line-height: 32px;
+  --display-numerals: "Segoe Print", "Bradley Hand", "Comic Sans MS", cursive;
+  --contribution-cell-size: 16px;
+  --contribution-cell-gap: 4px;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --surface-paper: #f6f0e5;
+  --surface-paper-tape: rgba(205, 190, 164, 0.36);
+  --shadow-paper: 0 14px 30px rgba(93, 77, 52, 0.1), inset 0 1px rgba(255, 255, 255, 0.65);
+  --bg: #f4fbfc;
+  --bg-deep: #e7f7f8;
+  --surface: #fffefd;
+  --surface-2: #e2f6f6;
+  --text: #26393d;
+  --text-strong: #162d32;
+  --text-soft: #49666b;
+  --muted: #536f74;
+  --accent: #aa6552;
+  --accent-2: #438f98;
+  --summer-blue: #3f9eac;
+  --summer-pink: #cf728e;
+  --summer-orange: #dc8848;
+  --success: #4c846d;
+  --danger: #ae5956;
+  --line: rgba(58, 119, 127, 0.14);
+  --line-strong: rgba(58, 119, 127, 0.24);
+  --hover: rgba(72, 179, 190, 0.07);
+  --header-bg: rgba(244, 251, 252, 0.92);
+  --flow-bg:
+    radial-gradient(ellipse at 9% 12%, color-mix(in srgb,var(--summer-blue) 18%,transparent), transparent 38rem),
+    radial-gradient(ellipse at 88% 26%, color-mix(in srgb,var(--summer-pink) 11%,transparent), transparent 42rem),
+    radial-gradient(ellipse at 76% 88%, color-mix(in srgb,var(--summer-orange) 10%,transparent), transparent 44rem),
+    linear-gradient(180deg, #f9fdfe 0%, #effafb 48%, #f8fcfc 100%);
+  --gradient-bg:
+    radial-gradient(circle at 18% 12%, color-mix(in srgb,var(--summer-blue) 17%,transparent), transparent 38%),
+    radial-gradient(circle at 84% 18%, color-mix(in srgb,var(--summer-pink) 10%,transparent), transparent 34%),
+    radial-gradient(circle at 82% 88%, color-mix(in srgb,var(--summer-orange) 9%,transparent), transparent 35%),
+    linear-gradient(145deg, #f9fdfe, #eef9fa);
+  --gradient-surface:
+    radial-gradient(circle at 82% 14%, color-mix(in srgb,var(--summer-blue) 12%,transparent), transparent 40%),
+    radial-gradient(circle at 12% 88%, color-mix(in srgb,var(--summer-pink) 7%,transparent), transparent 35%),
+    linear-gradient(155deg, #fffefd, #eefafa);
+  --shadow: 0 24px 70px rgba(46, 121, 131, 0.11);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) var(--bg);
+  background: var(--bg);
+}
+
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background: var(--flow-bg);
+  background-attachment: fixed;
+  background-size: 100% 100%;
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 1.75;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  transition: background-color .38s ease, color .28s ease;
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--on-media);
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button {
+  border: 0;
+  color: inherit;
+}
+
+.reading-progress { position:fixed; inset:0 0 auto; z-index:160; height:var(--reading-line-height); pointer-events:none; background:linear-gradient(90deg,var(--summer-blue),var(--summer-pink),var(--summer-orange)); transform:scaleX(var(--reading-progress,0)); transform-origin:left; }
+@media(prefers-reduced-motion:reduce){.reading-progress{transform:none;opacity:.35}}
+
+img {
+  display: block;
+  max-width: 100%;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin-top: 0;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+body { position: relative; isolation: isolate; }
+
+@media (max-width: 720px) {
+  :root {
+    --gutter: 20px;
+    --header-height: 70px;
+  }
+  html { scrollbar-width: none; }
+  html::-webkit-scrollbar, body::-webkit-scrollbar { display: none; width: 0; height: 0; }
+}
+
+main { position:relative; z-index:1; }
+
+
+/* 访客可以随时暂停持续装饰动效 */
+:root.motion-paused *, :root.motion-paused *::before, :root.motion-paused *::after { animation:none!important; transition:none!important; }
+:root.motion-paused [data-reveal] { opacity:1!important;transform:none!important; }
+@media(prefers-reduced-motion:reduce){[data-reveal]{opacity:1!important;transform:none!important}}
+
+html::-webkit-scrollbar-thumb{background:var(--line-strong);border-radius:8px}

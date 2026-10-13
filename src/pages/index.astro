@@ -1,0 +1,110 @@
+---
+import GuestbookSection from '../components/GuestbookSection.astro';
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { getSiteStats } from '../lib/stats';
+import { listFriends } from '../lib/friends';
+import { serverConfig } from '../config/server';
+import { siteConfig } from '../config/site';
+import '../styles/home.css';
+
+const siteStats = getSiteStats();
+const friends = listFriends().map((friend) => ({
+  ...friend,
+  description: friend.description.replace(/[。.]+$/u, ''),
+  hostname: new URL(friend.url).hostname.replace(/^www\./, ''),
+}));
+---
+
+<BaseLayout bodyClass="home-page media-header">
+  <nav class="home-quick-nav" aria-label="首页快捷导航" aria-hidden="true" inert data-quick-nav>
+    <a href="#home" aria-label="首页 Hero"><span>首页</span><i></i></a>
+    <a href="#projects" aria-label="我的项目"><span>项目</span><i></i></a>
+    <a href="#guestbook" aria-label="留言板"><span>留言板</span><i></i></a>
+    <a href="#friends" aria-label="友链"><span>友链</span><i></i></a>
+    <a href="#site-stats" aria-label="站点统计"><span>统计</span><i></i></a>
+  </nav>
+
+  <section class="home-hero" id="home" data-pointer-tilt={siteConfig.effects.pointerTiltDegrees}>
+    <div class="hero-media" aria-hidden="true">
+      <img src="/media/anime/hero/1753341045990.png" alt="" class="hero-media__image" fetchpriority="high" />
+      <span class="hero-media__edge"></span>
+    </div>
+    <div class="hero-copy">
+      <h1 class="hero-title-heading">{siteConfig.name}</h1>
+      <a class="hero-explore" href="#projects">看看我的项目 <span aria-hidden="true">↓</span></a>
+    </div>
+    <span class="hero-sticker hero-sticker--sun" aria-hidden="true">✷</span>
+    <span class="hero-sticker hero-sticker--note" aria-hidden="true">a little summer<br />for your day ✧</span>
+  </section>
+
+  <section class="home-projects" id="projects">
+    <div class="shell" data-reveal>
+      <header><span class="section-kicker">PROJECT CONSTELLATION</span><h2 class="section-title">我的项目</h2><span class="project-tape" aria-hidden="true">made with love ❤</span></header>
+      <div class="project-list">
+        <article><span>01</span><div><h3><a href="https://yingwutown.top/" target="_blank" rel="noreferrer">SamsTownWeb ↗</a></h3><p>楹雾镇的主站与项目入口，承载公开内容和站点服务。</p></div></article>
+        <article><span>02</span><div><h3>SamsFlayerBot</h3><p>单进程 Minecraft 自动化 Bot，负责传送、挂机与日常任务。</p></div></article>
+        <article><span>03</span><div><h3>SamsBlog</h3><p>一个自托管的个人插画站，在这里记录日常、分享项目和结识友邻。</p></div></article>
+      </div>
+    </div>
+  </section>
+
+  <GuestbookSection />
+
+  <section class="home-friends shell" id="friends" aria-labelledby="friends-title" data-reveal>
+    <header><span class="section-kicker">NEARBY PLACES</span><h2 class="section-title" id="friends-title">友链</h2></header>
+    <div class="friend-grid">
+      {friends.map((friend) => (
+        <a class="friend-card" href={friend.url} target="_blank" rel="noreferrer">
+          <span class="friend-card__icon"><b>{friend.name.slice(0, 1)}</b><img src={friend.iconUrl} alt="" loading="lazy" referrerpolicy="no-referrer" data-friend-icon /></span>
+          <span class="friend-card__copy"><strong>{friend.name}</strong><small>{friend.description}</small><em>{friend.hostname}</em></span>
+          <i aria-hidden="true">↗</i>
+        </a>
+      ))}
+    </div>
+  </section>
+  <section class="site-stats shell" id="site-stats" aria-label="站点统计" data-reveal>
+    <div class="site-stats__panel">
+      <dl>
+        <div><dt>运行天数</dt><dd title={`自 ${serverConfig.siteLaunchedAt} 起，按北京时间计算`}>{siteStats.runtimeDays.toLocaleString('zh-CN')}<small>天</small></dd></div>
+        {[['友邻', siteStats.friends], ['累计访客', siteStats.visitors], ['总浏览量', siteStats.pageViews]].map(([label, value]) => <div><dt>{label}</dt><dd>{Number(value).toLocaleString('zh-CN')}</dd></div>)}
+      </dl>
+    </div>
+  </section>
+</BaseLayout>
+
+<script>
+  const hero = document.querySelector<HTMLElement>('[data-pointer-tilt]');
+  const sticker = hero?.querySelector<HTMLElement>('.hero-sticker--note');
+  const pointerMotion = matchMedia('(hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference)');
+  hero?.addEventListener('pointermove', (event) => {
+    if (!sticker || !pointerMotion.matches || event.pointerType !== 'mouse' || document.documentElement.classList.contains('motion-paused')) return;
+    const bounds = hero.getBoundingClientRect();
+    const degrees = Number(hero.dataset.pointerTilt);
+    sticker.style.setProperty('--pointer-tilt', `${(2 * (event.clientX - bounds.left) / bounds.width - 1) * degrees}deg`);
+  });
+  const resetTilt = () => sticker?.style.removeProperty('--pointer-tilt');
+  hero?.addEventListener('pointerleave', resetTilt);
+  pointerMotion.addEventListener('change', resetTilt);
+  const quickNav = document.querySelector<HTMLElement>('[data-quick-nav]');
+  let quickNavFrame = 0;
+  const updateQuickNav = () => {
+    quickNavFrame = 0;
+    if (!quickNav) return;
+    const visible = window.scrollY > Math.min(window.innerHeight * 0.55, 520);
+    quickNav.classList.toggle('visible', visible);
+    quickNav.setAttribute('aria-hidden', String(!visible));
+    quickNav.toggleAttribute('inert', !visible);
+  };
+  window.addEventListener('scroll', () => {
+    if (quickNavFrame) return;
+    quickNavFrame = window.requestAnimationFrame(updateQuickNav);
+  }, { passive: true });
+  updateQuickNav();
+
+  document.querySelectorAll<HTMLImageElement>('[data-friend-icon]').forEach((image) => {
+    const hideFailedIcon = () => { image.hidden = true; };
+    image.addEventListener('error', hideFailedIcon, { once: true });
+    if (image.complete && image.naturalWidth === 0) hideFailedIcon();
+  });
+
+</script>

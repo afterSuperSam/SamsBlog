@@ -1,0 +1,9 @@
+[Unit]
+Description=Back up SamsBlog database
+
+[Service]
+Type=oneshot
+User=samsblog
+Group=samsblog
+EnvironmentFile=/etc/samsblog.env
+ExecStart=/srv/samsblog/current/deploy/backup.sh

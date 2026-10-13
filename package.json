@@ -1,0 +1,35 @@
+{
+  "name": "samsblog",
+  "type": "module",
+  "version": "1.0.0",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "astro dev",
+    "dev:background": "astro dev --background",
+    "dev:status": "astro dev status",
+    "dev:stop": "astro dev stop",
+    "hash:admin": "node scripts/hash-admin-password.mjs",
+    "check": "astro check",
+    "test": "vitest run",
+    "build": "astro build --mode production",
+    "preview": "astro preview",
+    "astro": "astro"
+  },
+  "dependencies": {
+    "@astrojs/node": "^11.1.7",
+    "astro": "^7.2.8",
+    "better-sqlite3": "^13.0.3"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.10",
+    "@types/better-sqlite3": "^9.6.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.11"
+  },
+  "allowScripts": {
+    "better-sqlite3@13.0.3": true,
+    "esbuild@0.28.2": true
+  }
+}

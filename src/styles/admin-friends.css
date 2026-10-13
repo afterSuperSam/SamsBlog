@@ -1,0 +1,62 @@
+.admin-friend-import {
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:13px;
+  align-items:end;
+  margin-bottom:30px;
+  padding:24px;
+  border-radius:29px 17px 33px 20px;
+  background:color-mix(in srgb,var(--surface) 54%,transparent);
+}
+
+.admin-friend-import label,.admin-friend-card__fields,.admin-friend-card__fields label { display:grid; min-width:0; gap:8px; }
+.admin-friend-import label>span,.admin-friend-card__fields label>span { color:var(--text-soft); font-size:.875rem; }
+.admin-friend-import input,.admin-friend-import textarea,.admin-friend-card__fields input,.admin-friend-card__fields textarea {
+  width:100%;
+  min-width:0;
+  min-height:44px;
+  padding:0 13px;
+  border:0;
+  border-radius:14px 9px 16px 10px;
+  outline:0;
+  background:color-mix(in srgb,var(--bg) 72%,transparent);
+  color:var(--text);
+  font:500 1rem/1.6 var(--sans);
+  transition:background .25s ease,box-shadow .25s ease;
+}
+.admin-friend-import textarea,.admin-friend-card__fields textarea { field-sizing:content; min-height:70px; padding:10px 13px; resize:vertical; overflow-wrap:anywhere; }
+.admin-friend-import :is(input,textarea):focus,.admin-friend-card__fields :is(input,textarea):focus { background:var(--bg); box-shadow:0 0 0 2px color-mix(in oklab,var(--summer-blue) 36%,transparent); }
+.admin-friend-import .admin-create { justify-self:start; }
+.admin-friend-import>small { grid-column:1/-1; color:var(--muted); font-size:.875rem; line-height:1.6; overflow-wrap:anywhere; }
+.admin-friend-list { display:grid; gap:13px; }
+.admin-friend-card {
+  --friend-accent:var(--summer-blue);
+  display:grid;
+  grid-template-columns:68px minmax(0,1fr);
+  gap:18px;
+  align-items:start;
+  padding:16px 18px;
+  border-radius:26px 16px 29px 18px;
+  background:color-mix(in srgb,var(--surface) 45%,transparent);
+  transition:background .3s ease,box-shadow .4s ease,transform .4s var(--ease);
+}
+.admin-friend-card:nth-child(3n+2) { --friend-accent:var(--summer-pink); }
+.admin-friend-card:nth-child(3n) { --friend-accent:var(--summer-orange); }
+.admin-friend-card:hover { background:color-mix(in srgb,var(--surface) 78%,transparent); box-shadow:0 18px 52px color-mix(in oklab,var(--friend-accent) 10%,transparent); transform:translateY(-3px); }
+.admin-friend-card.is-saved { box-shadow:0 0 0 2px color-mix(in oklab,var(--success) 48%,transparent); }
+.admin-friend-card__icon { position:relative; display:grid; width:68px; height:68px; place-items:center; overflow:hidden; border-radius:22px 13px 24px 15px; background:color-mix(in oklab,var(--friend-accent) 15%,var(--surface)); color:var(--friend-accent); font:700 1.35rem/1 var(--playful); }
+.admin-friend-card__icon img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+.admin-friend-card__fields { grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+.admin-friend-card__visible { grid-column:2; display:flex; align-items:center; gap:8px; color:var(--text-soft); font-size:.875rem; }
+.admin-friend-card__visible input { width:auto; min-height:0; }
+.admin-friend-card footer { grid-column:2; display:flex; flex-wrap:wrap; gap:12px; }
+.admin-friend-card footer button { padding:9px 12px; border:0;   color:var(--text); font-family:var(--playful); cursor:pointer;  background:transparent; }
+.admin-friend-card footer button:last-child { color:var(--danger); }
+
+@media(max-width:1100px){
+  .admin-friend-import{grid-template-columns:repeat(2,minmax(0,1fr))}.admin-friend-import .admin-create{justify-self:start}
+  .admin-friend-card{grid-template-columns:58px minmax(0,1fr)}.admin-friend-card__icon{width:58px;height:58px}
+}
+@media(max-width:680px){
+  .admin-tabs{grid-template-columns:1fr 1fr}.admin-friend-import{grid-template-columns:minmax(0,1fr);padding:20px}.admin-friend-import>small{grid-column:1}.admin-friend-card{grid-template-columns:minmax(0,1fr)}.admin-friend-card__icon{width:48px;height:48px}.admin-friend-card__fields{grid-template-columns:minmax(0,1fr)}.admin-friend-card__visible,.admin-friend-card footer{grid-column:1}
+}

@@ -1,0 +1,28 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+
+<BaseLayout title="走丢了 · SamsBlog" description="这里没有你要找的页面。">
+  <section class="not-found shell">
+    <p class="eyebrow">404 · Lost frame</p>
+    <h1>这一帧，<em>不在胶卷里。</em></h1>
+    <p>链接可能已经改变，也可能从未存在。回到首页，继续看下一段故事吧。</p>
+    <a class="button button--primary" href="/">回到首页</a>
+  </section>
+</BaseLayout>
+
+<style>
+  .not-found {
+    min-height: 72vh;
+    padding-block: calc(var(--header-height) + 48px) 64px;
+    display: grid;
+    place-content: center;
+    justify-items: start;
+    gap: 1.25rem;
+    max-width: 50rem;
+  }
+
+  h1 { max-width: 12ch; }
+  h1 em { color: var(--accent); font-style: italic; }
+  p:not(.eyebrow) { max-width: 34rem; color: var(--muted); }
+</style>

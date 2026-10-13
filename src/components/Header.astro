@@ -1,0 +1,159 @@
+---
+import { siteConfig } from '../config/site';
+import NetworkStatus from './NetworkStatus.astro';
+import SocialIcon from './SocialIcon.astro';
+import ThemeToggle from './ThemeToggle.astro';
+
+const currentPath = Astro.url.pathname;
+const isCurrentPage = (href: string) => !href.includes('#')
+  && (currentPath === href || (href !== '/' && currentPath.startsWith(href)));
+---
+
+<header class="site-header" data-site-header>
+  <div class="header-identity">
+    <a class="site-brand" href="/" aria-label="SamsBlog 首页">
+      <img class="site-brand__avatar" src="/media/brand/logo.jpg" alt="" width="44" height="44" />
+      <img
+        class="site-brand__wordmark"
+        src="/media/branding/samsblog-wordmark-nav.webp"
+        alt="SamsBlog"
+        width="480"
+        height="179"
+      />
+    </a>
+    <nav class="header-socials" aria-label="社交链接">
+      <a class="header-social header-social--bilibili" href={siteConfig.social.bilibili} target="_blank" rel="noreferrer" aria-label="Bilibili">
+        <SocialIcon name="bilibili" />
+        <span>Bilibili</span>
+      </a>
+      <a class="header-social header-social--github" href={siteConfig.social.github} target="_blank" rel="noreferrer" aria-label="GitHub">
+        <SocialIcon name="github" />
+        <span>GitHub</span>
+      </a>
+      <button class="header-social header-social--qq" type="button" aria-label="复制 QQ 号 3092243018" data-copy-qq data-qq={siteConfig.social.qq}>
+        <SocialIcon name="qq" />
+        <span data-copy-qq-label>QQ</span>
+      </button>
+      <a class="header-social header-social--town" href="https://yingwutown.top/" target="_blank" rel="noreferrer" aria-label="楹雾镇 · YingwuTown">
+        <SocialIcon name="town" />
+        <span>YingwuTown</span>
+      </a>
+    </nav>
+  </div>
+  <nav class="desktop-nav" aria-label="主要导航">
+    {siteConfig.nav.map((item) => (
+      <a href={item.href} aria-current={isCurrentPage(item.href) ? 'page' : undefined}>
+        {item.label}
+      </a>
+    ))}
+  </nav>
+  <div class="header-actions">
+    <NetworkStatus />
+    <ThemeToggle />
+    <button class="menu-button" type="button" aria-label="打开菜单" aria-expanded="false" aria-controls="mobile-navigation" data-menu-button>
+      <span></span><span></span>
+    </button>
+  </div>
+  <div class="mobile-menu" id="mobile-navigation" hidden data-mobile-menu>
+    <nav aria-label="移动端导航">
+      {siteConfig.nav.map((item, index) => (
+        <a href={item.href} aria-current={isCurrentPage(item.href) ? 'page' : undefined}>
+          <small>{String(index + 1).padStart(2, '0')}</small>{item.label}
+        </a>
+      ))}
+    </nav>
+    <p>二次元收藏与日常</p>
+  </div>
+</header>
+
+<script>
+  const header = document.querySelector<HTMLElement>('[data-site-header]');
+  const menuButton = header?.querySelector<HTMLButtonElement>('[data-menu-button]');
+  const mobileMenu = header?.querySelector<HTMLElement>('[data-mobile-menu]');
+  const inertStates = new Map<HTMLElement, boolean>();
+  const mobileViewport = window.matchMedia('(max-width: 1080px)');
+
+  // 移动导航的焦点、背景交互与关闭恢复。
+  function setMenuOpen(open: boolean, restoreFocus = true) {
+    if (!header || !menuButton || !mobileMenu) return;
+    menuButton.setAttribute('aria-expanded', String(open));
+    menuButton.setAttribute('aria-label', open ? '关闭菜单' : '打开菜单');
+    mobileMenu.hidden = !open;
+    document.documentElement.classList.toggle('menu-open', open);
+    if (open) {
+      const background = [
+        ...Array.from(document.body.children).filter((element) => element !== header),
+        ...Array.from(header.children).filter((element) => element !== mobileMenu && !element.contains(menuButton)),
+        ...Array.from(menuButton.parentElement?.children || []).filter((element) => element !== menuButton),
+      ];
+      background.forEach((element) => {
+        if (!(element instanceof HTMLElement) || element.tagName === 'SCRIPT') return;
+        inertStates.set(element, element.inert);
+        element.inert = true;
+      });
+      mobileMenu.querySelector<HTMLAnchorElement>('a')?.focus();
+    } else {
+      inertStates.forEach((inert, element) => { element.inert = inert; });
+      inertStates.clear();
+      if (restoreFocus) menuButton.focus();
+    }
+  }
+
+  menuButton?.addEventListener('click', () => {
+    setMenuOpen(menuButton.getAttribute('aria-expanded') !== 'true');
+  });
+  mobileMenu?.addEventListener('click', (event) => {
+    if (event.target instanceof Element && event.target.closest('a')) setMenuOpen(false);
+  });
+  document.addEventListener('keydown', (event) => {
+    if (!menuButton || !mobileMenu || mobileMenu.hidden) return;
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      setMenuOpen(false);
+    } else if (event.key === 'Tab') {
+      const controls = [menuButton, ...mobileMenu.querySelectorAll<HTMLAnchorElement>('a[href]')];
+      const index = controls.indexOf(document.activeElement as HTMLButtonElement | HTMLAnchorElement);
+      event.preventDefault();
+      controls[(index + (event.shiftKey ? -1 : 1) + controls.length) % controls.length]?.focus();
+    }
+  });
+  mobileViewport.addEventListener('change', ({ matches }) => {
+    if (!matches && mobileMenu && !mobileMenu.hidden) {
+      setMenuOpen(false, false);
+      header?.querySelector<HTMLAnchorElement>('.desktop-nav a[aria-current="page"], .desktop-nav a')?.focus();
+    }
+  });
+
+  let frame = 0;
+  const updateHeader = () => {
+    frame = 0;
+    if (!header) return;
+    const progress = Math.min(1, Math.max(0, window.scrollY / 110));
+    header.style.setProperty('--header-reveal', String(progress));
+    header.classList.toggle('site-header--scrolled', progress > 0.04);
+  };
+
+  updateHeader();
+  window.addEventListener('scroll', () => {
+    if (frame || document.documentElement.classList.contains('menu-open')) return;
+    frame = window.requestAnimationFrame(updateHeader);
+  }, { passive: true });
+
+  const qqButton = header?.querySelector<HTMLButtonElement>('[data-copy-qq]');
+  const qqLabel = qqButton?.querySelector<HTMLElement>('[data-copy-qq-label]');
+  qqButton?.addEventListener('click', async () => {
+    const qq = qqButton.dataset.qq || '';
+    try {
+      await navigator.clipboard.writeText(qq);
+      if (qqLabel) qqLabel.textContent = '已复制';
+    } catch {
+      if (qqLabel) qqLabel.textContent = '复制失败';
+    }
+    window.setTimeout(() => { if (qqLabel) qqLabel.textContent = 'QQ'; }, 1600);
+  });
+</script>
+
+<style is:global>
+  html.menu-open, html.menu-open body { overflow: hidden; }
+  .mobile-menu { overflow-y: auto; overscroll-behavior: contain; }
+</style>

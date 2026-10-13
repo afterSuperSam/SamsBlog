@@ -1,0 +1,19 @@
+---
+import { siteConfig } from '../config/site';
+---
+
+<footer class="site-footer">
+  <div class="footer-main">
+    <div class="footer-identity">
+      <a class="footer-brand" href="/">
+        <img src="/media/brand/logo.jpg" alt="" width="42" height="42" />
+        <span>© SamsBlog</span>
+      </a>
+    </div>
+    <nav aria-label="页脚导航">
+      <a href={siteConfig.social.bilibili} target="_blank" rel="noreferrer">Bilibili</a>
+      <a href={siteConfig.social.github} target="_blank" rel="noreferrer">GitHub</a>
+      <a href="/admin">管理</a>
+    </nav>
+  </div>
+</footer>

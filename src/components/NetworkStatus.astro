@@ -1,0 +1,66 @@
+<div class="network-status" data-network-status>
+  <button class="network-status__summary" type="button" aria-expanded="false" aria-controls="network-details" data-network-trigger>
+    <span class="network-status__dot" aria-hidden="true"></span>
+    <span data-network-summary>正在连接 · -- ms</span>
+  </button>
+  <div class="network-status__details" id="network-details" hidden data-network-details>
+    <div>
+      <span>你的网络</span>
+      <strong data-network-location>位置未知</strong>
+      <small data-network-ip>IP --</small>
+    </div>
+    <div>
+      <span>当前站点</span>
+      <strong data-network-domain>本站</strong>
+      <small><i></i><span data-network-health>检测中</span> · <span data-network-latency>-- ms</span></small>
+    </div>
+  </div>
+</div>
+
+<script>
+  const statusRoot = document.querySelector<HTMLElement>('[data-network-status]');
+  const trigger = statusRoot?.querySelector<HTMLButtonElement>('[data-network-trigger]');
+  const details = statusRoot?.querySelector<HTMLElement>('[data-network-details]');
+
+  trigger?.addEventListener('click', () => {
+    const open = trigger.getAttribute('aria-expanded') === 'true';
+    trigger.setAttribute('aria-expanded', String(!open));
+    if (details) details.hidden = open;
+  });
+
+  async function measureLatency() {
+    const values: number[] = [];
+    for (let index = 0; index < 3; index += 1) {
+      const start = performance.now();
+      const response = await fetch(`/api/ping.json?t=${Date.now()}`, { cache: 'no-store' });
+      if (!response.ok) throw new Error('unavailable');
+      values.push(Math.round(performance.now() - start));
+    }
+    return values.sort((a, b) => a - b)[1];
+  }
+
+  async function refreshNetwork() {
+    if (!statusRoot) return;
+    try {
+      const [latency, visitorResponse] = await Promise.all([
+        measureLatency(),
+        fetch('/api/network.json', { cache: 'no-store' }),
+      ]);
+      const visitor = await visitorResponse.json() as { location: string; maskedIp: string; domain: string };
+      const locationLabel = visitor.location === '位置未知' ? '访客' : visitor.location.split(' · ').at(-1) || '访客';
+      statusRoot.querySelector<HTMLElement>('[data-network-summary]')!.textContent = `${locationLabel} · ${latency} ms`;
+      statusRoot.querySelector<HTMLElement>('[data-network-location]')!.textContent = visitor.location;
+      statusRoot.querySelector<HTMLElement>('[data-network-ip]')!.textContent = `IP ${visitor.maskedIp}`;
+      statusRoot.querySelector<HTMLElement>('[data-network-domain]')!.textContent = visitor.domain;
+      statusRoot.querySelector<HTMLElement>('[data-network-health]')!.textContent = 'Online';
+      statusRoot.querySelector<HTMLElement>('[data-network-latency]')!.textContent = `${latency} ms`;
+      statusRoot.dataset.state = 'online';
+    } catch {
+      statusRoot.querySelector<HTMLElement>('[data-network-summary]')!.textContent = '连接不稳定 · -- ms';
+      statusRoot.querySelector<HTMLElement>('[data-network-health]')!.textContent = '连接不稳定';
+      statusRoot.dataset.state = 'offline';
+    }
+  }
+
+  refreshNetwork();
+</script>

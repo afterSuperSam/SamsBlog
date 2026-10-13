@@ -1,0 +1,21 @@
+[Unit]
+Description=SamsBlog Astro server
+After=network.target
+
+[Service]
+Type=simple
+User=samsblog
+Group=samsblog
+WorkingDirectory=/srv/samsblog/current
+EnvironmentFile=/etc/samsblog.env
+ExecStart=/usr/bin/node ./dist/server/entry.mjs
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/srv/samsblog/shared/data
+
+[Install]
+WantedBy=multi-user.target

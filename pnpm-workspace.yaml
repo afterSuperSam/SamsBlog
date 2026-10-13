@@ -1,0 +1,6 @@
+allowBuilds:
+  better-sqlite3: true
+  esbuild: true
+overrides:
+  js-yaml: 4.3.2
+  smol-toml: 1.9.1
