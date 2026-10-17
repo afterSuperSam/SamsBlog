@@ -17,9 +17,13 @@
 .articles-heading{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-bottom:28px}
 .articles-heading .section-title{margin:8px 0 0}
 .articles-heading__note{max-width:240px;color:var(--summer-pink);font-size:var(--font-size-label);font-style:italic;line-height:1.8;text-align:right;transform:rotate(-3deg)}
-.articles-more{display:inline-flex;align-items:center;gap:10px;flex-shrink:0;color:var(--summer-blue);font:700 var(--font-size-label)/1.5 var(--playful);text-decoration:none}
-.articles-more span{display:inline-block;transition:transform .3s var(--ease-out)}
-.articles-more:is(:hover,:focus-visible) span{transform:translate(3px,-3px)}
+.articles-more{position:relative;display:inline-flex;align-items:center;gap:10px;min-height:44px;flex-shrink:0;color:var(--summer-blue);font:700 var(--font-size-jump)/1.5 var(--playful);text-decoration:none;transition:transform .55s var(--ease-link),color .3s var(--ease-out),text-shadow .4s var(--ease-out)}
+.articles-more span{display:inline-block;transition:transform .6s var(--ease-link)}
+.articles-more:is(:hover,:focus-visible){color:var(--text-strong);transform:translate(3px,-2px);text-shadow:0 0 18px var(--project-title-glow-wide)}
+.articles-more:is(:hover,:focus-visible) span{transform:translate(7px,-5px) rotate(5deg) scale(1.12)}
+.article-reading__back:is(:hover,:focus-visible){transform:translate(-3px,-2px)}
+.article-reading__back:is(:hover,:focus-visible) span{transform:translateX(-7px) scale(1.12)}
+.articles-more:active{transform:translateY(0) scale(.97)}
 .article-browser{display:grid;gap:clamp(24px,4vw,56px);align-items:start}
 .article-browser--filters{grid-template-columns:minmax(0,1fr) 176px}
 .article-browser__main{min-width:0}
@@ -89,4 +93,4 @@
 .article-reading__footer{display:flex;align-items:center;justify-content:space-between;gap:20px;padding-top:28px;border-top:1px dashed var(--line-strong)}
 .article-reading__footer>span{color:var(--summer-pink);font-size:2rem}
 @media(max-width:720px){.article-browser--filters{grid-template-columns:minmax(0,1fr)}.article-filters{grid-row:1;grid-template-columns:1.25fr 1fr 1fr;gap:10px;padding:0}.article-filters__group legend{padding:0 8px;font-size:var(--font-size-small)}.article-filters__options button{padding:8px;gap:2px;font-size:var(--font-size-small)}.article-filters__options button>span{display:none}.articles-heading{align-items:flex-end}.articles-heading__note{display:none}.article-card__link{min-height:180px}.article-card__cover{width:var(--article-image-width)}.article-card__cover .article-card__image{width:calc(100% + 14px)}.article-card--cover .article-card__copy{margin-left:calc(var(--article-image-width) + 10px)}.article-card--cover[data-image-side="right"] .article-card__copy{margin-left:0;margin-right:calc(var(--article-image-width) + 10px)}.article-card__copy{padding:16px 18px}.article-card h3{font-size:1.35rem;margin:8px 0 6px}.article-card p{margin-bottom:10px}.article-card footer{flex-wrap:wrap;gap:4px 12px}.articles-empty{flex-direction:column;gap:6px}.article-reading__dates{flex-direction:column;gap:6px}.article-reading__cover{margin-top:26px;border-radius:20px}.article-prose{padding-top:28px}}
-@media(prefers-reduced-motion:reduce){.article-card,.article-card::before,.article-card__cover img,.article-card__arrow,.articles-more span,.article-filters__options button,.article-filters__options button>span{transition:none}.article-card:is(:hover,:focus-within),.article-card:is(:hover,:focus-within) .article-card__cover img,.article-card:is(:hover,:focus-within) .article-card__arrow,.articles-more:is(:hover,:focus-visible) span,.article-filters__options button:is(:hover,:focus-visible){transform:none}}
+@media(prefers-reduced-motion:reduce){.article-card,.article-card::before,.article-card__cover img,.article-card__arrow,.articles-more,.articles-more span,.article-filters__options button,.article-filters__options button>span{transition:none}.article-card:is(:hover,:focus-within),.article-card:is(:hover,:focus-within) .article-card__cover img,.article-card:is(:hover,:focus-within) .article-card__arrow,.articles-more:is(:hover,:focus-visible),.article-reading__back:is(:hover,:focus-visible),.articles-more:is(:hover,:focus-visible) span,.article-filters__options button:is(:hover,:focus-visible){transform:none}}

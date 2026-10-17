@@ -26,14 +26,17 @@
 @media(min-width:900px){.project-tape{position:absolute;right:4%;top:32px;margin:0}}
 @media(prefers-reduced-motion:reduce){.project-tape{transform:none}.hero-sticker--note{rotate:0deg}}
 .project-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:clamp(24px,4vw,56px);margin-top:clamp(32px,5vw,64px)}
-.project-list article{display:grid;grid-template-columns:48px minmax(0,1fr);align-content:start;gap:16px;padding-block:12px}
+.project-list article{display:grid;grid-template-columns:48px minmax(0,1fr);align-content:start;gap:16px;padding-block:12px;transition:transform .6s var(--ease-link)}
+.project-list article:is(:hover,:focus-within){transform:translate(6px,-4px)}
 .project-list article>span{color:var(--accent-2);font:700 italic clamp(28px,3vw,40px)/1.2 var(--display-numerals);letter-spacing:-.08em}
 .project-list article>span::after{display:block;width:5px;height:5px;margin:14px auto 0;border-radius:50%;background:currentColor;content:"";opacity:.65}
 .project-list article:nth-child(2)>span{color:var(--summer-pink)}
 .project-list article:nth-child(3)>span{color:var(--summer-orange)}
 .project-list h3{margin:0 0 14px;font:700 clamp(21px,2vw,28px)/1.4 var(--display);overflow-wrap:anywhere}
 .project-list p{margin:0;color:var(--text-soft);font-family:var(--playful);font-size:var(--font-size-body);line-height:1.9;overflow-wrap:anywhere}
-.project-list a:hover{color:var(--accent-2)}
+.project-list h3 a{transition:color .3s var(--ease-out),text-shadow .55s var(--ease-out);text-shadow:0 0 10px transparent,0 0 24px transparent}
+.project-list article:is(:hover,:focus-within) h3 a{color:var(--summer-blue);text-shadow:0 0 10px var(--project-title-glow-close),0 0 24px var(--project-title-glow-wide)}
+@media(prefers-reduced-motion:reduce){.project-list article,.project-list h3 a{transition:none}.project-list article:is(:hover,:focus-within){transform:none}}
 @media(max-width:760px){.project-list{grid-template-columns:minmax(0,1fr);gap:12px}.project-list article{padding-block:22px}.home-projects{padding-top:20px}}
 
 

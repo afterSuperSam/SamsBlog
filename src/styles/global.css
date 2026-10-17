@@ -16,6 +16,10 @@
   --home-guestbook-heading: var(--summer-pink);
   --home-friends-heading: var(--success);
   --contribution-detail-width: 300px;
+  --project-title-glow-close: color-mix(in oklab, var(--summer-blue) 65%, transparent);
+  --project-title-glow-wide: color-mix(in oklab, var(--summer-blue) 38%, transparent);
+  --font-size-jump: clamp(1.125rem, 1.07rem + .35vw, 1.375rem);
+  --ease-link: cubic-bezier(.18, 1.25, .3, 1);
   --text: #f1e9dc;
   --text-strong: #fff3e3;
   --text-soft: #d7cbb9;

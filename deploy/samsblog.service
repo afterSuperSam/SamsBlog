@@ -6,18 +6,18 @@ After=network.target
 Type=simple
 User=samsblog
 Group=samsblog
-WorkingDirectory=/srv/samsblog/current
+WorkingDirectory=/opt/samsblog/current
 EnvironmentFile=/etc/samsblog.env
 Environment=NODE_ENV=production
 UMask=0077
-ExecStart=/usr/bin/node ./dist/server/entry.mjs
+ExecStart=/usr/local/bin/node ./dist/server/entry.mjs
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/srv/samsblog/shared/data
+ReadWritePaths=/opt/samsblog/shared/data
 
 [Install]
 WantedBy=multi-user.target

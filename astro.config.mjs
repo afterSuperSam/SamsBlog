@@ -1,12 +1,16 @@
 // @ts-check
 import { defineConfig } from 'astro/config';
-import { loadEnv } from 'vite';
+import { existsSync, readFileSync } from 'node:fs';
+import { parseEnv } from 'node:util';
 import node from '@astrojs/node';
 
 // https://astro.build/config
 const isBuildCommand = process.argv.includes('build');
 const mode = isBuildCommand ? 'production' : 'development';
-const env = loadEnv(mode, process.cwd(), '');
+const envFiles = ['.env', '.env.local', `.env.${mode}`, `.env.${mode}.local`];
+const env = Object.assign({}, ...envFiles
+  .filter((file) => existsSync(file))
+  .map((file) => parseEnv(readFileSync(file, 'utf8'))));
 const publicSiteUrl = process.env.PUBLIC_SITE_URL || env.PUBLIC_SITE_URL;
 if (isBuildCommand && !publicSiteUrl) throw new Error('PUBLIC_SITE_URL is required for production builds');
 const siteUrl = new URL(publicSiteUrl || 'http://localhost:4321');

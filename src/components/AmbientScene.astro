@@ -7,6 +7,8 @@ const motePositions = [
   [47, 69], [84, 92], [21, 15], [58, 38], [95, 61], [32, 84], [69, 7], [6, 30],
   [16, 40], [53, 63], [90, 86], [27, 9], [64, 32], [1, 55], [38, 78], [75, 1],
   [12, 24], [49, 47], [86, 70], [23, 93],
+  [87, 29], [24, 52], [61, 75], [98, 98], [35, 21], [72, 44], [9, 67], [46, 90], [83, 13], [20, 36],
+  [57, 59], [94, 82], [31, 5], [68, 28], [5, 51], [42, 74], [79, 97], [16, 20], [53, 43], [90, 66],
 ] as const;
 ---
 
@@ -14,7 +16,7 @@ const motePositions = [
   <div class="ambient-halo ambient-halo--blue"></div><div class="ambient-halo ambient-halo--pink"></div>
   {particles.map((index) => {
     const [left, top] = motePositions[index % motePositions.length];
-    return <i class:list={['ambient-mote', { 'ambient-mote--desktop': index >= siteConfig.effects.mobileParticleCount }]} style={`--mote-left:${left}%;--mote-top:${top}%;--mote-delay:-${index % 18}s;--mote-duration:${15 + index % 12}s`} />;
+    return <i class:list={['ambient-mote', { 'ambient-mote--desktop': index >= siteConfig.effects.mobileParticleCount }]} data-mote-left={left} data-mote-top={top} />;
   })}
 </div>
 
@@ -36,6 +38,13 @@ const motePositions = [
 </style>
 
 <script>
+  // 通过 CSSOM 设置粒子定位，避免生产 CSP 拦截内联 style 属性
+  document.querySelectorAll<HTMLElement>('.ambient-mote').forEach((particle, index) => {
+    particle.style.setProperty('--mote-left', `${particle.dataset.moteLeft}%`);
+    particle.style.setProperty('--mote-top', `${particle.dataset.moteTop}%`);
+    particle.style.setProperty('--mote-delay', `-${index % 18}s`);
+    particle.style.setProperty('--mote-duration', `${15 + index % 12}s`);
+  });
   const motionButton = document.querySelector<HTMLButtonElement>('[data-motion-toggle]');
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
   let paused = false;
