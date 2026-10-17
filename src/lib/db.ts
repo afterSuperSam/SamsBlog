@@ -64,16 +64,32 @@ export function getDatabase() {
           updated_at TEXT NOT NULL,
           deleted_at TEXT
         );
-        CREATE INDEX IF NOT EXISTS friends_public_idx ON friends(visible, created_at ASC);
       `);
       const appliedMigrations = new Set((connection.prepare('SELECT id FROM schema_migrations').all() as Array<{ id: string }>).map((row) => row.id));
-      if (!appliedMigrations.has('retire-media-v1')) {
-        connection.exec('DROP TABLE IF EXISTS media');
-        connection.prepare('INSERT INTO schema_migrations (id, applied_at) VALUES (?, ?)').run('retire-media-v1', new Date().toISOString());
+      if (!appliedMigrations.has('20261017-blog-articles-v1')) {
+        connection.exec(`
+          CREATE TABLE IF NOT EXISTS blog_articles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL CHECK(length(trim(title)) > 0),
+            cover_url TEXT NOT NULL DEFAULT '',
+            source TEXT NOT NULL CHECK(source IN ('original', 'repost')),
+            category TEXT NOT NULL CHECK(category IN ('discussion', 'journal')),
+            content TEXT NOT NULL CHECK(length(trim(content)) > 0),
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            deleted_at TEXT
+          );
+          CREATE INDEX IF NOT EXISTS blog_articles_public_created_idx
+            ON blog_articles(created_at DESC, id DESC) WHERE deleted_at IS NULL;
+        `);
+        connection.prepare('INSERT INTO schema_migrations (id, applied_at) VALUES (?, ?)').run('20261017-blog-articles-v1', new Date().toISOString());
       }
       if (!appliedMigrations.has('friends-active-url-v1')) {
         const friendsSchema = connection.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'friends'").get() as { sql?: string } | undefined;
         if (friendsSchema?.sql?.includes('url TEXT NOT NULL UNIQUE')) {
+          const columns = connection.pragma('table_info(friends)') as Array<{ name: string }>;
+          const deletedAt = columns.some((column) => column.name === 'deleted_at') ? 'deleted_at' : 'NULL';
+          const backgroundUrl = columns.some((column) => column.name === 'background_url') ? 'background_url' : "''";
           connection.exec(`
             DROP INDEX IF EXISTS friends_public_idx;
             ALTER TABLE friends RENAME TO friends_legacy;
@@ -86,10 +102,11 @@ export function getDatabase() {
               visible INTEGER NOT NULL DEFAULT 1 CHECK(visible IN (0, 1)),
               created_at TEXT NOT NULL,
               updated_at TEXT NOT NULL,
-              deleted_at TEXT
+              deleted_at TEXT,
+              background_url TEXT NOT NULL DEFAULT ''
             );
-            INSERT INTO friends (id, name, url, description, icon_url, visible, created_at, updated_at)
-              SELECT id, name, url, description, icon_url, visible, created_at, updated_at FROM friends_legacy;
+            INSERT INTO friends (id, name, url, description, icon_url, visible, created_at, updated_at, deleted_at, background_url)
+              SELECT id, name, url, description, icon_url, visible, created_at, updated_at, ${deletedAt}, ${backgroundUrl} FROM friends_legacy;
             DROP TABLE friends_legacy;
           `);
         }
@@ -100,7 +117,15 @@ export function getDatabase() {
         const columns = connection.pragma(`table_info(${table})`) as Array<{ name: string }>;
         if (!columns.some((column) => column.name === 'deleted_at')) connection.exec(`ALTER TABLE ${table} ADD COLUMN deleted_at TEXT`);
       }
+      if (!appliedMigrations.has('20261015-friend-background-v1')) {
+        const friendColumns = connection.pragma('table_info(friends)') as Array<{ name: string }>;
+        if (!friendColumns.some((column) => column.name === 'background_url')) {
+          connection.exec("ALTER TABLE friends ADD COLUMN background_url TEXT NOT NULL DEFAULT ''");
+        }
+        connection.prepare('INSERT INTO schema_migrations (id, applied_at) VALUES (?, ?)').run('20261015-friend-background-v1', new Date().toISOString());
+      }
       connection.exec('CREATE UNIQUE INDEX IF NOT EXISTS friends_active_url_idx ON friends(url) WHERE deleted_at IS NULL');
+      connection.exec('CREATE INDEX IF NOT EXISTS friends_public_idx ON friends(visible, created_at ASC)');
       if (!friendsInitialized) {
         const now = new Date().toISOString();
         connection.prepare(`INSERT INTO friends (name, url, description, icon_url, visible, created_at, updated_at)

@@ -1,0 +1,97 @@
+---
+import { randomUUID } from 'node:crypto';
+import '../styles/articles.css';
+interface Props {
+  name: string;
+  label: string;
+  options: { value: string; label: string }[];
+  value?: string;
+}
+const { name, label, options, value = options[0]?.value || '' } = Astro.props;
+const identifier = `theme-select-${randomUUID()}`;
+---
+<div class="theme-select" data-theme-select>
+  <span class="theme-select__label" id={`${identifier}-label`}>{label}</span>
+  <select name={name} hidden tabindex="-1" aria-hidden="true" data-theme-native>
+    {options.map((option) => <option value={option.value} selected={option.value === value}>{option.label}</option>)}
+  </select>
+  <button class="theme-select__trigger" type="button" role="combobox" aria-haspopup="listbox" aria-expanded="false" aria-controls={`${identifier}-options`} aria-labelledby={`${identifier}-label ${identifier}-value`} data-theme-select-trigger>
+    <span id={`${identifier}-value`} data-theme-select-value>{options.find((option) => option.value === value)?.label || options[0]?.label || ''}</span><span aria-hidden="true">⌄</span>
+  </button>
+  <div class="theme-select__options" role="listbox" id={`${identifier}-options`} aria-labelledby={`${identifier}-label`} hidden data-theme-select-options>
+    {options.map((option, index) => <button type="button" role="option" id={`${identifier}-option-${index}`} aria-selected={option.value === value} tabindex="-1" data-value={option.value}>{option.label}<span aria-hidden="true">✓</span></button>)}
+  </div>
+</div>
+
+<script>
+  // 自定义下拉保留原生表单值，并集中处理键盘、外部关闭与重置。
+  document.querySelectorAll<HTMLElement>('[data-theme-select]').forEach((wrapper) => {
+    const select = wrapper.querySelector<HTMLSelectElement>('[data-theme-native]');
+    const trigger = wrapper.querySelector<HTMLButtonElement>('[data-theme-select-trigger]');
+    const label = wrapper.querySelector<HTMLElement>('[data-theme-select-value]');
+    const list = wrapper.querySelector<HTMLElement>('[data-theme-select-options]');
+    const options = [...(list?.querySelectorAll<HTMLButtonElement>('[role="option"]') || [])];
+    if (!select || !trigger || !label || !list) return;
+    let active = Math.max(0, select.selectedIndex);
+    const highlight = (index: number) => {
+      active = Math.max(0, Math.min(options.length - 1, index));
+      options.forEach((option, position) => option.classList.toggle('is-active', position === active));
+      if (!list.hidden && options[active]) {
+        trigger.setAttribute('aria-activedescendant', options[active].id);
+        options[active].scrollIntoView({ block: 'nearest' });
+      }
+    };
+    const close = () => {
+      list.hidden = true;
+      trigger.setAttribute('aria-expanded', 'false');
+      trigger.removeAttribute('aria-activedescendant');
+    };
+    const open = () => {
+      list.hidden = false;
+      trigger.setAttribute('aria-expanded', 'true');
+      highlight(select.selectedIndex);
+    };
+    const sync = () => {
+      label.textContent = select.selectedOptions[0]?.textContent || '';
+      options.forEach((option) => option.setAttribute('aria-selected', String(option.dataset.value === select.value)));
+      highlight(select.selectedIndex);
+    };
+    const choose = (index: number) => {
+      const option = options[index];
+      if (!option) return;
+      select.value = option.dataset.value || '';
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+      close();
+      trigger.focus({ preventScroll: true });
+    };
+    trigger.addEventListener('click', () => list.hidden ? open() : close());
+    trigger.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') { close(); event.preventDefault(); return; }
+      if (event.key === 'Tab') { close(); return; }
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        if (list.hidden) open();
+        else highlight(active + (event.key === 'ArrowDown' ? 1 : -1));
+      } else if (event.key === 'Home' || event.key === 'End') {
+        event.preventDefault();
+        if (list.hidden) open();
+        highlight(event.key === 'Home' ? 0 : options.length - 1);
+      } else if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        if (list.hidden) open(); else choose(active);
+      } else if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        const matching = options.findIndex((option) => option.textContent?.trim().toLocaleLowerCase().startsWith(event.key.toLocaleLowerCase()));
+        if (matching >= 0) { if (list.hidden) open(); highlight(matching); }
+      }
+    });
+    options.forEach((option, index) => {
+      option.addEventListener('click', () => choose(index));
+      option.addEventListener('pointerenter', () => highlight(index));
+    });
+    wrapper.addEventListener('focusout', (event) => { if (!(event.relatedTarget instanceof Node) || !wrapper.contains(event.relatedTarget)) close(); });
+    document.addEventListener('pointerdown', (event) => { if (event.target instanceof Node && !wrapper.contains(event.target)) close(); });
+    select.addEventListener('change', sync);
+    select.form?.addEventListener('reset', () => requestAnimationFrame(() => { sync(); close(); }));
+    sync();
+  });
+</script>

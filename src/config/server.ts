@@ -24,11 +24,25 @@ export const serverConfig = {
   loginGlobalAttempts: positiveInteger('ADMIN_LOGIN_GLOBAL_ATTEMPTS', 30),
   loginTrackedAddresses: positiveInteger('ADMIN_LOGIN_TRACKED_ADDRESSES', 1000),
   messageCooldownSeconds: positiveInteger('MESSAGE_COOLDOWN_SECONDS', 60),
+  articleTitleMaxLength: positiveInteger('ARTICLE_TITLE_MAX_LENGTH', 160),
+  articleContentMaxLength: positiveInteger('ARTICLE_CONTENT_MAX_LENGTH', 100000),
+  articleRequestMaxBytes: positiveInteger('ARTICLE_REQUEST_MAX_BYTES', 1024 * 1024),
   githubUsername: process.env.GITHUB_USERNAME || 'afterSuperSam',
   githubCacheSeconds: positiveInteger('GITHUB_CACHE_SECONDS', 6 * 60 * 60),
   githubRetrySeconds: positiveInteger('GITHUB_RETRY_SECONDS', 60),
   githubTimeoutMilliseconds: positiveInteger('GITHUB_TIMEOUT_MILLISECONDS', 5000),
+  friendStatusCacheSeconds: positiveInteger('FRIEND_STATUS_CACHE_SECONDS', 300),
+  friendStatusTimeoutMilliseconds: positiveInteger('FRIEND_STATUS_TIMEOUT_MILLISECONDS', 5000),
+  friendStatusSlowMilliseconds: positiveInteger('FRIEND_STATUS_SLOW_MILLISECONDS', 1800),
+  friendStatusConcurrency: positiveInteger('FRIEND_STATUS_CONCURRENCY', 3),
+  friendStatusMaxRedirects: positiveInteger('FRIEND_STATUS_MAX_REDIRECTS', 3),
 };
+
+if (serverConfig.friendStatusTimeoutMilliseconds > 15000
+  || serverConfig.friendStatusSlowMilliseconds >= serverConfig.friendStatusTimeoutMilliseconds
+  || serverConfig.friendStatusConcurrency > 6 || serverConfig.friendStatusMaxRedirects > 5) {
+  throw new Error('Invalid friend connectivity configuration');
+}
 
 if (!/^\d{4}-\d{2}-\d{2}$/.test(serverConfig.siteLaunchedAt)
   || !Number.isFinite(Date.parse(serverConfig.siteLaunchedAt))

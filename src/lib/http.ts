@@ -11,7 +11,8 @@ export const json = (data: unknown, status = 200) => new Response(JSON.stringify
 });
 
 export async function readJsonObject(request: Request): Promise<Record<string, unknown>> {
-  if (!request.headers.get('content-type')?.includes('application/json')) throw new HttpError(415, '请求格式不正确');
+  const mediaType = request.headers.get('content-type')?.split(';', 1)[0]?.trim().toLowerCase();
+  if (mediaType !== 'application/json') throw new HttpError(415, '请求格式不正确');
   let body: unknown;
   try { body = await request.json(); }
   catch { throw new HttpError(400, '请求内容无法解析'); }

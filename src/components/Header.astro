@@ -5,8 +5,9 @@ import SocialIcon from './SocialIcon.astro';
 import ThemeToggle from './ThemeToggle.astro';
 
 const currentPath = Astro.url.pathname;
-const isCurrentPage = (href: string) => !href.includes('#')
-  && (currentPath === href || (href !== '/' && currentPath.startsWith(href)));
+const { showMotion = true } = Astro.props;
+const isCurrentPage = (href: string) => currentPath === href
+  || (href !== '/' && !href.includes('#') && currentPath.startsWith(href));
 ---
 
 <header class="site-header" data-site-header>
@@ -21,6 +22,7 @@ const isCurrentPage = (href: string) => !href.includes('#')
         height="179"
       />
     </a>
+    <NetworkStatus />
     <nav class="header-socials" aria-label="社交链接">
       <a class="header-social header-social--bilibili" href={siteConfig.social.bilibili} target="_blank" rel="noreferrer" aria-label="Bilibili">
         <SocialIcon name="bilibili" />
@@ -30,9 +32,9 @@ const isCurrentPage = (href: string) => !href.includes('#')
         <SocialIcon name="github" />
         <span>GitHub</span>
       </a>
-      <button class="header-social header-social--qq" type="button" aria-label="复制 QQ 号 3092243018" data-copy-qq data-qq={siteConfig.social.qq}>
+      <button class="header-social header-social--qq" type="button" aria-label={`复制 QQ 号 ${siteConfig.social.qq}`} data-copy-qq data-qq={siteConfig.social.qq}>
         <SocialIcon name="qq" />
-        <span data-copy-qq-label>QQ</span>
+        <span role="status" data-copy-qq-label>QQ</span>
       </button>
       <a class="header-social header-social--town" href="https://yingwutown.top/" target="_blank" rel="noreferrer" aria-label="楹雾镇 · YingwuTown">
         <SocialIcon name="town" />
@@ -48,21 +50,23 @@ const isCurrentPage = (href: string) => !href.includes('#')
     ))}
   </nav>
   <div class="header-actions">
-    <NetworkStatus />
-    <ThemeToggle />
+    {showMotion && <button class="motion-toggle header-action" type="button" data-motion-toggle aria-pressed="false" aria-label="暂停装饰动效"><span class="header-action__label" data-motion-action-label aria-hidden="true">暂停动效</span><span aria-hidden="true">✧</span></button>}
     <button class="menu-button" type="button" aria-label="打开菜单" aria-expanded="false" aria-controls="mobile-navigation" data-menu-button>
-      <span></span><span></span>
+      <svg class="menu-icon" width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M4 8h16" /><path d="M4 16h16" />
+      </svg>
     </button>
+    <ThemeToggle />
   </div>
   <div class="mobile-menu" id="mobile-navigation" hidden data-mobile-menu>
     <nav aria-label="移动端导航">
-      {siteConfig.nav.map((item, index) => (
+      {siteConfig.nav.map((item) => (
         <a href={item.href} aria-current={isCurrentPage(item.href) ? 'page' : undefined}>
-          <small>{String(index + 1).padStart(2, '0')}</small>{item.label}
+          <span>{item.label}</span>
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none"><path d="M5 12h14m-6-6 6 6-6 6" /></svg>
         </a>
       ))}
     </nav>
-    <p>二次元收藏与日常</p>
   </div>
 </header>
 
@@ -70,32 +74,18 @@ const isCurrentPage = (href: string) => !href.includes('#')
   const header = document.querySelector<HTMLElement>('[data-site-header]');
   const menuButton = header?.querySelector<HTMLButtonElement>('[data-menu-button]');
   const mobileMenu = header?.querySelector<HTMLElement>('[data-mobile-menu]');
-  const inertStates = new Map<HTMLElement, boolean>();
   const mobileViewport = window.matchMedia('(max-width: 1080px)');
 
-  // 移动导航的焦点、背景交互与关闭恢复。
+  // 移动选项面板的展开、外部关闭与焦点恢复。
   function setMenuOpen(open: boolean, restoreFocus = true) {
     if (!header || !menuButton || !mobileMenu) return;
     menuButton.setAttribute('aria-expanded', String(open));
     menuButton.setAttribute('aria-label', open ? '关闭菜单' : '打开菜单');
     mobileMenu.hidden = !open;
-    document.documentElement.classList.toggle('menu-open', open);
     if (open) {
-      const background = [
-        ...Array.from(document.body.children).filter((element) => element !== header),
-        ...Array.from(header.children).filter((element) => element !== mobileMenu && !element.contains(menuButton)),
-        ...Array.from(menuButton.parentElement?.children || []).filter((element) => element !== menuButton),
-      ];
-      background.forEach((element) => {
-        if (!(element instanceof HTMLElement) || element.tagName === 'SCRIPT') return;
-        inertStates.set(element, element.inert);
-        element.inert = true;
-      });
       mobileMenu.querySelector<HTMLAnchorElement>('a')?.focus();
-    } else {
-      inertStates.forEach((inert, element) => { element.inert = inert; });
-      inertStates.clear();
-      if (restoreFocus) menuButton.focus();
+    } else if (restoreFocus) {
+      menuButton.focus();
     }
   }
 
@@ -105,16 +95,19 @@ const isCurrentPage = (href: string) => !href.includes('#')
   mobileMenu?.addEventListener('click', (event) => {
     if (event.target instanceof Element && event.target.closest('a')) setMenuOpen(false);
   });
+  document.addEventListener('pointerdown', (event) => {
+    if (!(event.target instanceof Node) || mobileMenu?.hidden) return;
+    if (!mobileMenu?.contains(event.target) && !menuButton?.contains(event.target)) setMenuOpen(false, false);
+  });
+  header?.addEventListener('focusout', (event) => {
+    if (!(event.relatedTarget instanceof Node) || mobileMenu?.hidden) return;
+    if (!mobileMenu?.contains(event.relatedTarget) && !menuButton?.contains(event.relatedTarget)) setMenuOpen(false, false);
+  });
   document.addEventListener('keydown', (event) => {
     if (!menuButton || !mobileMenu || mobileMenu.hidden) return;
     if (event.key === 'Escape') {
       event.preventDefault();
       setMenuOpen(false);
-    } else if (event.key === 'Tab') {
-      const controls = [menuButton, ...mobileMenu.querySelectorAll<HTMLAnchorElement>('a[href]')];
-      const index = controls.indexOf(document.activeElement as HTMLButtonElement | HTMLAnchorElement);
-      event.preventDefault();
-      controls[(index + (event.shiftKey ? -1 : 1) + controls.length) % controls.length]?.focus();
     }
   });
   mobileViewport.addEventListener('change', ({ matches }) => {
@@ -125,17 +118,21 @@ const isCurrentPage = (href: string) => !href.includes('#')
   });
 
   let frame = 0;
+  const heroBrand = document.querySelector<HTMLElement>('.hero-copy');
   const updateHeader = () => {
     frame = 0;
     if (!header) return;
     const progress = Math.min(1, Math.max(0, window.scrollY / 110));
     header.style.setProperty('--header-reveal', String(progress));
     header.classList.toggle('site-header--scrolled', progress > 0.04);
+    if (heroBrand) header.classList.toggle('site-header--past-hero', heroBrand.getBoundingClientRect().bottom <= header.offsetHeight);
   };
 
   updateHeader();
+  window.addEventListener('resize', updateHeader);
   window.addEventListener('scroll', () => {
-    if (frame || document.documentElement.classList.contains('menu-open')) return;
+    if (mobileMenu && !mobileMenu.hidden) setMenuOpen(false, false);
+    if (frame) return;
     frame = window.requestAnimationFrame(updateHeader);
   }, { passive: true });
 
@@ -152,8 +149,3 @@ const isCurrentPage = (href: string) => !href.includes('#')
     window.setTimeout(() => { if (qqLabel) qqLabel.textContent = 'QQ'; }, 1600);
   });
 </script>
-
-<style is:global>
-  html.menu-open, html.menu-open body { overflow: hidden; }
-  .mobile-menu { overflow-y: auto; overscroll-behavior: contain; }
-</style>

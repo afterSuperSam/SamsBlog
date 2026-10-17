@@ -7,13 +7,23 @@ export const siteConfig = {
     { href: '/', label: '首页' },
     { href: '/about', label: '关于' },
   ],
-  effects: { particleCount: 28, mobileParticleCount: 12, pointerTiltDegrees: 2.5 },
+  effects: { particleCount: 40, mobileParticleCount: 18, pointerTiltDegrees: 2.5 },
+  navigation: { sectionActivationRatio: 0.35 },
+  articles: { homepageCount: 2 },
   social: {
     bilibili: 'https://space.bilibili.com/390142693',
     github: 'https://github.com/afterSuperSam',
     qq: '3092243018',
   },
 } as const;
+
+if (!Number.isSafeInteger(siteConfig.articles.homepageCount) || siteConfig.articles.homepageCount < 1) {
+  throw new Error('Invalid article display configuration');
+}
+
+if (!Number.isFinite(siteConfig.navigation.sectionActivationRatio) || siteConfig.navigation.sectionActivationRatio <= 0 || siteConfig.navigation.sectionActivationRatio >= 1) {
+  throw new Error('Invalid section navigation configuration');
+}
 
 const { particleCount, mobileParticleCount } = siteConfig.effects;
 if (!Number.isFinite(siteConfig.effects.pointerTiltDegrees) || siteConfig.effects.pointerTiltDegrees < 0 || siteConfig.effects.pointerTiltDegrees > 3) {

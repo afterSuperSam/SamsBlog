@@ -1,6 +1,7 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
 import ContributionGraph from '../components/ContributionGraph.astro';
+import ArticleList from '../components/ArticleList.astro';
 import SocialIcon from '../components/SocialIcon.astro';
 import { siteConfig } from '../config/site';
 import { buildTokenUsageCalendar, getGithubContributions, type TokenUsage } from '../lib/contributions';
@@ -9,13 +10,55 @@ import '../styles/simple-pages.css';
 const githubContributions = await getGithubContributions();
 const latestContribution = githubContributions.available ? githubContributions.days.findLast((day) => day.count > 0)?.date : undefined;
 const gptTokenUsage = buildTokenUsageCalendar(new Map<string, TokenUsage>([
-  ['2026-07-23', { cacheHit: 60218880, cacheMiss: 1425016, output: 251793 }], ['2026-07-24', { cacheHit: 66291968, cacheMiss: 3071170, output: 216141 }], ['2026-07-25', { cacheHit: 101629696, cacheMiss: 3007611, output: 467086 }], ['2026-07-26', { cacheHit: 220374784, cacheMiss: 6058955, output: 825617 }],
-  ['2026-07-27', { cacheHit: 126363136, cacheMiss: 3416379, output: 467084 }], ['2026-07-28', { cacheHit: 90019584, cacheMiss: 2266999, output: 264622 }], ['2026-07-29', { cacheHit: 18721024, cacheMiss: 530499, output: 61545 }], ['2026-07-30', { cacheHit: 130610048, cacheMiss: 3584326, output: 436620 }],
-  ['2026-08-02', { cacheHit: 289792, cacheMiss: 33982, output: 18583 }], ['2026-08-04', { cacheHit: 133888, cacheMiss: 3798, output: 2042 }], ['2026-08-06', { cacheHit: 96330496, cacheMiss: 2819775, output: 301360 }], ['2026-08-08', { cacheHit: 1030912, cacheMiss: 100271, output: 13390 }], ['2026-08-09', { cacheHit: 79232, cacheMiss: 370, output: 835 }],
-  ['2026-08-11', { cacheHit: 15643520, cacheMiss: 350820, output: 49591 }], ['2026-08-12', { cacheHit: 75536384, cacheMiss: 1777937, output: 179584 }], ['2026-08-13', { cacheHit: 18131968, cacheMiss: 278639, output: 47249 }], ['2026-08-14', { cacheHit: 24832, cacheMiss: 448437, output: 4751 }], ['2026-08-15', { cacheHit: 9693440, cacheMiss: 312511, output: 45037 }],
-  ['2026-08-17', { cacheHit: 532736, cacheMiss: 96001, output: 4719 }], ['2026-08-18', { cacheHit: 80038912, cacheMiss: 1767692, output: 274954 }], ['2026-08-19', { cacheHit: 10168320, cacheMiss: 358105, output: 56336 }], ['2026-08-20', { cacheHit: 49784832, cacheMiss: 1517170, output: 157005 }], ['2026-08-21', { cacheHit: 49276160, cacheMiss: 2014815, output: 192275 }],
-  ['2026-08-22', { cacheHit: 57515392, cacheMiss: 2099013, output: 266930 }], ['2026-08-23', { cacheHit: 28335104, cacheMiss: 885428, output: 119448 }], ['2026-08-24', { cacheHit: 2902272, cacheMiss: 246394, output: 13922 }], ['2026-08-25', { cacheHit: 4076544, cacheMiss: 416155, output: 33842 }], ['2026-08-26', { cacheHit: 6972672, cacheMiss: 396202, output: 36770 }],
-  ['2026-08-27', { cacheHit: 19595008, cacheMiss: 1244689, output: 74399 }], ['2026-08-28', { cacheHit: 16583424, cacheMiss: 342557, output: 53787 }], ['2026-08-29', { cacheHit: 10476416, cacheMiss: 437208, output: 60610 }], ['2026-08-30', { cacheHit: 17112064, cacheMiss: 620549, output: 56679 }], ['2026-09-05', { cacheHit: 687616, cacheMiss: 108317, output: 7076 }], ['2026-09-06', { cacheHit: 40576, cacheMiss: 12474, output: 42 }],
+  ['2026-07-23', { cacheHit: 60218880, cacheMiss: 1425016, output: 251793 }],
+  ['2026-07-24', { cacheHit: 66291968, cacheMiss: 3071170, output: 216141 }],
+  ['2026-07-25', { cacheHit: 101629696, cacheMiss: 3007611, output: 467086 }],
+  ['2026-07-26', { cacheHit: 220374784, cacheMiss: 6058955, output: 825617 }],
+  ['2026-07-27', { cacheHit: 126363136, cacheMiss: 3416379, output: 467084 }],
+  ['2026-07-28', { cacheHit: 90019584, cacheMiss: 2266999, output: 264622 }],
+  ['2026-07-29', { cacheHit: 18721024, cacheMiss: 530499, output: 61545 }],
+  ['2026-07-30', { cacheHit: 130610048, cacheMiss: 3584326, output: 436620 }],
+  ['2026-08-02', { cacheHit: 289792, cacheMiss: 33982, output: 18583 }],
+  ['2026-08-04', { cacheHit: 133888, cacheMiss: 3798, output: 2042 }],
+  ['2026-08-06', { cacheHit: 96330496, cacheMiss: 2819775, output: 301360 }],
+  ['2026-08-08', { cacheHit: 1030912, cacheMiss: 100271, output: 13390 }],
+  ['2026-08-09', { cacheHit: 79232, cacheMiss: 370, output: 835 }],
+  ['2026-08-11', { cacheHit: 15643520, cacheMiss: 350820, output: 49591 }],
+  ['2026-08-12', { cacheHit: 75536384, cacheMiss: 1777937, output: 179584 }],
+  ['2026-08-13', { cacheHit: 18131968, cacheMiss: 278639, output: 47249 }],
+  ['2026-08-14', { cacheHit: 24832, cacheMiss: 448437, output: 4751 }],
+  ['2026-08-15', { cacheHit: 9693440, cacheMiss: 312511, output: 45037 }],
+  ['2026-08-17', { cacheHit: 532736, cacheMiss: 96001, output: 4719 }],
+  ['2026-08-18', { cacheHit: 80038912, cacheMiss: 1767692, output: 274954 }],
+  ['2026-08-19', { cacheHit: 10168320, cacheMiss: 358105, output: 56336 }],
+  ['2026-08-20', { cacheHit: 49784832, cacheMiss: 1517170, output: 157005 }],
+  ['2026-08-21', { cacheHit: 49276160, cacheMiss: 2014815, output: 192275 }],
+  ['2026-08-22', { cacheHit: 57515392, cacheMiss: 2099013, output: 266930 }],
+  ['2026-08-23', { cacheHit: 28335104, cacheMiss: 885428, output: 119448 }],
+  ['2026-08-24', { cacheHit: 2902272, cacheMiss: 246394, output: 13922 }],
+  ['2026-08-25', { cacheHit: 4076544, cacheMiss: 416155, output: 33842 }],
+  ['2026-08-26', { cacheHit: 6972672, cacheMiss: 396202, output: 36770 }],
+  ['2026-08-27', { cacheHit: 19595008, cacheMiss: 1244689, output: 74399 }],
+  ['2026-08-28', { cacheHit: 16583424, cacheMiss: 342557, output: 53787 }],
+  ['2026-08-29', { cacheHit: 10476416, cacheMiss: 437208, output: 60610 }],
+  ['2026-08-30', { cacheHit: 17112064, cacheMiss: 620549, output: 56679 }],
+  ['2026-09-05', { cacheHit: 687616, cacheMiss: 108317, output: 7076 }],
+  ['2026-09-06', { cacheHit: 40576, cacheMiss: 12474, output: 42 }],
+  ['2026-09-29', { cacheHit: 4523904, cacheMiss: 543881, output: 61152 }],
+  ['2026-10-02', { cacheHit: 1190272, cacheMiss: 168617, output: 8173 }],
+  ['2026-10-04', { cacheHit: 1007616, cacheMiss: 79756, output: 8193 }],
+  ['2026-10-05', { cacheHit: 6716672, cacheMiss: 154694, output: 25467 }],
+  ['2026-10-06', { cacheHit: 2093440, cacheMiss: 37968, output: 9317 }],
+  ['2026-10-07', { cacheHit: 83667072, cacheMiss: 2798800, output: 293686 }],
+  ['2026-10-08', { cacheHit: 8243456, cacheMiss: 559791, output: 24722 }],
+  ['2026-10-09', { cacheHit: 49833600, cacheMiss: 1884024, output: 314893 }],
+  ['2026-10-10', { cacheHit: 17008128, cacheMiss: 616266, output: 41210 }],
+  ['2026-10-11', { cacheHit: 11084032, cacheMiss: 1495631, output: 60925 }],
+  ['2026-10-12', { cacheHit: 2046720, cacheMiss: 102251, output: 14947 }],
+  ['2026-10-13', { cacheHit: 36350336, cacheMiss: 786877, output: 67909 }],
+  ['2026-10-14', { cacheHit: 14346496, cacheMiss: 567932, output: 30073 }],
+  ['2026-10-15', { cacheHit: 356608, cacheMiss: 357498, output: 507 }],
+  ['2026-10-17', { cacheHit: 17680768, cacheMiss: 297866, output: 79978 }],
 ]));
 const deepseekTokenUsage = buildTokenUsageCalendar(new Map<string, TokenUsage>([
   ['2026-07-28', { cacheHit: 27344768, cacheMiss: 749990, output: 71258 }], ['2026-07-29', { cacheHit: 86561152, cacheMiss: 3915929, output: 465942 }], ['2026-07-30', { cacheHit: 52268800, cacheMiss: 1755878, output: 358305 }], ['2026-07-31', { cacheHit: 53601280, cacheMiss: 2068349, output: 486681 }],
@@ -23,11 +66,16 @@ const deepseekTokenUsage = buildTokenUsageCalendar(new Map<string, TokenUsage>([
 ]));
 ---
 
-<BaseLayout title="关于" description="联系方式与 GitHub 贡献痕迹。" bodyClass="about-page">
-  <section class="about-contact" data-reveal>
+<BaseLayout title="关于" description="联系方式、文章与 GitHub 贡献痕迹。" bodyClass="about-page" quickNavigation={[
+  { href: '#contact', label: '联系' },
+  { href: '#articles', label: '文章' },
+  { href: '#activity', label: '痕迹' },
+  { href: '#sponsor', label: '赞赏' },
+]}>
+  <section class="about-contact" id="contact" data-reveal>
     <div class="shell">
       <header class="about-section-heading">
-        <span>FIND ME HERE</span>
+        <span>CONTACT</span>
         <h1>联系</h1>
       </header>
     </div>
@@ -40,9 +88,9 @@ const deepseekTokenUsage = buildTokenUsageCalendar(new Map<string, TokenUsage>([
         <span class="about-link__icon"><SocialIcon name="github" /></span>
         <span class="about-link__copy"><strong>GitHub</strong><small>afterSuperSam</small></span>
       </a>
-      <button class="about-link" type="button" data-about-copy-qq data-qq={siteConfig.social.qq}>
+      <button class="about-link" type="button" data-about-copy-qq data-qq={siteConfig.social.qq} aria-label={`复制 QQ 号 ${siteConfig.social.qq}`}>
         <span class="about-link__icon"><SocialIcon name="qq" /></span>
-        <span class="about-link__copy"><strong>QQ</strong><small aria-live="polite" data-about-copy-label>复制 · 3092243018</small></span>
+        <span class="about-link__copy"><strong>QQ</strong><small role="status" data-about-qq-label>{siteConfig.social.qq}</small></span>
       </button>
       <a class="about-link" href="https://yingwutown.top" target="_blank" rel="noreferrer">
         <span class="about-link__icon"><SocialIcon name="town" /></span>
@@ -51,16 +99,17 @@ const deepseekTokenUsage = buildTokenUsageCalendar(new Map<string, TokenUsage>([
     </nav>
   </section>
 
-  <section class="about-activity" data-reveal>
+  <ArticleList />
+
+  <section class="about-activity" id="activity" data-reveal>
     <div class="shell">
       <header class="about-section-heading">
-        <span>DAILY TRACE</span>
+        <span>TRACES</span>
         <h2>痕迹</h2>
-        {latestContribution && <p class="activity-date"><span aria-hidden="true">✦</span> 最近一次公开贡献 <time datetime={latestContribution} data-local-date>{latestContribution}</time></p>}
       </header>
       <div class="contribution-panels">
-        <ContributionGraph title="GitHub 提交" eyebrow="CODE" calendar={githubContributions} href={siteConfig.social.github} />
-        <ContributionGraph title="GPT 用量" eyebrow="TOKENS" calendar={gptTokenUsage} unit="Token" period="CCswitch 记录 · 2026-09-06" showUsage />
+        <ContributionGraph title="GitHub 提交" eyebrow="CODE" calendar={githubContributions} href={siteConfig.social.github} inlineTotal latestContribution={latestContribution} />
+        <ContributionGraph title="GPT 用量" eyebrow="TOKENS" calendar={gptTokenUsage} unit="Token" period="CCswitch 记录 · 2026-10-17" showUsage />
         <ContributionGraph title="DeepSeek 用量" eyebrow="TOKENS" calendar={deepseekTokenUsage} unit="Token" period="已核对数据 · 2026-08-09" showUsage />
       </div>
     </div>
@@ -72,7 +121,6 @@ const deepseekTokenUsage = buildTokenUsageCalendar(new Map<string, TokenUsage>([
         <span>SUPPORT</span>
         <h2>赞赏支持</h2>
         <p>谢谢你在这里停留，愿你今天也有一点小小的快乐。</p>
-        <small>感谢你的理解与支持。</small>
       </div>
       <div class="sponsor-smile" role="img" aria-label="向你挥手比心">(｡･ω･｡)ﾉ♡</div>
     </div>
@@ -85,16 +133,23 @@ const deepseekTokenUsage = buildTokenUsageCalendar(new Map<string, TokenUsage>([
     date.textContent = dateFormatter.format(new Date(`${date.dateTime}T12:00:00`));
   });
   const copyButton = document.querySelector<HTMLButtonElement>('[data-about-copy-qq]');
-  const copyLabel = copyButton?.querySelector<HTMLElement>('[data-about-copy-label]');
+  const copyLabel = copyButton?.querySelector<HTMLElement>('[data-about-qq-label]');
   copyButton?.addEventListener('click', async () => {
-    const qq = copyButton.dataset.qq || '3092243018';
+    const qq = copyButton.dataset.qq;
+    if (!qq) return;
     try {
       await navigator.clipboard.writeText(qq);
-      if (copyLabel) copyLabel.textContent = '已复制 · 3092243018';
-    } catch {
-      if (copyLabel) copyLabel.textContent = '复制失败';
+      copyButton.setAttribute('aria-label', `QQ 号 ${qq} 已复制`);
+      if (copyLabel) copyLabel.textContent = '已复制';
+    } catch (error) {
+      copyButton.setAttribute('aria-label', '复制失败，请手动选择 QQ 号');
+      if (copyLabel) copyLabel.textContent = `复制失败：${qq}`;
+      console.warn('QQ clipboard copy failed', error);
     }
-    window.setTimeout(() => { if (copyLabel) copyLabel.textContent = '复制 · 3092243018'; }, 1600);
+    window.setTimeout(() => {
+      copyButton.setAttribute('aria-label', `复制 QQ 号 ${qq}`);
+      if (copyLabel) copyLabel.textContent = qq;
+    }, 1600);
   });
 
   if (window.location.hash === '#friends') window.location.replace('/#friends');

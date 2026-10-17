@@ -1,28 +1,32 @@
 ---
 import GuestbookSection from '../components/GuestbookSection.astro';
+import ArticleList from '../components/ArticleList.astro';
 import BaseLayout from '../layouts/BaseLayout.astro';
 import { getSiteStats } from '../lib/stats';
 import { listFriends } from '../lib/friends';
+import { listArticles } from '../lib/articles';
 import { serverConfig } from '../config/server';
 import { siteConfig } from '../config/site';
 import '../styles/home.css';
 
 const siteStats = getSiteStats();
+const hasArticles = listArticles().length > 0;
 const friends = listFriends().map((friend) => ({
   ...friend,
   description: friend.description.replace(/[。.]+$/u, ''),
   hostname: new URL(friend.url).hostname.replace(/^www\./, ''),
 }));
+const friendStatusTimeout = Math.ceil(friends.length / serverConfig.friendStatusConcurrency) * serverConfig.friendStatusTimeoutMilliseconds + 2000;
 ---
 
-<BaseLayout bodyClass="home-page media-header">
-  <nav class="home-quick-nav" aria-label="首页快捷导航" aria-hidden="true" inert data-quick-nav>
-    <a href="#home" aria-label="首页 Hero"><span>首页</span><i></i></a>
-    <a href="#projects" aria-label="我的项目"><span>项目</span><i></i></a>
-    <a href="#guestbook" aria-label="留言板"><span>留言板</span><i></i></a>
-    <a href="#friends" aria-label="友链"><span>友链</span><i></i></a>
-    <a href="#site-stats" aria-label="站点统计"><span>统计</span><i></i></a>
-  </nav>
+<BaseLayout bodyClass="home-page media-header" quickNavigation={[
+  { href: '#home', label: '首页', description: '首页 Hero' },
+  { href: '#projects', label: '项目', description: '我的项目' },
+  ...(hasArticles ? [{ href: '#latest-article', label: '文章' }] : []),
+  { href: '#guestbook', label: '留言', description: '留言纸条' },
+  { href: '#friends', label: '友链' },
+  { href: '#site-stats', label: '统计', description: '站点统计' },
+]}>
 
   <section class="home-hero" id="home" data-pointer-tilt={siteConfig.effects.pointerTiltDegrees}>
     <div class="hero-media" aria-hidden="true">
@@ -30,34 +34,41 @@ const friends = listFriends().map((friend) => ({
       <span class="hero-media__edge"></span>
     </div>
     <div class="hero-copy">
-      <h1 class="hero-title-heading">{siteConfig.name}</h1>
-      <a class="hero-explore" href="#projects">看看我的项目 <span aria-hidden="true">↓</span></a>
+      <h1 class="hero-title-heading"><img src="/media/branding/samsblog-wordmark-nav.webp" alt={siteConfig.name} width="480" height="179" class="hero-wordmark" /></h1>
     </div>
     <span class="hero-sticker hero-sticker--sun" aria-hidden="true">✷</span>
-    <span class="hero-sticker hero-sticker--note" aria-hidden="true">a little summer<br />for your day ✧</span>
+    <span class="hero-sticker hero-sticker--note" aria-hidden="true">Scroll down<br />to see more ↓</span>
   </section>
 
   <section class="home-projects" id="projects">
     <div class="shell" data-reveal>
-      <header><span class="section-kicker">PROJECT CONSTELLATION</span><h2 class="section-title">我的项目</h2><span class="project-tape" aria-hidden="true">made with love ❤</span></header>
+      <header><span class="section-kicker">PROJECTS</span><h2 class="section-title">我的项目</h2><span class="project-tape" aria-hidden="true">made with love ❤</span></header>
       <div class="project-list">
-        <article><span>01</span><div><h3><a href="https://yingwutown.top/" target="_blank" rel="noreferrer">SamsTownWeb ↗</a></h3><p>楹雾镇的主站与项目入口，承载公开内容和站点服务。</p></div></article>
-        <article><span>02</span><div><h3>SamsFlayerBot</h3><p>单进程 Minecraft 自动化 Bot，负责传送、挂机与日常任务。</p></div></article>
-        <article><span>03</span><div><h3>SamsBlog</h3><p>一个自托管的个人插画站，在这里记录日常、分享项目和结识友邻。</p></div></article>
+        <article><span>01</span><div><h3><a href="https://github.com/afterSuperSam/SamsTownWeb" target="_blank" rel="noreferrer">SamsTownWeb ↗</a></h3><p>楹雾镇 Minecraft 社区网站</p></div></article>
+        <article><span>02</span><div><h3><a href="https://github.com/afterSuperSam/FlayerBot" target="_blank" rel="noreferrer">FlayerBot ↗</a></h3><p>单进程 Minecraft 自动化 Bot</p></div></article>
+        <article><span>03</span><div><h3><a href="https://github.com/afterSuperSam/SamsBlog" target="_blank" rel="noreferrer">SamsBlog ↗</a></h3><p>夏日插画风的个人项目与日常站点</p></div></article>
+        <article><span>04</span><div><h3><a href="https://github.com/afterSuperSam/ItemsaddderConfigGenerator" target="_blank" rel="noreferrer">ItemsAdder 配置生成器 ↗</a></h3><p>批量生成普通 2D 材质的配置文件</p></div></article>
       </div>
     </div>
   </section>
 
+  <ArticleList featured />
+
   <GuestbookSection />
 
-  <section class="home-friends shell" id="friends" aria-labelledby="friends-title" data-reveal>
-    <header><span class="section-kicker">NEARBY PLACES</span><h2 class="section-title" id="friends-title">友链</h2></header>
+  <section class="home-friends shell" id="friends" aria-labelledby="friends-title" data-reveal data-status-timeout={friendStatusTimeout}>
+    <header><span class="section-kicker">FRIENDS</span><h2 class="section-title" id="friends-title">网站友链</h2></header>
     <div class="friend-grid">
       {friends.map((friend) => (
         <a class="friend-card" href={friend.url} target="_blank" rel="noreferrer">
+          <img class:list={['friend-card__background', { 'is-avatar-background': !friend.backgroundUrl }]} src={friend.backgroundUrl || friend.iconUrl} alt="" loading="lazy" referrerpolicy="no-referrer" data-friend-background data-fallback={friend.iconUrl} />
           <span class="friend-card__icon"><b>{friend.name.slice(0, 1)}</b><img src={friend.iconUrl} alt="" loading="lazy" referrerpolicy="no-referrer" data-friend-icon /></span>
-          <span class="friend-card__copy"><strong>{friend.name}</strong><small>{friend.description}</small><em>{friend.hostname}</em></span>
+          <span class="friend-card__copy"><strong>{friend.name}</strong><small>{friend.description}</small></span>
           <i aria-hidden="true">↗</i>
+          <span class="friend-card__footer">
+            <em>{friend.hostname}</em>
+            <span class="friend-card__status" data-friend-status={friend.id} data-state="checking" role="status" aria-live="polite"><i aria-hidden="true"></i><span data-friend-status-label>检测中</span></span>
+          </span>
         </a>
       ))}
     </div>
@@ -65,14 +76,15 @@ const friends = listFriends().map((friend) => ({
   <section class="site-stats shell" id="site-stats" aria-label="站点统计" data-reveal>
     <div class="site-stats__panel">
       <dl>
-        <div><dt>运行天数</dt><dd title={`自 ${serverConfig.siteLaunchedAt} 起，按北京时间计算`}>{siteStats.runtimeDays.toLocaleString('zh-CN')}<small>天</small></dd></div>
-        {[['友邻', siteStats.friends], ['累计访客', siteStats.visitors], ['总浏览量', siteStats.pageViews]].map(([label, value]) => <div><dt>{label}</dt><dd>{Number(value).toLocaleString('zh-CN')}</dd></div>)}
+        <div><dt>运行天数</dt><dd>{siteStats.runtimeDays.toLocaleString('zh-CN')}<small>天</small></dd></div>
+        {[['友链', siteStats.friends], ['累计访客', siteStats.visitors], ['总浏览量', siteStats.pageViews]].map(([label, value]) => <div><dt>{label}</dt><dd>{Number(value).toLocaleString('zh-CN')}</dd></div>)}
       </dl>
     </div>
   </section>
 </BaseLayout>
 
 <script>
+  import type { FriendStatus } from '../lib/friend-status';
   const hero = document.querySelector<HTMLElement>('[data-pointer-tilt]');
   const sticker = hero?.querySelector<HTMLElement>('.hero-sticker--note');
   const pointerMotion = matchMedia('(hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference)');
@@ -85,26 +97,62 @@ const friends = listFriends().map((friend) => ({
   const resetTilt = () => sticker?.style.removeProperty('--pointer-tilt');
   hero?.addEventListener('pointerleave', resetTilt);
   pointerMotion.addEventListener('change', resetTilt);
-  const quickNav = document.querySelector<HTMLElement>('[data-quick-nav]');
-  let quickNavFrame = 0;
-  const updateQuickNav = () => {
-    quickNavFrame = 0;
-    if (!quickNav) return;
-    const visible = window.scrollY > Math.min(window.innerHeight * 0.55, 520);
-    quickNav.classList.toggle('visible', visible);
-    quickNav.setAttribute('aria-hidden', String(!visible));
-    quickNav.toggleAttribute('inert', !visible);
-  };
-  window.addEventListener('scroll', () => {
-    if (quickNavFrame) return;
-    quickNavFrame = window.requestAnimationFrame(updateQuickNav);
-  }, { passive: true });
-  updateQuickNav();
+
 
   document.querySelectorAll<HTMLImageElement>('[data-friend-icon]').forEach((image) => {
     const hideFailedIcon = () => { image.hidden = true; };
     image.addEventListener('error', hideFailedIcon, { once: true });
     if (image.complete && image.naturalWidth === 0) hideFailedIcon();
   });
+
+  document.querySelectorAll<HTMLImageElement>('[data-friend-background]').forEach((image) => {
+    const recoverBackground = () => {
+      if (!image.classList.contains('is-avatar-background') && image.dataset.fallback) {
+        image.classList.add('is-avatar-background');
+        image.src = image.dataset.fallback;
+      } else image.hidden = true;
+    };
+    image.addEventListener('error', recoverBackground);
+    if (image.complete && image.naturalWidth === 0) recoverBackground();
+  });
+
+  const friendSection = document.querySelector<HTMLElement>('#friends');
+  const statusNodes = [...document.querySelectorAll<HTMLElement>('[data-friend-status]')];
+  const statusLabels: Record<FriendStatus['status'], string> = { online: '可访问', slow: '响应较慢', offline: '暂时不可达', restricted: '访问受限', blocked: '无法检测' };
+  const loadFriendStatuses = async () => {
+    try {
+      const response = await fetch('/api/friends/status.json', { cache: 'no-store', signal: AbortSignal.timeout(Number(friendSection?.dataset.statusTimeout)) });
+      if (!response.ok) throw new Error(`Friend connectivity API failed: ${response.status}`);
+      const result = await response.json() as { statuses: FriendStatus[] };
+      if (!Array.isArray(result.statuses)) throw new Error('Invalid friend connectivity response');
+      const statuses = new Map(result.statuses.map((status) => [String(status.id), status]));
+      statusNodes.forEach((node) => {
+        const status = statuses.get(node.dataset.friendStatus || '');
+        const label = node.querySelector('[data-friend-status-label]');
+        if (!status || !statusLabels[status.status] || !label) throw new Error('Missing friend connectivity result');
+        node.dataset.state = status.status;
+        const latency = Number.isSafeInteger(status.latencyMilliseconds) && Number(status.latencyMilliseconds) > 0 ? ` · ${status.latencyMilliseconds} ms` : '';
+        label.textContent = `${statusLabels[status.status]}${latency}`;
+      });
+    } catch (error) {
+      console.warn('Friend connectivity display unavailable', error);
+      statusNodes.forEach((node) => {
+        if (node.dataset.state !== 'checking') return;
+        node.dataset.state = 'unknown';
+        const label = node.querySelector('[data-friend-status-label]');
+        if (label) label.textContent = '暂未检测';
+      });
+    }
+  };
+  if (friendSection && statusNodes.length) {
+    if ('IntersectionObserver' in window) {
+      const observer = new IntersectionObserver((entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        observer.disconnect();
+        void loadFriendStatuses();
+      }, { rootMargin: '200px' });
+      observer.observe(friendSection);
+    } else void loadFriendStatuses();
+  }
 
 </script>

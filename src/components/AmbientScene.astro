@@ -5,6 +5,8 @@ const motePositions = [
   [7, 9], [44, 32], [81, 55], [18, 78], [55, 1], [92, 24], [29, 47], [66, 70], [3, 93], [40, 16],
   [77, 39], [14, 62], [51, 85], [88, 8], [25, 31], [62, 54], [99, 77], [36, 0], [73, 23], [10, 46],
   [47, 69], [84, 92], [21, 15], [58, 38], [95, 61], [32, 84], [69, 7], [6, 30],
+  [16, 40], [53, 63], [90, 86], [27, 9], [64, 32], [1, 55], [38, 78], [75, 1],
+  [12, 24], [49, 47], [86, 70], [23, 93],
 ] as const;
 ---
 
@@ -15,24 +17,21 @@ const motePositions = [
     return <i class:list={['ambient-mote', { 'ambient-mote--desktop': index >= siteConfig.effects.mobileParticleCount }]} style={`--mote-left:${left}%;--mote-top:${top}%;--mote-delay:-${index % 18}s;--mote-duration:${15 + index % 12}s`} />;
   })}
 </div>
-<button class="motion-toggle" type="button" data-motion-toggle aria-pressed="false" aria-label="暂停装饰动效"><span aria-hidden="true">✧</span><span data-motion-label>暂停动效</span></button>
 
 <style>
   .ambient-scene{position:fixed;inset:0;overflow:hidden;z-index:2;pointer-events:none;contain:strict}
-  .ambient-halo{position:absolute;width:min(48vw,620px);aspect-ratio:1;border-radius:50%;opacity:.16;background:radial-gradient(circle,color-mix(in srgb,var(--summer-blue) 75%,transparent),transparent 67%);animation:halo-drift 28s ease-in-out infinite alternate}
-  .ambient-halo--blue{left:-22%;top:22%}.ambient-halo--pink{right:-24%;bottom:4%;background:radial-gradient(circle,var(--summer-pink),transparent 67%);animation-delay:-14s}
+  .ambient-halo{--halo-opacity:var(--ambient-halo-opacity);--halo-horizontal-offset:var(--ambient-halo-travel);position:absolute;width:var(--ambient-halo-size);aspect-ratio:1;border-radius:50%;opacity:var(--halo-opacity);background:radial-gradient(circle,color-mix(in srgb,var(--summer-blue) 75%,transparent),transparent 67%);animation:halo-drift var(--ambient-halo-duration) ease-in-out infinite alternate}
+  .ambient-halo--blue{left:-22%;top:22%}.ambient-halo--pink{--halo-opacity:var(--ambient-pink-halo-opacity);--halo-horizontal-offset:calc(var(--ambient-halo-travel) * -1);width:var(--ambient-pink-halo-size);right:-12%;bottom:-18%;background:radial-gradient(circle,var(--summer-pink),transparent 67%);animation-duration:var(--ambient-pink-halo-duration);animation-delay:-14s;animation-direction:alternate-reverse}
   .ambient-mote{position:absolute;left:var(--mote-left);top:var(--mote-top);width:4px;height:4px;border-radius:50%;background:var(--summer-blue);opacity:.4;animation:mote-drift var(--mote-duration,var(--motion-drift)) ease-in-out infinite alternate;animation-delay:var(--mote-delay,0s)}
   .ambient-mote:nth-of-type(3n){width:7px;height:7px;background:var(--summer-pink);border-radius:1px;rotate:45deg}
   .ambient-mote:nth-of-type(5n){width:11px;height:11px;background:var(--summer-orange);clip-path:polygon(50% 0,60% 38%,100% 50%,60% 62%,50% 100%,40% 62%,0 50%,40% 38%);border-radius:0}
-  .motion-toggle{position:fixed;z-index:50;left:16px;bottom:16px;display:flex;align-items:center;gap:7px;min-height:38px;padding:7px 12px;border:0;background:transparent;color:var(--text);text-shadow:0 1px 10px var(--bg);font-size:12px;cursor:pointer;opacity:.85}
-  .motion-toggle>span:first-child{font-size:18px;color:var(--accent-2)}.motion-toggle:hover{opacity:1}.motion-toggle:disabled{cursor:default}
   @keyframes mote-drift{0%{transform:translate3d(-8px,12px,0);opacity:.13}55%{opacity:.5}100%{transform:translate3d(22px,-45px,0);opacity:.2}}
-  @keyframes halo-drift{to{transform:translate3d(32px,-32px,0) scale(1.12)}}
+  @keyframes halo-drift{0%{transform:translate3d(0,0,0) scale(.94);opacity:calc(var(--halo-opacity) * .6)}50%{transform:translate3d(calc(var(--halo-horizontal-offset) * .4),calc(var(--ambient-halo-travel) * -.65),0) scale(1.08);opacity:var(--halo-opacity)}100%{transform:translate3d(var(--halo-horizontal-offset),calc(var(--ambient-halo-travel) * -1),0) scale(1.2);opacity:calc(var(--halo-opacity) * .8)}}
   :global(.page-hidden) .ambient-scene *{animation-play-state:paused!important}
   :global(.motion-paused) .ambient-scene{opacity:.4}
   :global(.click-spark){position:fixed;z-index:150;width:6px;height:6px;border-radius:1px;background:var(--summer-orange);pointer-events:none;animation:click-scatter .55s var(--ease-out) both}
   @keyframes click-scatter{from{opacity:.9;transform:translate(-50%,-50%) scale(1)}to{opacity:0;transform:translate(calc(-50% + var(--spark-x)),calc(-50% + var(--spark-y))) rotate(100deg) scale(.2)}}
-  @media(max-width:720px){.ambient-mote--desktop{display:none}.motion-toggle{left:10px;bottom:10px;font-size:11px;min-height:36px;padding:5px 10px}.ambient-halo{width:80vw}}
+  @media(max-width:720px){.ambient-mote--desktop{display:none}.ambient-halo{width:80vw}.ambient-halo--pink{width:110vw;right:-35%;bottom:-8%}}
   @media(prefers-reduced-motion:reduce){.ambient-scene *{animation:none!important}.ambient-scene{opacity:.35}:global(.click-spark){display:none}}
 </style>
 
@@ -49,8 +48,8 @@ const motePositions = [
     motionButton.disabled = reducedMotion.matches;
     motionButton.setAttribute('aria-pressed', String(disabled));
     motionButton.setAttribute('aria-label', disabled ? '启用装饰动效' : '暂停装饰动效');
-    const label = motionButton.querySelector('[data-motion-label]');
-    if (label) label.textContent = reducedMotion.matches ? '系统已减少动效' : paused ? '开启动效' : '暂停动效';
+    const actionLabel = motionButton.querySelector('[data-motion-action-label]');
+    if (actionLabel) actionLabel.textContent = reducedMotion.matches ? '系统减少动效' : paused ? '开启动效' : '暂停动效';
   };
   syncMotion();
   reducedMotion.addEventListener('change', syncMotion);
@@ -65,7 +64,7 @@ const motePositions = [
   syncVisibility();
   // 点击才生成短暂火花，动画结束即移除，不保持空转渲染循环
   document.addEventListener('click', (event) => {
-    if (paused || reducedMotion.matches || !motionButton || event.detail === 0 || !(event.target instanceof Element) || !event.target.closest('.button,.hero-explore,.project-list a')) return;
+    if (paused || reducedMotion.matches || !motionButton || event.detail === 0 || !(event.target instanceof Element) || !event.target.closest('.button,.project-list a')) return;
     document.querySelectorAll('.click-spark').forEach((spark) => spark.remove());
     for (let index = 0; index < 8; index++) {
       const spark = document.createElement('i');

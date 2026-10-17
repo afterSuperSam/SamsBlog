@@ -48,6 +48,16 @@ describe('admin boundaries', () => {
     expect(readPositiveId(1)).toBe(1);
   });
 
+  it('requires the JSON media type rather than a matching substring', async () => {
+    const request = (contentType: string) => new Request('https://blog.example.com', {
+      method: 'POST', headers: { 'Content-Type': contentType }, body: '{}',
+    });
+    for (const contentType of ['text/plain; application/json', 'application/json-invalid']) {
+      await expect(readJsonObject(request(contentType))).rejects.toMatchObject({ status: 415 });
+    }
+    await expect(readJsonObject(request('Application/JSON; charset=utf-8'))).resolves.toEqual({});
+  });
+
   it('requires authorization and rejects update identifiers on create', async () => {
     const context = (token?: string, body = '{}') => ({ request: new Request('https://blog.example.com/api/admin/friends.json', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body }), cookies: { get: () => token ? { value: token } : undefined } }) as unknown as Parameters<typeof saveFriend>[0];
     expect((await saveFriend(context())).status).toBe(401);

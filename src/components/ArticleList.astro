@@ -1,0 +1,99 @@
+---
+import { listArticles } from '../lib/articles';
+import { articleExcerpt } from '../lib/markdown';
+import { siteConfig } from '../config/site';
+import '../styles/articles.css';
+
+interface Props { featured?: boolean }
+const { featured = false } = Astro.props;
+const articles = listArticles();
+const visibleArticles = featured ? articles.slice(0, siteConfig.articles.homepageCount) : articles;
+const dateLabel = (value: string) => new Date(value).toLocaleDateString('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: 'long', day: 'numeric' });
+const filterGroups = [
+  { name: 'sort', label: '排序', selected: 'created-desc', options: [
+    { value: 'created-desc', label: '最新发布' }, { value: 'created-asc', label: '最早发布' },
+    { value: 'updated-desc', label: '最近编辑' }, { value: 'updated-asc', label: '最早编辑' },
+  ] },
+  { name: 'source', label: '来源', selected: '', options: [
+    { value: '', label: '全部' }, { value: 'original', label: '原创' }, { value: 'repost', label: '搬运' },
+  ] },
+  { name: 'category', label: '分类', selected: '', options: [
+    { value: '', label: '全部' }, { value: 'discussion', label: '杂谈' }, { value: 'journal', label: '日志' },
+  ] },
+];
+---
+
+{(!featured || visibleArticles.length > 0) && <section class:list={['articles-section', { 'articles-section--featured': featured }]} id={featured ? 'latest-article' : 'articles'} aria-labelledby={featured ? 'latest-article-title' : 'articles-title'} data-article-list={!featured ? '' : undefined}>
+  <div class="shell" data-reveal>
+    <header class="articles-heading">
+      <div><span class="section-kicker">ARTICLES</span><h2 class="section-title" id={featured ? 'latest-article-title' : 'articles-title'}>{featured ? '最近写下' : '文章'}</h2></div>
+      {featured && <a class="articles-more" href="/about#articles">全部文章 <span aria-hidden="true">↗</span></a>}
+      {!featured && <span class="articles-heading__note" aria-hidden="true">moments ✧</span>}
+    </header>
+    <div class:list={['article-browser', { 'article-browser--filters': !featured && articles.length > 0 }]}>
+    <div class="article-browser__main">
+    <div class="article-grid" data-article-grid>
+      {visibleArticles.map((article, index) => <article class:list={['article-card', { 'article-card--cover': article.coverUrl }]} data-article-card data-image-side={index % 2 === 0 ? 'left' : 'right'} data-source={article.source} data-category={article.category} data-created={article.createdAt} data-updated={article.updatedAt}>
+        <a class="article-card__link" href={`/articles/${article.id}`}>
+          {article.coverUrl && <div class="article-card__cover" aria-hidden="true"><img class="article-card__glow" src={article.coverUrl} alt="" loading="lazy" referrerpolicy="no-referrer" /><img class="article-card__image" src={article.coverUrl} alt="" loading="lazy" referrerpolicy="no-referrer" /></div>}
+          <div class="article-card__copy">
+            <div class="article-tags"><span>{article.source === 'original' ? '原创' : '搬运'}</span><span>{article.category === 'discussion' ? '杂谈' : '日志'}</span></div>
+            <h3>{article.title}</h3>
+            <p>{articleExcerpt(article.content)}</p>
+            <footer><time datetime={article.createdAt}>{dateLabel(article.createdAt)}</time><span class="article-card__arrow" aria-hidden="true">↗</span></footer>
+          </div>
+        </a>
+      </article>)}
+    </div>
+    {!featured && <p class="articles-empty" data-article-empty hidden={articles.length > 0}><span aria-hidden="true">{articles.length ? '⌕' : '✎'}</span><span>{articles.length ? '还没有找到这样的文章' : '纸页已经铺好，等下一次落笔'}</span></p>}
+    {!featured && articles.length > 0 && <p class="article-results" role="status" aria-live="polite" data-article-results>共 {articles.length} 篇文章</p>}
+    </div>
+    {!featured && articles.length > 0 && <aside class="article-filters" data-article-filters aria-label="文章筛选与排序">
+      {filterGroups.map((group) => <fieldset class="article-filters__group">
+        <legend>{group.label}</legend>
+        <div class="article-filters__options">{group.options.map((option) => <button type="button" data-filter-name={group.name} data-filter-value={option.value} aria-pressed={option.value === group.selected}>{option.label}<span aria-hidden="true">↗</span></button>)}</div>
+      </fieldset>)}
+    </aside>}
+    </div>
+  </div>
+</section>}
+
+<script>
+  // 已公开文章在页面内筛选、排序，无需额外请求。
+  document.querySelectorAll<HTMLElement>('[data-article-list]').forEach((section) => {
+    const filters = section.querySelector<HTMLElement>('[data-article-filters]');
+    const grid = section.querySelector<HTMLElement>('[data-article-grid]');
+    const empty = section.querySelector<HTMLElement>('[data-article-empty]');
+    const result = section.querySelector<HTMLElement>('[data-article-results]');
+    const cards = [...section.querySelectorAll<HTMLElement>('[data-article-card]')];
+    if (!filters || !grid) return;
+    const values: Record<string, string> = { source: '', category: '', sort: 'created-desc' };
+    const buttons = [...filters.querySelectorAll<HTMLButtonElement>('[data-filter-name]')];
+    const filterArticles = () => {
+      const { source, category, sort } = values;
+      const [field, direction] = sort.split('-');
+      let count = 0;
+      cards.sort((first, second) => {
+        const key = field === 'updated' ? 'updated' : 'created';
+        const comparison = Date.parse(first.dataset[key] || '') - Date.parse(second.dataset[key] || '');
+        return direction === 'asc' ? comparison : -comparison;
+      }).forEach((card) => {
+        card.hidden = Boolean(source && card.dataset.source !== source) || Boolean(category && card.dataset.category !== category);
+        if (!card.hidden) {
+          card.dataset.imageSide = count % 2 === 0 ? 'left' : 'right';
+          count += 1;
+        }
+        grid.append(card);
+      });
+      if (empty) empty.hidden = count > 0;
+      if (result) result.textContent = `共 ${count} 篇文章`;
+    };
+    buttons.forEach((button) => button.addEventListener('click', () => {
+      const name = button.dataset.filterName || '';
+      if (!(name in values)) return;
+      values[name] = button.dataset.filterValue || '';
+      buttons.filter((option) => option.dataset.filterName === name).forEach((option) => option.setAttribute('aria-pressed', String(option === button)));
+      filterArticles();
+    }));
+  });
+</script>

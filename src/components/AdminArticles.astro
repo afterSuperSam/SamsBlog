@@ -1,0 +1,204 @@
+---
+import { listArticles } from '../lib/articles';
+import { serverConfig } from '../config/server';
+import ThemeSelect from './ThemeSelect.astro';
+import '../styles/articles.css';
+import '../styles/admin-articles.css';
+
+const articles = listArticles({ includeDeleted: true });
+const active = articles.filter((article) => !article.deletedAt);
+const deleted = articles.filter((article) => article.deletedAt);
+const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
+---
+
+<section class="admin-panel admin-articles" id="articles" data-admin-articles>
+  <header class="admin-panel__heading"><div><span>ARTICLES</span><h2>文章</h2></div><p>写下想法，保存即公开。删除的文章可在下方恢复。</p></header>
+  <form class="article-editor" data-article-editor novalidate>
+    <header class="article-editor__heading"><h3 data-editor-heading>写一篇文章</h3><button type="button" data-new-article>＋ 新文章</button></header>
+    <input type="hidden" name="id" />
+    <div class="article-editor__fields">
+      <label class="article-editor__title"><span>题目</span><input name="title" maxlength={serverConfig.articleTitleMaxLength} required autocomplete="off" /></label>
+      <ThemeSelect name="source" label="来源" options={[{value:'original',label:'原创'},{value:'repost',label:'搬运'}]} />
+      <ThemeSelect name="category" label="分类" options={[{value:'discussion',label:'杂谈'},{value:'journal',label:'日志'}]} />
+      <label class="article-editor__cover"><span>首图链接 · 可选</span><input name="coverUrl" type="url" inputmode="url" autocomplete="off" placeholder="https://…" /></label>
+    </div>
+    <div class="article-editor__workspace">
+      <div class="article-editor__writing">
+        <label for="article-markdown">正文 · Markdown</label>
+        <div class="article-editor__toolbar" role="toolbar" aria-label="Markdown 排版">
+          <button type="button" data-markdown="heading">标题</button>
+          <button type="button" data-markdown="bold">加粗</button>
+          <button type="button" data-markdown="italic">斜体</button>
+          <button type="button" data-markdown="list">列表</button>
+          <button type="button" data-markdown="quote">引用</button>
+          <button type="button" data-markdown="link">链接</button>
+          <button type="button" data-markdown="image">图片</button>
+          <button type="button" data-markdown="code">代码</button>
+        </div>
+        <textarea id="article-markdown" name="content" rows="18" maxlength={serverConfig.articleContentMaxLength} required spellcheck="false" autocomplete="off" aria-describedby="article-editor-help"></textarea>
+        <small id="article-editor-help">支持标题、列表、引用、代码、链接和图片。图片仅填写网址。</small>
+      </div>
+      <section class="article-editor__preview" aria-label="文章实时预览">
+        <span>实时预览</span>
+        <img data-preview-cover alt="文章首图预览" hidden referrerpolicy="no-referrer" />
+        <h3 data-preview-title hidden></h3>
+        <div class="article-prose" data-article-preview><p class="article-editor__empty">写下正文后，预览会出现在这里。</p></div>
+      </section>
+    </div>
+    <footer class="article-editor__footer"><span data-editor-dates>保存后记录创建与编辑时间</span><button class="admin-create" type="submit">保存并公开</button></footer>
+    <p class="form-status" role="status" aria-live="polite" data-article-feedback></p>
+  </form>
+  <div class="article-management-list" aria-label="已公开文章">
+    <h3>已公开 · {active.length} 篇</h3>
+    {active.length === 0 && <p class="admin-empty">还没有文章，从上方开始写吧。</p>}
+    {active.map((article) => <article class="article-management-item">
+      <div><h4><a href={`/articles/${article.id}`}>{article.title}</a></h4><p>{article.source === 'original' ? '原创' : '搬运'} · {article.category === 'discussion' ? '杂谈' : '日志'}</p><small>创建 {dateLabel(article.createdAt)} · 编辑 {dateLabel(article.updatedAt)}</small></div>
+      <div class="article-management-actions"><button type="button" data-edit-article data-article={JSON.stringify(article)}>编辑</button><button type="button" data-remove-article={article.id}>删除</button></div>
+    </article>)}
+  </div>
+  <details class="article-management-deleted"><summary>已删除 · {deleted.length} 篇</summary>
+    {deleted.length === 0 && <p class="admin-empty">没有已删除的文章。</p>}
+    {deleted.map((article) => <article class="article-management-item"><div><h4>{article.title}</h4><small>删除于 {dateLabel(article.deletedAt!)}</small></div><button type="button" data-restore-article={article.id}>恢复公开</button></article>)}
+  </details>
+  <p class="form-status" role="status" aria-live="polite" data-article-list-feedback></p>
+</section>
+
+<script>
+  import { renderMarkdown } from '../lib/markdown';
+  import type { ArticleRecord } from '../lib/articles';
+  import { confirmAdminAction } from '../lib/admin-dialog';
+
+  // 编辑器与阅读页共用安全渲染，后台只维护当前一篇文章。
+  const root = document.querySelector<HTMLElement>('[data-admin-articles]');
+  const editor = root?.querySelector<HTMLFormElement>('[data-article-editor]');
+  if (root && editor) {
+    const title = editor.elements.namedItem('title') as HTMLInputElement;
+    const content = editor.elements.namedItem('content') as HTMLTextAreaElement;
+    const cover = editor.elements.namedItem('coverUrl') as HTMLInputElement;
+    const id = editor.elements.namedItem('id') as HTMLInputElement;
+    const source = editor.elements.namedItem('source') as HTMLSelectElement;
+    const category = editor.elements.namedItem('category') as HTMLSelectElement;
+    const preview = editor.querySelector<HTMLElement>('[data-article-preview]')!;
+    const previewTitle = editor.querySelector<HTMLElement>('[data-preview-title]')!;
+    const previewCover = editor.querySelector<HTMLImageElement>('[data-preview-cover]')!;
+    const feedback = editor.querySelector<HTMLElement>('[data-article-feedback]')!;
+    const heading = editor.querySelector<HTMLElement>('[data-editor-heading]')!;
+    const dates = editor.querySelector<HTMLElement>('[data-editor-dates]')!;
+    const listFeedback = root.querySelector<HTMLElement>('[data-article-list-feedback]')!;
+    let dirty = false;
+    const updatePreview = () => {
+      previewTitle.textContent = title.value;
+      previewTitle.hidden = !title.value;
+      preview.innerHTML = content.value.trim() ? renderMarkdown(content.value) : '<p class="article-editor__empty">写下正文后，预览会出现在这里。</p>';
+      try {
+        const url = new URL(cover.value);
+        if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new Error('Unsupported cover URL');
+        if (previewCover.getAttribute('src') !== url.href) previewCover.src = url.href;
+        previewCover.hidden = false;
+      } catch {
+        previewCover.hidden = true;
+        previewCover.removeAttribute('src');
+      }
+    };
+    previewCover.addEventListener('error', () => { previewCover.hidden = true; });
+    editor.addEventListener('input', () => { dirty = true; updatePreview(); });
+    editor.addEventListener('change', () => { dirty = true; updatePreview(); });
+    const mayDiscard = async () => !dirty || await confirmAdminAction('当前修改尚未保存，是否放弃这些修改？', '放弃修改');
+    root.querySelector('[data-new-article]')?.addEventListener('click', async () => {
+      if (!await mayDiscard()) return;
+      editor.reset();
+      id.value = '';
+      heading.textContent = '写一篇文章';
+      dates.textContent = '保存后记录创建与编辑时间';
+      feedback.textContent = '';
+      dirty = false;
+      updatePreview();
+      title.focus();
+    });
+    root.querySelectorAll<HTMLButtonElement>('[data-edit-article]').forEach((button) => button.addEventListener('click', async () => {
+      if (!await mayDiscard()) return;
+      const article = JSON.parse(button.dataset.article || '{}') as ArticleRecord;
+      id.value = String(article.id);
+      title.value = article.title;
+      content.value = article.content;
+      cover.value = article.coverUrl;
+      source.value = article.source;
+      category.value = article.category;
+      source.dispatchEvent(new Event('change', { bubbles:true }));
+      category.dispatchEvent(new Event('change', { bubbles:true }));
+      heading.textContent = '编辑文章';
+      dates.textContent = `创建 ${new Date(article.createdAt).toLocaleString('zh-CN')} · 编辑 ${new Date(article.updatedAt).toLocaleString('zh-CN')}`;
+      feedback.textContent = '';
+      dirty = false;
+      updatePreview();
+      title.focus();
+    }));
+    const wrappers: Record<string, [string, string]> = {
+      heading: ['\n## ', '\n'], bold: ['**', '**'], italic: ['*', '*'], list: ['\n- ', '\n'], quote: ['\n> ', '\n'],
+      link: ['[', '](https://)'], image: ['![', '](https://)'], code: ['\n```\n', '\n```\n'],
+    };
+    editor.querySelectorAll<HTMLButtonElement>('[data-markdown]').forEach((button) => button.addEventListener('click', () => {
+      const [prefix, suffix] = wrappers[button.dataset.markdown || ''];
+      const start = content.selectionStart;
+      const selected = content.value.slice(start, content.selectionEnd);
+      content.setRangeText(prefix + selected + suffix, start, content.selectionEnd, 'end');
+      content.focus();
+      content.setSelectionRange(start + prefix.length, start + prefix.length + selected.length);
+      dirty = true;
+      updatePreview();
+    }));
+    const request = async (method: string, payload: unknown) => {
+      const response = await fetch('/api/admin/articles.json', { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      if (!response.headers.get('content-type')?.includes('application/json')) throw new Error('文章服务暂时不可用，请稍后重试。');
+      const result = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(result.error || '文章操作失败，请稍后重试。');
+    };
+    const perform = async (button: HTMLButtonElement, status: HTMLElement, action: () => Promise<void>) => {
+      if (root.getAttribute('aria-busy') === 'true') return;
+      root.setAttribute('aria-busy', 'true');
+      button.disabled = true;
+      status.textContent = '正在保存…';
+      status.dataset.state = 'loading';
+      try {
+        await action();
+        dirty = false;
+        window.location.hash = 'articles';
+        window.location.reload();
+      } catch (error) {
+        status.textContent = error instanceof TypeError ? '网络连接失败，请检查连接后重试。' : error instanceof Error ? error.message : '文章操作失败。';
+        status.dataset.state = 'error';
+      } finally {
+        button.disabled = false;
+        root.removeAttribute('aria-busy');
+      }
+    };
+    editor.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const invalid = !title.value.trim() ? title : !content.value.trim() ? content : undefined;
+      if (invalid) {
+        feedback.textContent = invalid === title ? '请填写文章题目。' : '请填写文章正文。';
+        feedback.dataset.state = 'error';
+        invalid.focus();
+        return;
+      }
+      const button = editor.querySelector<HTMLButtonElement>('[type="submit"]')!;
+      const payload = { title: title.value, coverUrl: cover.value, source: source.value, category: category.value, content: content.value, ...(id.value ? { id: Number(id.value) } : {}) };
+      void perform(button, feedback, () => request(id.value ? 'PATCH' : 'POST', payload));
+    });
+    root.querySelectorAll<HTMLButtonElement>('[data-remove-article],[data-restore-article]').forEach((button) => button.addEventListener('click', async () => {
+      if (!await mayDiscard()) return;
+      const restore = button.hasAttribute('data-restore-article');
+      if (!restore && !await confirmAdminAction('删除后将停止公开展示，仍可在“已删除”中恢复。确定删除吗？', '删除文章')) return;
+      const articleId = Number(restore ? button.dataset.restoreArticle : button.dataset.removeArticle);
+      void perform(button, listFeedback, () => request(restore ? 'PATCH' : 'DELETE', { id: articleId, ...(restore ? { restore: true } : {}) }));
+    }));
+    document.addEventListener('click', async (event) => {
+      const link = event.target instanceof Element ? event.target.closest<HTMLAnchorElement>('a[href]') : null;
+      if (!dirty || !link || link.target === '_blank' || link.hasAttribute('download') || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+      const url = new URL(link.href);
+      if (url.pathname === location.pathname && url.search === location.search && url.hash) return;
+      event.preventDefault();
+      if (await mayDiscard()) { dirty = false; window.location.assign(link.href); }
+    });
+  }
+</script>

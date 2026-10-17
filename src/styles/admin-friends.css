@@ -50,6 +50,7 @@
 .admin-friend-card__visible { grid-column:2; display:flex; align-items:center; gap:8px; color:var(--text-soft); font-size:.875rem; }
 .admin-friend-card__visible input { width:auto; min-height:0; }
 .admin-friend-card footer { grid-column:2; display:flex; flex-wrap:wrap; gap:12px; }
+.admin-friend-card>.form-status { grid-column:1/-1; }
 .admin-friend-card footer button { padding:9px 12px; border:0;   color:var(--text); font-family:var(--playful); cursor:pointer;  background:transparent; }
 .admin-friend-card footer button:last-child { color:var(--danger); }
 

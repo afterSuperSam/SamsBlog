@@ -6,12 +6,14 @@ const visitorCookie = 'samsblog-visitor';
 const botPattern = /bot|crawler|spider|slurp|preview|monitor|uptime/i;
 
 export const onRequest = defineMiddleware(async ({ cookies, request, url }, next) => {
+  const response = await next();
   const acceptsHtml = request.headers.get('accept')?.includes('text/html') ?? false;
   const documentRequest = !request.headers.get('sec-fetch-dest') || request.headers.get('sec-fetch-dest') === 'document';
   const publicPage = !url.pathname.startsWith('/api/') && !url.pathname.startsWith('/admin');
   const humanAgent = !botPattern.test(request.headers.get('user-agent') || '');
 
-  if (request.method === 'GET' && acceptsHtml && documentRequest && publicPage && humanAgent) {
+  const htmlResponse = response.headers.get('content-type')?.includes('text/html') ?? false;
+  if (response.ok && htmlResponse && request.method === 'GET' && acceptsHtml && documentRequest && publicPage && humanAgent) {
     let token = cookies.get(visitorCookie)?.value;
     if (!token || !/^[0-9a-f-]{36}$/i.test(token)) token = randomUUID();
     cookies.set(visitorCookie, token, {
@@ -24,5 +26,5 @@ export const onRequest = defineMiddleware(async ({ cookies, request, url }, next
     recordPageView(hashVisitorToken(token));
   }
 
-  return next();
+  return response;
 });

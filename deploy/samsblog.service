@@ -8,6 +8,8 @@ User=samsblog
 Group=samsblog
 WorkingDirectory=/srv/samsblog/current
 EnvironmentFile=/etc/samsblog.env
+Environment=NODE_ENV=production
+UMask=0077
 ExecStart=/usr/bin/node ./dist/server/entry.mjs
 Restart=on-failure
 RestartSec=5

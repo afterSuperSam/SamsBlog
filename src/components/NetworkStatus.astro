@@ -1,7 +1,7 @@
 <div class="network-status" data-network-status>
   <button class="network-status__summary" type="button" aria-expanded="false" aria-controls="network-details" data-network-trigger>
     <span class="network-status__dot" aria-hidden="true"></span>
-    <span data-network-summary>正在连接 · -- ms</span>
+    <span data-network-summary><span data-network-summary-latency>-- ms</span></span>
   </button>
   <div class="network-status__details" id="network-details" hidden data-network-details>
     <div>
@@ -22,10 +22,24 @@
   const trigger = statusRoot?.querySelector<HTMLButtonElement>('[data-network-trigger]');
   const details = statusRoot?.querySelector<HTMLElement>('[data-network-details]');
 
+  const setDetailsOpen = (open: boolean) => {
+    trigger?.setAttribute('aria-expanded', String(open));
+    if (details) details.hidden = !open;
+  };
   trigger?.addEventListener('click', () => {
-    const open = trigger.getAttribute('aria-expanded') === 'true';
-    trigger.setAttribute('aria-expanded', String(!open));
-    if (details) details.hidden = open;
+    setDetailsOpen(trigger.getAttribute('aria-expanded') !== 'true');
+  });
+  document.addEventListener('pointerdown', (event) => {
+    if (event.target instanceof Node && !statusRoot?.contains(event.target)) setDetailsOpen(false);
+  });
+  statusRoot?.addEventListener('focusout', (event) => {
+    if (!(event.relatedTarget instanceof Node) || !statusRoot.contains(event.relatedTarget)) setDetailsOpen(false);
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && details && !details.hidden) {
+      setDetailsOpen(false);
+      trigger?.focus();
+    }
   });
 
   async function measureLatency() {
@@ -46,17 +60,17 @@
         measureLatency(),
         fetch('/api/network.json', { cache: 'no-store' }),
       ]);
+      if (!visitorResponse.ok) throw new Error(`Network API failed: ${visitorResponse.status}`);
       const visitor = await visitorResponse.json() as { location: string; maskedIp: string; domain: string };
-      const locationLabel = visitor.location === '位置未知' ? '访客' : visitor.location.split(' · ').at(-1) || '访客';
-      statusRoot.querySelector<HTMLElement>('[data-network-summary]')!.textContent = `${locationLabel} · ${latency} ms`;
+      statusRoot.querySelector<HTMLElement>('[data-network-summary-latency]')!.textContent = `${latency} ms`;
       statusRoot.querySelector<HTMLElement>('[data-network-location]')!.textContent = visitor.location;
       statusRoot.querySelector<HTMLElement>('[data-network-ip]')!.textContent = `IP ${visitor.maskedIp}`;
       statusRoot.querySelector<HTMLElement>('[data-network-domain]')!.textContent = visitor.domain;
-      statusRoot.querySelector<HTMLElement>('[data-network-health]')!.textContent = 'Online';
+      statusRoot.querySelector<HTMLElement>('[data-network-health]')!.textContent = '连接正常';
       statusRoot.querySelector<HTMLElement>('[data-network-latency]')!.textContent = `${latency} ms`;
       statusRoot.dataset.state = 'online';
     } catch {
-      statusRoot.querySelector<HTMLElement>('[data-network-summary]')!.textContent = '连接不稳定 · -- ms';
+      statusRoot.querySelector<HTMLElement>('[data-network-summary-latency]')!.textContent = '-- ms';
       statusRoot.querySelector<HTMLElement>('[data-network-health]')!.textContent = '连接不稳定';
       statusRoot.dataset.state = 'offline';
     }

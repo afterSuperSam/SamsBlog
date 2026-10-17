@@ -9,48 +9,55 @@ interface Props {
   unit?: string;
   period?: string;
   showUsage?: boolean;
+  inlineTotal?: boolean;
+  latestContribution?: string;
 }
 
-const { title, eyebrow, calendar, href, unit = '次', period = '过去一年', showUsage = false } = Astro.props;
+const { title, eyebrow, calendar, href, unit = '次', period = '过去一年', showUsage = false, inlineTotal = false, latestContribution } = Astro.props;
 const formatCount = (count: number) => count >= 100000000 ? `${(count / 100000000).toFixed(1)}亿` : count >= 10000 ? `${(count / 10000).toFixed(1)}万` : count.toLocaleString('zh-CN');
 const totalLabel = calendar.available ? `${formatCount(calendar.total)} ${unit}` : '暂时离线';
 const detailId = `usage-${eyebrow.toLowerCase()}-${title.toLowerCase().replace(/\s+/g, '-')}`;
 ---
 
-<article class="contribution-panel">
+<article class="contribution-panel" data-unit={unit}>
   <header>
-    <div><span>{eyebrow}</span><h3>{title}</h3></div>
-    <strong>{totalLabel}</strong>
+    <div class="contribution-heading">
+      <span>{eyebrow}</span>
+      <div class="contribution-title-line"><h3>{title}</h3>{inlineTotal && <strong>{totalLabel}</strong>}</div>
+      {latestContribution && <p class="activity-date"><span aria-hidden="true">✦</span> 最近一次公开贡献 <time datetime={latestContribution} data-local-date>{latestContribution}</time></p>}
+    </div>
+    {!inlineTotal && <strong>{totalLabel}</strong>}
   </header>
-  <div class="contribution-scroll" tabindex="0" aria-label={`${title}每日用量图，共 ${calendar.total.toLocaleString('zh-CN')} ${unit}`}>
+  <div class="contribution-scroll" role="group" aria-label={`${title}每日用量图，${calendar.available ? `共 ${calendar.total.toLocaleString('zh-CN')} ${unit}` : '暂时离线'}；方向键浏览日期，Home 和 End 跳至首尾`}>
     <div class="contribution-grid">
-      {calendar.days.map((day) => (
-        <i
+      {calendar.days.map((day, index) => (
+        <button
+          type="button"
           class={`contribution-cell contribution-cell--${day.level}`}
-          title={!showUsage ? `${day.date} · ${day.count.toLocaleString('zh-CN')} ${unit}` : undefined}
-          aria-label={showUsage && !day.usage ? `${day.date}，暂无记录` : `${day.date}，${day.count.toLocaleString('zh-CN')} ${unit}`}
-          aria-describedby={showUsage ? detailId : undefined}
-          tabindex={showUsage ? 0 : undefined}
+          aria-label={!calendar.available || (showUsage && !day.usage) ? `${day.date}，暂无记录` : `${day.date}，${day.count.toLocaleString('zh-CN')} ${unit}`}
+          aria-describedby={detailId}
+          tabindex={index === calendar.days.length - 1 ? '0' : '-1'}
+          data-contribution-cell
           data-token-cell={showUsage ? true : undefined}
-          data-date={showUsage ? day.date : undefined}
-          data-count={showUsage ? day.count : undefined}
-          data-recorded={showUsage ? String(Boolean(day.usage)) : undefined}
+          data-date={day.date}
+          data-count={day.count}
+          data-recorded={String(showUsage ? Boolean(day.usage) : calendar.available)}
           data-cache-hit={showUsage ? day.usage?.cacheHit || 0 : undefined}
           data-cache-miss={showUsage ? day.usage?.cacheMiss || 0 : undefined}
           data-output={showUsage ? day.usage?.output || 0 : undefined}
-        ></i>
+        ></button>
       ))}
     </div>
   </div>
-  {showUsage && <div id={detailId} class="contribution-detail-popover" popover="manual" role="tooltip">
+  <div id={detailId} class="contribution-detail-popover" popover="manual" role="tooltip">
     <b data-usage-date></b>
     <strong data-usage-total></strong>
-    <dl>
+    {showUsage && <dl>
       <div><dt>输入 · 命中缓存</dt><dd data-usage-hit></dd></div>
       <div><dt>输入 · 未命中</dt><dd data-usage-miss></dd></div>
       <div><dt>输出</dt><dd data-usage-output></dd></div>
-    </dl>
-  </div>}
+    </dl>}
+  </div>
   <footer>
     <span>{calendar.available ? period : '网络恢复后自动更新'}</span>
     <div aria-label="活动强度"><small>少</small>{[0, 1, 2, 3, 4].map((level) => <i class={`contribution-cell contribution-cell--${level}`}></i>)}<small>多</small></div>
@@ -81,11 +88,25 @@ const detailId = `usage-${eyebrow.toLowerCase()}-${title.toLowerCase().replace(/
       const field = popover.querySelector<HTMLElement>(selector);
       if (field) field.textContent = value;
     };
-    panel.querySelectorAll<HTMLElement>('[data-token-cell]').forEach((cell) => {
+    const cells = [...panel.querySelectorAll<HTMLButtonElement>('[data-contribution-cell]')];
+    // 每张图只保留一个 Tab 停靠点，方向键按日或周移动。
+    panel.addEventListener('keydown', (event) => {
+      const index = cells.indexOf(document.activeElement as HTMLButtonElement);
+      if (index < 0) return;
+      const offsets: Record<string, number> = { ArrowUp: -1, ArrowDown: 1, ArrowLeft: -7, ArrowRight: 7 };
+      let nextIndex: number;
+      if (event.key === 'Home') nextIndex = 0;
+      else if (event.key === 'End') nextIndex = cells.length - 1;
+      else if (event.key in offsets) nextIndex = Math.max(0, Math.min(cells.length - 1, index + offsets[event.key]));
+      else return;
+      event.preventDefault();
+      cells[nextIndex]?.focus();
+    });
+    cells.forEach((cell) => {
       const showDetails = () => {
         const recorded = cell.dataset.recorded === 'true';
         writeDetail('[data-usage-date]', cell.dataset.date || '');
-        writeDetail('[data-usage-total]', recorded ? `${formatUsageNumber(cell.dataset.count)} Token` : '暂无记录');
+        writeDetail('[data-usage-total]', recorded ? `${formatUsageNumber(cell.dataset.count)} ${panel.dataset.unit}` : '暂无记录');
         writeDetail('[data-usage-hit]', recorded ? formatUsageNumber(cell.dataset.cacheHit) : '—');
         writeDetail('[data-usage-miss]', recorded ? formatUsageNumber(cell.dataset.cacheMiss) : '—');
         writeDetail('[data-usage-output]', recorded ? formatUsageNumber(cell.dataset.output) : '—');
@@ -96,10 +117,15 @@ const detailId = `usage-${eyebrow.toLowerCase()}-${title.toLowerCase().replace(/
         popover.style.left = `${Math.max(12, Math.min(rect.left + rect.width / 2 - detail.width / 2, window.innerWidth - detail.width - 12))}px`;
         popover.style.top = `${Math.max(12, Math.min(top, window.innerHeight - detail.height - 12))}px`;
       };
-      cell.addEventListener('pointerenter', showDetails);
-      cell.addEventListener('focus', showDetails);
+      cell.addEventListener('pointerenter', () => {
+        if (!cells.includes(document.activeElement as HTMLButtonElement) || document.activeElement === cell) showDetails();
+      });
+      cell.addEventListener('focus', () => {
+        cells.forEach((item) => { item.tabIndex = item === cell ? 0 : -1; });
+        requestAnimationFrame(() => { if (document.activeElement === cell) showDetails(); });
+      });
       cell.addEventListener('click', showDetails);
-      cell.addEventListener('pointerleave', () => { if (document.activeElement !== cell) hideDetails(); });
+      cell.addEventListener('pointerleave', () => { if (!cells.includes(document.activeElement as HTMLButtonElement)) hideDetails(); });
       cell.addEventListener('blur', hideDetails);
     });
     panel.querySelector('.contribution-scroll')?.addEventListener('scroll', hideDetails);

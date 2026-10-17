@@ -1,0 +1,26 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import NotFound from '../404.astro';
+import { getArticle } from '../../lib/articles';
+import { articleExcerpt, renderMarkdown } from '../../lib/markdown';
+import '../../styles/articles.css';
+
+const identifier = Number(Astro.params.id);
+const article = Number.isSafeInteger(identifier) && identifier > 0 ? getArticle(identifier) : undefined;
+if (!article) Astro.response.status = 404;
+const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+---
+
+{article ? <BaseLayout title={article.title} description={articleExcerpt(article.content)} image={article.coverUrl || undefined} bodyClass="article-page">
+  <article class="article-reading shell">
+    <a class="articles-more article-reading__back" href="/about#articles"><span aria-hidden="true">←</span> 回到文章</a>
+    <header class="article-reading__heading" data-reveal>
+      <div class="article-tags"><span>{article.source === 'original' ? '原创' : '搬运'}</span><span>{article.category === 'discussion' ? '杂谈' : '日志'}</span></div>
+      <h1>{article.title}</h1>
+      <div class="article-reading__dates"><span>写于 <time datetime={article.createdAt}>{dateLabel(article.createdAt)}</time></span><span>编辑于 <time datetime={article.updatedAt}>{dateLabel(article.updatedAt)}</time></span></div>
+    </header>
+    {article.coverUrl && <img class="article-reading__cover" src={article.coverUrl} alt="文章首图" referrerpolicy="no-referrer" />}
+    <div class="article-prose" set:html={renderMarkdown(article.content)}></div>
+    <footer class="article-reading__footer"><span aria-hidden="true">✧</span><a class="articles-more" href="/about#articles">继续翻阅 <span aria-hidden="true">↗</span></a></footer>
+  </article>
+</BaseLayout> : <NotFound />}

@@ -1,114 +1,114 @@
 # SamsBlog
 
-一个精简、自托管的 Astro 个人插画站，展示个人项目、关于、友链、留言与匿名访客统计。文章和相册功能已退役。
+精简、自托管的 Astro 个人插画站，展示项目、文章、关于、友链、留言与匿名访客统计。
 
 ## 架构
 
-- Astro SSR + Node standalone，页面和文件式 API 由一个进程提供；后台使用原生 DOM。
-- SQLite + 手写 SQL，WAL、外键与 CHECK 枚举约束；友链、留言采用软删除。
-- GitHub 贡献图在服务端缓存，共用进行中的请求，失败短暂缓存并返回旧数据。
-- 沿用现有部署的夏日插画风格与粉蓝米配色，统一导航与主题，加入可暂停的轻量粒子和点击动效；视觉规范集中在 [design/README.md](design/README.md)。
-- 后端参数集中于 `src/config/server.ts`，JSON解析、鉴权与错误分类集中于 `src/lib/http.ts`，不引入通用 CRUD 框架。
+- Astro SSR + Node standalone，文件式 API；后台使用原生 DOM。
+- SQLite + 手写 SQL，WAL、外键、CHECK 枚举约束；友链、留言和文章软删除。
+- 首页顺序：Hero → 项目 → 最新两篇文章（有内容时） → 留言纸条 → 网站友链 → 统计。顶部导航仅首页、关于；右侧区块导航含文章入口，“留言”指向留言纸条。`/links` 永久重定向至 `/#friends`。
+- 项目区桌面每行两个、手机单列，展示 SamsTownWeb、FlayerBot、SamsBlog 和 ItemsAdder 配置生成器；所有项目均可点击标题在新标签页打开对应 GitHub 仓库。
+- 区块英文标题均为单词，如 `PROJECTS`、`ARTICLES`、`FRIENDS`、`CONTACT`、`TRACES`；阅读页不显示额外英文标题；留言输入框聚焦时无外框，保留手绘闪烁光标。友链和运行天数不显示悬停说明。页脚右侧提供 Town（楹雾镇）和“开往”入口，“管理”排在最右侧，手机端换行排列。
+- 关于页展示联系方式、全部文章、GitHub 贡献和 Token 用量；桌面右侧复用首页区块导航，可跳转联系、文章、痕迹和赞赏，随滚动高亮并保留扩散与疏密动效。GitHub 服务端缓存并合并请求；Token 是页面内标明日期的历史快照，不自动读取本机数据库。
+- 视觉与交互约束见 [design/README.md](design/README.md)。不引入客户端框架或粒子库。
+
+GPT 用量快照已从本机 CCswitch 记录更新至 **2026-10-17**，按北京时间合并 GPT 模型的日汇总和未汇总请求记录，校验历史日期不重叠，并按记录的输入口径区分命中缓存、未命中与输出。累计 **1,699,975,744 Token**；不包含 Claude 或自动审核模型。DeepSeek 保留已核对的历史数据。页面只保存汇总快照，不读取本机凭据或自动扫描本机记录。
+
+## 文章
+
+后台“文章”分区使用 Markdown 编辑与实时预览，共用一套无依赖安全渲染器。支持标题、列表、引用、代码、粗斜体、删除线、链接和图片；原始 HTML 转为文字。首图可选，只填写不含账号密码的公开 HTTP(S) 图片链接，不上传文件。
+
+每篇分别选择来源（原创／搬运）和分类（杂谈／日志）。保存即公开；编辑保留创建日期并更新编辑日期，删除后退出公开列表和站点地图，详情返回404；“已删除”中可恢复，原始日期保留。未保存修改在站内跳转或切换文章前使用主题确认框提示，保存失败保留输入；类型选择、删除与放弃修改均用站内控件，不弹原生确认框。刷新或关闭浏览器前请先保存。
+
+首页展示按创建时间倒序的最新两篇（数量由 `src/config/site.ts` 的 `articles.homepageCount` 控制），提供“全部文章”到 `/about#articles`；顶部导航仍只有首页、关于。关于页文章单列排列，使用无外框的紧凑横向卡片与两行摘要，首图按当前可见顺序左右交替，与正文分区，图片朝正文方向渐隐并向外柔和虚化；图片与悬停缩放裁切在组件圆角内，外层保留 GitHub 日期提示同款柔和背光；右侧竖排点击栏提供排序、来源和分类，支持创建或编辑时间升降序，默认最新发布。手机端筛选分组收至列表上方。独立阅读地址为 `/articles/<id>`，卡片、编辑器、正文、代码与提示均复用现有 `--playful` 艺术字体和深浅主题，不新增字体或示例文章。
 
 ## 使用与配置
 
-需要 Node.js 22.12+ 与 pnpm，只维护 `pnpm-lock.yaml`。
+需要 Node.js 22.12+ 与 pnpm。复制 `.env.example` 为 `.env`，配置后运行：
 
 ```bash
-pnpm install
+pnpm install --frozen-lockfile
 pnpm dev:background
 ```
 
-本地地址 `http://localhost:4321`，后台 `/admin`。使用 `pnpm dev:status`、`pnpm dev:stop` 管理服务。
-
-后台保留留言审核/回复/删除、友链导入/编辑/隐藏/删除；留言卡片在宽屏两列排列，长文本可换行显示。
-
-页面使用稳定的系统字体栈，不下载网络字体，避免跳转时字体替换。留言审核后公开展示；失败保留输入，成功清空表单。
-
-首页留言板采用轻拟物纸条：深色为灰色纸面，浅色为米白纸面，搭配胶带、花朵、星点与折角；纸条标题、字段标签、输入文字与字数提示统一使用手写艺术字体。输入区无外框、底线或横格，聚焦时字段标签变色，正文不显示占位提示。关闭浏览器原生必填气泡，提交时通过行内提示与字段聚焦校验称呼、留言长度；服务端校验仍保留。公开留言不显示序号，站长回复使用无描边的圆角底色。友链位于统计上方，名称、简介与域名使用放大的手写艺术字体，简介省去末尾句号；楹雾镇默认简介为“我的世界玩家社区”。统计区省去标题与英文，以圆角底色区分内外，不加描边；运行天数、友邻、累计访客与总浏览量使用不同主题色，桌面四列、手机两列。
-
-主入口与社交链接在 `src/config/site.ts` 配置；公开友链读取 SQLite。全站主题变量在 `src/styles/global.css`，首页排版在 `home.css`，公共页面与后台布局在 `legacy-layout.css`。`site.ts` 的 effects 配置粒子数量（桌面28、手机12，上限40）和指针倾斜角度（2.5°，上限3°）；公共动效支持暂停与系统减少动效偏好，后台保持静态。
-
-公开页采用无外框的文字/图标按钮，保留键盘焦点提示。项目区使用纸胶带标签和主题色点；顶部2px阅读进度线在减少动效时静止。Hero贴纸仅在鼠标与允许动效时轻微倾斜。关于页保留联系、痕迹与赞赏；个人介绍、重度玩家、日常爱好、探索创造与模型工具栏已移除。联系方式字号与图标放大，GitHub贡献格为16px，痕迹区新增来自 CCswitch 本地记录的 GPT 与已核对 DeepSeek 每日 Token 用量图，图表默认定位到最新日期，悬停或聚焦单日格子会展示命中缓存、未命中缓存和输出明细，窄屏可纵向查看；日期标记来自最近一次GitHub公开贡献，未获取到数据时不展示。赞赏区域使用颜文字，不在仓库保存或加载二维码素材；减少动效时颜文字保持静止。
-
-复制 `.env.example`，配置：
+本地 `http://localhost:4321`，后台 `/admin`。使用 `pnpm dev:status`、`pnpm dev:stop`、`pnpm astro dev logs` 管理服务。
 
 | 变量 | 用途 |
 | --- | --- |
-| `PUBLIC_SITE_URL` | 最终 HTTPS 地址 |
-| `BLOG_SECRET` | 至少32个随机字符；管理签名与地址指纹。生产缺失/过短时拒绝管理认证 |
-| `ADMIN_PASSWORD_HASH` | scrypt 哈希，禁止明文 |
-| `BLOG_DATA_DIR` | SQLite目录；生产推荐 `/srv/samsblog/shared/data` |
-| `SITE_LAUNCHED_AT` | 建站日期，严格使用 `YYYY-MM-DD`，默认沿用旧版配置示例的 `2026-08-22`；按北京时间自然日计数，建站当天为第1天，建站前为0天 |
-| `HOST` / `PORT` | 监听地址与端口 |
+| `PUBLIC_SITE_URL` | 最终 HTTPS 源地址，不带路径、查询或账号密码；构建时必填，修改域名后重新构建 |
+| `BLOG_SECRET` | 至少32个随机字符，用于管理签名与来源指纹；生产缺失或过短时拒绝管理认证 |
+| `ADMIN_PASSWORD_HASH` | scrypt 哈希，禁止明文；用 `pnpm hash:admin -- "至少12字符的密码"` 生成 |
+| `BLOG_DATA_DIR` | SQLite 目录；生产推荐 `/srv/samsblog/shared/data`，应用和备份共用 |
+| `SITE_LAUNCHED_AT` | 严格 `YYYY-MM-DD`，默认 `2026-08-22`；按北京时间自然日计数，当天为第1天 |
+| `HOST` / `PORT` | 生产使用 `127.0.0.1` / `4321`，仅通过 Nginx 暴露 |
 
-开发模式由 Node 加载 `.env`，生产使用运行时环境变量，不把管理密钥写入构建产物。生成密码哈希：
+开发加载 `.env`，生产服务只读进程环境。管理密钥不进入构建产物。环境文件权限设为 `600`。
 
-```bash
-pnpm hash:admin -- "一段至少 12 字符的密码"
-```
+后端参数及校验集中于 `src/config/server.ts`，可通过同名环境变量覆盖：
 
-可选行为参数在 `src/config/server.ts` 校验：`ADMIN_SESSION_SECONDS`（28800）、`ADMIN_PASSWORD_MAX_LENGTH`（256）、`ADMIN_LOGIN_WINDOW_SECONDS`（60）、`ADMIN_LOGIN_ATTEMPTS`（5）、`ADMIN_LOGIN_GLOBAL_ATTEMPTS`（30）、`ADMIN_LOGIN_TRACKED_ADDRESSES`（1000）、`MESSAGE_COOLDOWN_SECONDS`（60）、`GITHUB_USERNAME`（afterSuperSam）、`GITHUB_CACHE_SECONDS`（21600）、`GITHUB_RETRY_SECONDS`（60）、`GITHUB_TIMEOUT_MILLISECONDS`（5000）。数值须为正整数，用户名只允许 GitHub 用户名格式。
+- 管理：`ADMIN_SESSION_SECONDS=28800`、`ADMIN_PASSWORD_MAX_LENGTH=256`、`ADMIN_LOGIN_WINDOW_SECONDS=60`、`ADMIN_LOGIN_ATTEMPTS=5`、`ADMIN_LOGIN_GLOBAL_ATTEMPTS=30`、`ADMIN_LOGIN_TRACKED_ADDRESSES=1000`。
+- 留言：`MESSAGE_COOLDOWN_SECONDS=60`。
+- 文章：`ARTICLE_TITLE_MAX_LENGTH=160`、`ARTICLE_CONTENT_MAX_LENGTH=100000`、`ARTICLE_REQUEST_MAX_BYTES=1048576`；均校验为正整数。请求实际字节、标题与正文字符数分别校验，中文多字节内容也受限制。
+- GitHub：`GITHUB_USERNAME=afterSuperSam`、`GITHUB_CACHE_SECONDS=21600`、`GITHUB_RETRY_SECONDS=60`、`GITHUB_TIMEOUT_MILLISECONDS=5000`。
+- 友链探测：`FRIEND_STATUS_CACHE_SECONDS=300`、`FRIEND_STATUS_TIMEOUT_MILLISECONDS=5000`（上限15000）、`FRIEND_STATUS_SLOW_MILLISECONDS=1800`（小于超时）、`FRIEND_STATUS_CONCURRENCY=3`（上限6）、`FRIEND_STATUS_MAX_REDIRECTS=3`（上限5）。数值须为正整数。
 
-
+站点入口、社交地址和动效参数在 `src/config/site.ts`。主题、字号、焦点、背景及动效变量集中于 `src/styles/global.css`；首页和留言样式分别在 `home.css`、`guestbook.css`。动效可暂停，并适配系统减少动效偏好。顶部动效图标在模式切换图标左侧，悬停/键盘聚焦时向左展开功能文字，无提示框；延迟固定在社交图标左侧，不显示“访客”，手机端保持 SamsBlog 后跟延迟。
 
 ## 接口契约
 
-JSON写接口需要 `Content-Type: application/json` 和顶层对象。ID 为正整数，布尔字段为 JSON 布尔值，时间使用 ISO 格式。POST 创建禁止带 ID，PATCH/DELETE 必须带 ID。公开、隐藏、软删除含义分别是匿名可读、仅管理员可见、从业务查询中退出。
+JSON 写接口要求 `Content-Type: application/json` 和顶层对象；ID 为正整数，布尔值使用 JSON 布尔类型。创建不带 ID，更新/删除必须带 ID。后台提供文章新建、编辑、删除、恢复，留言审核、回复、删除与友链导入、编辑、隐藏、删除。
 
-| 路由 | 方法 / 权限 | 输入与输出 |
+| 路由 | 方法 / 权限 | 内容 |
 | --- | --- | --- |
-| `/api/admin/login.json` | POST / 公开限速 | `{password}`；成功200 `{ok,message}`并设置Cookie；密码错误401、限速429、安全配置缺失503 |
-| `/api/admin/logout.json` | POST / 管理员 | 清除管理Cookie，200 `{ok:true}` |
-| `/api/admin/messages.json` | GET/PATCH/POST/DELETE / 管理员 | GET `{messages}`；PATCH `{id,status}`，POST `{parentId,content}`回复，DELETE `{id}`软删除整条留言线程 |
-| `/api/admin/friends.json` | GET/POST/PATCH/DELETE / 管理员 | GET `{friends}`；创建/更新 `name,url,description,iconUrl,visible`，更新额外带ID；删除 `{id}` |
-| `/api/guestbook/messages.json` | GET/POST / 公开 | GET `{messages}`仅公开根留言及回复；POST `{nickname,content,parentId?,website?}`，默认待审核，来源指纹限流 |
-| `/api/network.json` / `/api/ping.json` | GET / 公开 | 脱敏地址、粗略位置、域名 / 在线状态与时间 |
-| `/api/public/site-card.json` | GET / 公开 | `name,url,description,icon,status,latest,updatedAt`；文章退役后 `latest: []` 保留字段兼容互通 |
-| `/health.json` / `/sitemap.xml` / `/robots.txt` | GET / 公开 | 健康状态 / 现有公开页面 / 抓取规则 |
+| `/api/admin/login.json` | POST / 公开限速 | `{password}`；设置管理 Cookie；失败401、限速429、配置缺失503 |
+| `/api/admin/logout.json` | POST / 管理员 | 清除管理 Cookie |
+| `/api/admin/messages.json` | GET/PATCH/POST/DELETE / 管理员 | 列表；`{id,status}` 审核；`{parentId,content}` 回复；`{id}` 删除线程 |
+| `/api/admin/articles.json` | GET/POST/PATCH/DELETE / 管理员 | GET 包含已删除；POST `{title,coverUrl?,source,category,content}`；PATCH 更新加 `id`，恢复 `{id,restore:true}`；DELETE `{id}`；来源为 `original/repost`，分类为 `discussion/journal` |
+| `/api/admin/friends.json` | GET/POST/PATCH/DELETE / 管理员 | `name,url,description,iconUrl,backgroundUrl?,visible`；更新带 ID，删除 `{id}` |
+| `/api/guestbook/messages.json` | GET/POST / 公开 | 公开根留言及回复；提交 `{nickname,content,parentId?,website?}` 默认待审核 |
+| `/api/friends/status.json` | GET / 公开 | `{statuses:[{id,status,latencyMilliseconds,checkedAt}]}`；仅探测公开友链 |
+| `/api/network.json` / `/api/ping.json` | GET / 公开 | 脱敏地址与粗略位置 / 在线状态和时间 |
+| `/api/public/site-card.json` | GET / 公开 | `name,url,description,icon,status,latest,updatedAt`；`latest:[]` 保留兼容 |
+| `/health.json` / `/sitemap.xml` / `/robots.txt` | GET / 公开 | 健康状态 / 公开页面 / 抓取规则 |
 
-写操作成功通常200 `{ok:true}`，创建201并包含ID（公开留言返回确认文案）。错误统一 `{error:中文消息}`：400参数/JSON错误、401未授权、404记录不存在、409地址冲突、413过大、415格式错误、429限流、500内部失败。登录成功/密码错误/安全配置缺失保留 `{ok,message}`。内部错误写英文日志，不把 SQL、文件路径等内部细节返回访客。
-
-留言状态为 `pending/published/hidden`，友链地址和图标只允许完整 HTTP(S) URL。
+错误统一 `{error:中文消息}`；登录保留 `{ok,message}`。成功通常200，创建201。留言状态为 `pending/published/hidden`；隐藏仅管理员可见，软删除退出业务查询。友链地址、图标与背景只接受不含账号密码的完整 HTTP(S) URL。背景留空或加载失败时回退头像。
 
 ## 验证
 
-日常运行 `pnpm check`，只对改动涉及的行为运行测试：
+日常 `pnpm check` 加针对性测试。准备发布执行：
 
 ```bash
-pnpm exec vitest run tests/admin-auth.test.ts tests/network.test.ts tests/content-management.test.ts
+pnpm check
+pnpm test
+pnpm build
+pnpm audit
 ```
 
-保留鉴权、接口输入边界、代理地址、软删除、访客计数与 GitHub解析验证；不再维护颜色、文案、CSS源码字符串断言。视觉检查使用320/390/768/1280px、深浅色、键盘焦点、折叠区和 reduced-motion。
+构建必须提供真实 `PUBLIC_SITE_URL`。仓库无独立 e2e 套件；用生产构建复核首页、关于、后台、404，320/390/768/1280px、深浅色、菜单、键盘焦点、贡献图与 reduced-motion。贡献图每图一个 Tab 停靠点，方向键按日/周移动，Home/End 到首尾，Escape 关闭详情。
 
-用户明确准备发布时再执行完整 `check → test → build → audit → e2e（如有）`。
+## 数据与部署
 
-## 数据、归档与部署
+运行数据库为 `$BLOG_DATA_DIR/blog.sqlite`。相册及旧文章系统仍退役；现有历史表不读写、不在启动时删除。新文章使用独立 `blog_articles` 表，由 `20261017-blog-articles-v1` 自动增量初始化，不自动导入或公开旧表内容，新表初始为空。保留数据库和 `data/backups/`，勿当作无用文件清除。
 
-运行时数据只有 `data/blog.sqlite`；`deploy/backup.sh` 在线备份 SQLite，默认保留14天。恢复时将数据库文件恢复到 `BLOG_DATA_DIR`，再检查站点健康接口和后台登录。
+Linux 部署：
 
-文章页面、API、RSS、后台编辑器及文章贡献图已删除；`/articles/*` 与 `/rss.xml` 返回404，站点地图不再列文章。新数据库不再创建文章表；已有 `articles/article_activity` 表与历史数据保留，由完整数据库备份归档，应用不再读写。运行天数由 `SITE_LAUNCHED_AT` 独立配置，不依赖历史文章。默认OG插画继续保留。
+1. 安装 Node.js 22.12+、pnpm、Nginx、SQLite CLI；创建 `samsblog` 用户与 `/srv/samsblog/shared/data`，授予数据目录读写权限。
+2. 源码放 `/srv/samsblog/current`，配置 `/etc/samsblog.env`，使用绝对 `BLOG_DATA_DIR`。不要上传 Windows 的 `node_modules`、`.env` 或旧 `dist`。
+3. 在源码目录加载环境后执行 `pnpm install --frozen-lockfile` 和 `pnpm build`。构建域名决定 canonical、OG 和可信代理域名，必须与实际 HTTPS 域名一致。
+4. 安装 `deploy/samsblog.service`；`ExecStart` 默认 `/usr/bin/node`，若安装路径不同需修改。服务以生产模式运行，代码只读，仅数据目录可写；修改 `BLOG_DATA_DIR` 时同步调整 `ReadWritePaths`。
+5. 修改 `deploy/nginx.conf` 域名并配置 HTTPS，HTTP 跳转 HTTPS。模板用于单层代理，覆写来源地址及 Host/Proto/Port 转发头，清除访客伪造的地理信息头，请求上限1MiB，与 Node adapter 及文章默认请求限制保持一致；若提高文章限制，需同步调整代理和 adapter。多层代理需明确可信链。
+6. 安装 `deploy/backup.service`、`deploy/backup.timer`，先手动备份并恢复验证，再启用定时任务。
+7. 检查健康接口、站点地图、HTTPS Cookie、后台登录、文章保存/编辑/删除/恢复、留言审核及日志。上述本地验证不能代替服务器验收。
 
-Linux部署：
+`deploy/backup.sh` 跟随 `BLOG_DATA_DIR`，默认备份到该目录下 `backups/`；可配置 `BACKUP_DIR`、正整数 `RETENTION_DAYS`（默认14）。缺源库立即失败；在线备份通过完整性检查后原子发布，文件权限仅所有者可读写。脚本由 Bash 调用，部署文件在 Git 中固定 LF 换行。
 
-1. 安装 Node.js 22.12+、pnpm、Nginx、SQLite CLI、tar。
-2. 在 `/srv/samsblog/current` 执行 `set -a; . /etc/samsblog.env; set +a; pnpm install --frozen-lockfile && pnpm build`。生产构建会校验 `PUBLIC_SITE_URL`，不会生成 localhost 的 canonical 或 OG 地址。
-3. 创建 samsblog 用户与 `/srv/samsblog/shared/data`，授予数据目录读写权限。
-4. 环境变量写入 `/etc/samsblog.env`，安装 `deploy/samsblog.service`。
-5. 修改 `deploy/nginx.conf` 域名，配置 HTTPS。模板单层代理覆写 X-Real-IP/X-Forwarded-For，并限制请求为64k；多层代理需明确可信地址链。
-6. 启用 `deploy/backup.service` 与 `deploy/backup.timer`，完成备份恢复演练。
-7. 检查健康接口、站点地图、后台登录与留言审核。
+恢复时先停止站点，保存当前数据库及其 `-wal`/`-shm` 旁文件，将校验通过的备份恢复为 `blog.sqlite`；启动前移走旧旁文件并恢复 `samsblog` 所有权，再验证健康、后台与业务数据。不能在服务运行时直接覆盖数据库。
 
 ## 安全边界
 
-- 会话使用 HttpOnly、SameSite=Strict Cookie；生产Secure。管理权限在每个API复核。
-- scrypt异步执行，单来源与全站均限速；限流在单进程内，重启会重置。
-- Node端口仅对回环开放；代理必须覆写访客提供的地址头，不能将任意XFF当作可信来源。
-- 数据库不保存完整IP/UA；登录与留言仅保存/使用哈希指纹，统计只存匿名Cookie的SHA-256标识。
-- 友链图标由浏览器直接读取，不代理外部URL；不要填带鉴权或私密参数的地址。
-- GitHub仅请求公开贡献页，失败降级；互通接口不共享Cookie、账号或数据库。
-- systemd只允许写入数据目录，代码只读；历史文章归档保留，相册数据按退役要求清除。
-
-相册功能已完全删除：页面、首页入口、后台图片管理、接口、数据库表、导入脚本、图库素材和旧设计概念图均移除，仅保留页面实际使用的插画与品牌素材。首页按 Hero → 我的项目 → 留言板 → 友链 → 站点统计组织。旧 `dist/` 不得直接复用，部署前必须重新构建。
-
-顶部导航仅保留首页与关于；项目与友链展示放在首页。`/links` 永久重定向至 `/#friends`，旧 `/about#friends` 在浏览器中跳转至同一位置。Hero保留背景插画、装饰与项目入口，不显示居中标题图片和副标题；站点名称仅供辅助技术读取。底部额外增加120–220px的渐变过渡，直接衔接正文背景。
+- 会话使用 HttpOnly、SameSite=Strict，生产 Secure；每个管理 API 复核权限和请求来源。scrypt 异步执行，单来源与全站限速；单进程限流重启后重置。
+- 数据库不保存完整 IP/UA；来源仅哈希指纹，统计只存匿名 Cookie 的 SHA-256，仅成功的公开 HTML 浏览计数。
+- Nginx 关闭常规访问日志；错误日志及上游代理仍可能包含 IP，需按实际服务器日志策略管理。
+- 友链探测只允许 HTTP(S) 的80/443端口，逐跳重新校验并固定已验证的公网地址，拒绝内网、回环、保留及混合解析地址；仅读响应头，有限并发和超时。检测失败不冒充站点离线，耗时不是访客延迟。
+- 文章正文转义原始 HTML，仅允许安全网页地址和站内路径；禁止脚本/data 等危险协议。图片由浏览器直接加载，不由服务器代取，不填写私密资源地址。
+- 友链图片由浏览器直连，不代理私密资源；不要填写带鉴权或私密参数的网址。GitHub 仅请求公开贡献页，失败降级。

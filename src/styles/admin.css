@@ -2,3 +2,13 @@
 .admin-panel{scroll-margin-top:100px;margin-bottom:clamp(100px,12vw,170px)}.admin-panel__heading{display:flex;align-items:end;justify-content:space-between;gap:28px;margin-bottom:38px}.admin-panel__heading h2{margin:7px 0 0;font-family:var(--display);font-size:clamp(2.5rem,4vw,4.2rem);letter-spacing:-.055em;line-height:1}.admin-panel__heading p{max-width:440px;margin:0;color:var(--muted);font-size:.78rem;line-height:1.7;text-align:right}.admin-create{min-height:46px;padding:0 18px;border:0;border-radius:17px 10px 19px 12px;background:linear-gradient(135deg,var(--summer-blue),color-mix(in oklab,var(--summer-blue) 48%,var(--summer-pink)));color:white;font-family:var(--playful);font-weight:700;cursor:pointer;box-shadow:0 14px 34px color-mix(in oklab,var(--summer-blue) 17%,transparent);transition:transform .3s var(--ease),box-shadow .3s ease}.admin-create:hover{box-shadow:0 20px 44px color-mix(in oklab,var(--summer-blue) 24%,transparent);transform:translateY(-3px) rotate(-1deg)}
 @media(max-width:620px){.admin-tabs{gap:7px}.admin-tabs a{min-height:68px;justify-content:center;padding:10px}.admin-tabs span{font-size:.8rem}.admin-panel__heading{align-items:flex-start;flex-direction:column}.admin-panel__heading p{text-align:left}.admin-summary{display:none}}
 .admin-create:focus-visible,.admin-logout:focus-visible{outline:2px solid var(--accent-2);outline-offset:3px}
+
+/* 后台确认浮层沿用纸页形状、艺术字体和主题色。 */
+.admin-confirm{width:min(440px,calc(100vw - 36px));max-height:calc(100dvh - 40px);padding:30px;border:1px solid var(--line);border-radius:28px 19px 31px 21px;background:var(--surface);color:var(--text);box-shadow:var(--shadow);font-family:var(--playful);overflow:auto}
+.admin-confirm::backdrop{background:color-mix(in oklab,var(--bg-deep) 65%,transparent);backdrop-filter:blur(7px)}
+.admin-confirm__mark{color:var(--summer-pink);font-size:1.8rem}.admin-confirm h2{margin:10px 0 16px;font:700 1.6rem/1.4 var(--playful)}
+.admin-confirm p{margin:0;color:var(--text-soft);font:400 var(--font-size-body)/1.9 var(--playful);white-space:pre-wrap;overflow-wrap:anywhere}
+.admin-confirm__actions{display:flex;justify-content:flex-end;gap:12px;margin-top:28px}
+.admin-confirm__actions button{min-height:44px;padding:8px 20px;border:0;border-radius:13px 10px 15px 11px;background:var(--surface-2);color:var(--text);font:400 var(--font-size-control)/1.5 var(--playful);cursor:pointer}
+.admin-confirm__actions button:last-child{background:color-mix(in oklab,var(--summer-pink) 18%,var(--surface));color:var(--summer-pink)}
+.admin-confirm__actions button:is(:hover,:focus-visible){outline:2px solid var(--summer-blue);outline-offset:3px}

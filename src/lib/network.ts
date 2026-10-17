@@ -14,7 +14,8 @@ function isTrustedProxy(address: string) {
   return address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1';
 }
 
-export function maskIp(ip: string) {
+export function maskIp(ip: string): string {
+  if (isIP(ip) === 6 && ip.includes('.')) return maskIp(ip.slice(ip.lastIndexOf(':') + 1));
   if (ip.includes(':')) {
     const groups = ip.split(':').filter(Boolean);
     return `${groups.slice(0, 3).join(':')}:*:*`;
