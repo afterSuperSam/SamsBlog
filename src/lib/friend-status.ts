@@ -60,19 +60,47 @@ async function resolveFriendAddress(url: URL, signal: AbortSignal) {
   }
 }
 
-async function requestFriendHeaders(url: URL, signal: AbortSignal) {
+export async function requestFriendResource(url: URL, signal: AbortSignal, maximumBytes?: number) {
   const address = await resolveFriendAddress(url, signal);
   signal.throwIfAborted();
-  return new Promise<{ statusCode: number; location?: string }>((resolve, reject) => {
+  return new Promise<{ statusCode: number; location?: string; body?: Buffer }>((resolve, reject) => {
     const sendRequest = url.protocol === 'https:' ? requestHttps : requestHttp;
     const request = sendRequest(url, {
       method: 'GET', agent: false, signal, family: address.family,
-      headers: { 'User-Agent': 'SamsBlog-FriendCheck/1.0', Accept: 'text/html' },
+      headers: { 'User-Agent': 'SamsBlog-FriendCheck/1.0', Accept: maximumBytes ? 'application/atom+xml, application/rss+xml, application/xml, text/xml' : 'text/html', 'Accept-Encoding': 'identity' },
       lookup: (_hostname, _options, callback) => callback(null, address.address, address.family),
     }, (response) => {
-      resolve({ statusCode: response.statusCode || 0, location: response.headers.location });
-      response.destroy();
-      request.destroy();
+      const result = { statusCode: response.statusCode || 0, location: response.headers.location };
+      if (maximumBytes === undefined || result.statusCode < 200 || result.statusCode >= 300) {
+        resolve(result);
+        response.destroy();
+        request.destroy();
+        return;
+      }
+      const fail = (error: Error) => { reject(error); response.destroy(); request.destroy(); };
+      if (Number(response.headers['content-length']) > maximumBytes) {
+        fail(new Error('Friend response exceeds byte limit'));
+        return;
+      }
+      if (response.headers['content-encoding'] && response.headers['content-encoding'] !== 'identity') {
+        fail(new Error('Compressed friend responses are unsupported'));
+        return;
+      }
+      const chunks: Buffer[] = [];
+      let size = 0;
+      let ended = false;
+      response.on('data', (chunk: Buffer) => {
+        size += chunk.length;
+        if (size > maximumBytes) fail(new Error('Friend response exceeds byte limit'));
+        else chunks.push(chunk);
+      });
+      response.once('error', fail);
+      response.once('aborted', () => fail(new Error('Friend response aborted')));
+      response.once('close', () => { if (!ended) fail(new Error('Friend response ended prematurely')); });
+      response.once('end', () => {
+        ended = true;
+        resolve({ ...result, body: Buffer.concat(chunks) });
+      });
     });
     request.once('error', reject);
     request.end();
@@ -87,7 +115,7 @@ export async function checkFriendStatus(friend: { id: number; url: string }): Pr
   try {
     let url = new URL(friend.url);
     for (let redirects = 0; redirects <= serverConfig.friendStatusMaxRedirects; redirects++) {
-      const response = await requestFriendHeaders(url, signal);
+      const response = await requestFriendResource(url, signal);
       if ([301, 302, 303, 307, 308].includes(response.statusCode) && response.location) {
         if (redirects === serverConfig.friendStatusMaxRedirects) break;
         url = new URL(response.location, url);

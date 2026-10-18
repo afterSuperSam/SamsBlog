@@ -8,6 +8,7 @@ export interface FriendRecord {
   description: string;
   iconUrl: string;
   backgroundUrl: string;
+  rssUrl: string;
   visible: boolean;
   createdAt: string;
   updatedAt: string;
@@ -20,6 +21,7 @@ export interface FriendInput {
   description: string;
   iconUrl: string;
   backgroundUrl: string;
+  rssUrl: string;
   visible: boolean;
 }
 
@@ -31,6 +33,7 @@ function mapFriend(row: Record<string, unknown>): FriendRecord {
     description: String(row.description),
     iconUrl: String(row.icon_url),
     backgroundUrl: String(row.background_url || ''),
+    rssUrl: String(row.rss_url || ''),
     visible: Boolean(row.visible),
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
@@ -52,6 +55,8 @@ export function parseFriendInput(body: Record<string, unknown>): FriendInput {
   const description = typeof body.description === 'string' ? body.description.trim() : '';
   if (body.backgroundUrl !== undefined && typeof body.backgroundUrl !== 'string') throw new HttpError(400, '背景图片地址必须是文本');
   const backgroundUrl = typeof body.backgroundUrl === 'string' ? body.backgroundUrl.trim() : '';
+  if (body.rssUrl !== undefined && typeof body.rssUrl !== 'string') throw new HttpError(400, 'RSS 地址必须是文本');
+  const rssUrl = typeof body.rssUrl === 'string' ? body.rssUrl.trim() : '';
   if (body.visible !== undefined && typeof body.visible !== 'boolean') throw new HttpError(400, '公开状态必须是布尔值');
   if (name.length < 1 || name.length > 60) throw new HttpError(400, '名称需要 1 至 60 个字符');
   if (description.length < 1 || description.length > 240) throw new HttpError(400, '简介需要 1 至 240 个字符');
@@ -62,6 +67,7 @@ export function parseFriendInput(body: Record<string, unknown>): FriendInput {
     url: normalizeWebUrl(String(body.url || ''), '地址'),
     iconUrl: normalizeWebUrl(String(body.iconUrl || ''), '图标'),
     backgroundUrl: backgroundUrl ? normalizeWebUrl(backgroundUrl, '背景图片') : '',
+    rssUrl: rssUrl ? normalizeWebUrl(rssUrl, 'RSS 地址') : '',
     visible: body.visible !== false,
   };
 }
@@ -76,11 +82,11 @@ export function saveFriend(input: FriendInput) {
   const values = { ...input, visible: Number(input.visible), now };
   if (input.id) {
     return getDatabase().prepare(`UPDATE friends SET name=@name,url=@url,description=@description,
-      icon_url=@iconUrl,background_url=@backgroundUrl,visible=@visible,updated_at=@now WHERE id=@id AND deleted_at IS NULL`).run(values).changes === 1;
+      icon_url=@iconUrl,background_url=@backgroundUrl,rss_url=@rssUrl,visible=@visible,updated_at=@now WHERE id=@id AND deleted_at IS NULL`).run(values).changes === 1;
   }
   return Number(getDatabase().prepare(`INSERT INTO friends
-    (name,url,description,icon_url,background_url,visible,created_at,updated_at)
-    VALUES (@name,@url,@description,@iconUrl,@backgroundUrl,@visible,@now,@now)`).run(values).lastInsertRowid);
+    (name,url,description,icon_url,background_url,rss_url,visible,created_at,updated_at)
+    VALUES (@name,@url,@description,@iconUrl,@backgroundUrl,@rssUrl,@visible,@now,@now)`).run(values).lastInsertRowid);
 }
 
 export function deleteFriend(id: number) {

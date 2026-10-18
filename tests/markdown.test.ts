@@ -1,7 +1,25 @@
 import { describe, expect, it } from 'vitest';
-import { articleExcerpt, renderMarkdown } from '../src/lib/markdown';
+import { articleExcerpt, renderArticleMarkdown, renderMarkdown } from '../src/lib/markdown';
 
 describe('article Markdown', () => {
+  it('builds stable unique heading anchors without collecting fenced or escaped headings', () => {
+    const markdown = '## 重复\n\n## **重复**\n\n### 重复-2\n\n> ## 重复\n\n```md\n# 围栏内\n```\n\n<h2>原始 HTML</h2>';
+    const rendered = renderArticleMarkdown(markdown);
+    expect(rendered.headings.map((heading) => heading.id)).toEqual([
+      'article-heading-重复', 'article-heading-重复-2', 'article-heading-重复-2-2', 'article-heading-重复-3',
+    ]);
+    expect(rendered.headings.map((heading) => heading.level)).toEqual([2, 2, 3, 2]);
+    expect(renderArticleMarkdown(markdown)).toEqual(rendered);
+    expect(rendered.html).toContain('id="article-heading-重复" tabindex="-1"');
+    expect(rendered.html).toContain('&lt;h2&gt;原始 HTML&lt;/h2&gt;');
+    expect(renderMarkdown(markdown)).not.toContain(' id=');
+  });
+
+  it('keeps code indentation, blank lines, tabs and escaped text intact for clipboard textContent', () => {
+    const html = renderArticleMarkdown('```js\n  const value = "<标签>";\n\n\treturn value;\n```').html;
+    expect(html).toContain('<code class="language-js">  const value = &quot;&lt;标签&gt;&quot;;\n\n\treturn value;\n</code>');
+  });
+
   it('renders writing formats and preserves fenced code as text', () => {
     const html = renderMarkdown('# 文章\n\n**粗体**、*斜体*、~~删除~~ 和 `code`\n\n- 第一条\n- 第二条\n\n3. 日志\n4. 杂谈\n\n> 一句话\n\n---\n\n```html\n<script>alert(1)</script>\n```');
     expect(html).toContain('<h1>文章</h1>');
@@ -10,7 +28,7 @@ describe('article Markdown', () => {
     expect(html).toContain('<ol start="3"><li>日志</li><li>杂谈</li></ol>');
     expect(html).toContain('<blockquote><p>一句话</p></blockquote>');
     expect(html).toContain('<hr>');
-    expect(html).toContain('<pre><code class="language-html">&lt;script&gt;alert(1)&lt;/script&gt;</code></pre>');
+    expect(html).toContain('<pre><code class="language-html">&lt;script&gt;alert(1)&lt;/script&gt;\n</code></pre>');
   });
 
   it('supports safe links, image titles and balanced destination parentheses', () => {
@@ -28,6 +46,15 @@ describe('article Markdown', () => {
     expect(html).toContain('href="./guide#reading"');
     expect(html).toContain('href="https://example.com/a_(b)" title="A &quot;title&quot;"');
     expect(html).toContain('src="/images/my%20cover.webp"');
+  });
+
+  it('resolves feed links and images against the article while preserving escaping and URL safety', () => {
+    const html = renderMarkdown('> **[站内](/about?a=1&b=2)**\n\n- ![图片](../images/a%20b.webp)\n- [锚点](#content)\n- [外链](https://example.com/path)\n\n[恶意](javascript:alert(1))', 'https://blog.example.com/articles/7');
+    expect(html).toContain('href="https://blog.example.com/about?a=1&amp;b=2"');
+    expect(html).toContain('src="https://blog.example.com/images/a%20b.webp"');
+    expect(html).toContain('href="https://blog.example.com/articles/7#content"');
+    expect(html).toContain('href="https://example.com/path"');
+    expect(html).not.toContain('href="javascript:');
   });
 
   it('keeps nested list structure and bounds adversarial nesting', () => {

@@ -10,24 +10,35 @@ const motePositions = [
   [87, 29], [24, 52], [61, 75], [98, 98], [35, 21], [72, 44], [9, 67], [46, 90], [83, 13], [20, 36],
   [57, 59], [94, 82], [31, 5], [68, 28], [5, 51], [42, 74], [79, 97], [16, 20], [53, 43], [90, 66],
 ] as const;
+const constellationSlots = Array.from({ length: siteConfig.effects.constellation.desktopLineCount }, (_, index) => index);
 ---
 
-<div class="ambient-scene" aria-hidden="true" data-ambient-scene>
+<div class="ambient-scene" aria-hidden="true" data-ambient-scene data-constellation-config={JSON.stringify(siteConfig.effects.constellation)}>
   <div class="ambient-halo ambient-halo--blue"></div><div class="ambient-halo ambient-halo--pink"></div>
+  <div class="ambient-field">
+  {[0, 1].map(() => <svg class="ambient-constellation" viewBox="0 0 100 100" preserveAspectRatio="none" data-constellation>
+    {constellationSlots.map(() => <path vector-effect="non-scaling-stroke" />)}
+  </svg>)}
   {particles.map((index) => {
     const [left, top] = motePositions[index % motePositions.length];
     return <i class:list={['ambient-mote', { 'ambient-mote--desktop': index >= siteConfig.effects.mobileParticleCount }]} data-mote-left={left} data-mote-top={top} />;
   })}
+  </div>
 </div>
 
 <style>
   .ambient-scene{position:fixed;inset:0;overflow:hidden;z-index:2;pointer-events:none;contain:strict}
   .ambient-halo{--halo-opacity:var(--ambient-halo-opacity);--halo-horizontal-offset:var(--ambient-halo-travel);position:absolute;width:var(--ambient-halo-size);aspect-ratio:1;border-radius:50%;opacity:var(--halo-opacity);background:radial-gradient(circle,color-mix(in srgb,var(--summer-blue) 75%,transparent),transparent 67%);animation:halo-drift var(--ambient-halo-duration) ease-in-out infinite alternate}
   .ambient-halo--blue{left:-22%;top:22%}.ambient-halo--pink{--halo-opacity:var(--ambient-pink-halo-opacity);--halo-horizontal-offset:calc(var(--ambient-halo-travel) * -1);width:var(--ambient-pink-halo-size);right:-12%;bottom:-18%;background:radial-gradient(circle,var(--summer-pink),transparent 67%);animation-duration:var(--ambient-pink-halo-duration);animation-delay:-14s;animation-direction:alternate-reverse}
-  .ambient-mote{position:absolute;left:var(--mote-left);top:var(--mote-top);width:4px;height:4px;border-radius:50%;background:var(--summer-blue);opacity:.4;animation:mote-drift var(--mote-duration,var(--motion-drift)) ease-in-out infinite alternate;animation-delay:var(--mote-delay,0s)}
+  .ambient-mote{position:absolute;left:var(--mote-left);top:var(--mote-top);translate:-50% -50%;width:4px;height:4px;border-radius:50%;background:var(--summer-blue);opacity:.4;animation:constellation-twinkle var(--mote-duration,var(--motion-drift)) ease-in-out infinite alternate;animation-delay:var(--mote-delay,0s)}
   .ambient-mote:nth-of-type(3n){width:7px;height:7px;background:var(--summer-pink);border-radius:1px;rotate:45deg}
   .ambient-mote:nth-of-type(5n){width:11px;height:11px;background:var(--summer-orange);clip-path:polygon(50% 0,60% 38%,100% 50%,60% 62%,50% 100%,40% 62%,0 50%,40% 38%);border-radius:0}
-  @keyframes mote-drift{0%{transform:translate3d(-8px,12px,0);opacity:.13}55%{opacity:.5}100%{transform:translate3d(22px,-45px,0);opacity:.2}}
+  .ambient-field{position:absolute;inset:0;animation:constellation-drift var(--constellation-drift-duration) ease-in-out infinite alternate}
+  .ambient-constellation{position:absolute;inset:0;width:100%;height:100%;overflow:visible;opacity:0}
+  .ambient-constellation path{fill:none;stroke:var(--summer-blue);stroke-width:.65;stroke-linecap:round;stroke-linejoin:round;opacity:calc(var(--constellation-line-opacity) * var(--constellation-scroll-opacity,.6));transition:opacity var(--constellation-fade-duration) var(--ease-out)}
+  .ambient-constellation path:nth-child(3n){stroke:var(--summer-pink)}
+  @keyframes constellation-drift{from{transform:translate(-8px,12px)}to{transform:translate(22px,-45px)}}
+  @keyframes constellation-twinkle{0%,100%{opacity:.2}55%{opacity:.55}}
   @keyframes halo-drift{0%{transform:translate3d(0,0,0) scale(.94);opacity:calc(var(--halo-opacity) * .6)}50%{transform:translate3d(calc(var(--halo-horizontal-offset) * .4),calc(var(--ambient-halo-travel) * -.65),0) scale(1.08);opacity:var(--halo-opacity)}100%{transform:translate3d(var(--halo-horizontal-offset),calc(var(--ambient-halo-travel) * -1),0) scale(1.2);opacity:calc(var(--halo-opacity) * .8)}}
   :global(.page-hidden) .ambient-scene *{animation-play-state:paused!important}
   :global(.motion-paused) .ambient-scene{opacity:.4}
@@ -47,12 +58,111 @@ const motePositions = [
   });
   const motionButton = document.querySelector<HTMLButtonElement>('[data-motion-toggle]');
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+  const ambientScene = document.querySelector<HTMLElement>('[data-ambient-scene]');
+  const constellationLayers = [...document.querySelectorAll<SVGSVGElement>('[data-constellation]')];
+  const constellationConfiguration = JSON.parse(ambientScene!.dataset.constellationConfig!) as {
+    desktopLineCount: number; mobileLineCount: number; desktopPointCount: number; mobilePointCount: number;
+    refreshMilliseconds: number; fadeMilliseconds: number; maximumDistanceRatio: number;
+    maximumDegree: number; scrollPeriodScreens: number;
+  };
+  const compactViewport = matchMedia('(max-width: 720px)');
+  const points = [...document.querySelectorAll<HTMLElement>('.ambient-mote')].map((element, index) => ({
+    element, index, x: Number(element.dataset.moteLeft), y: Number(element.dataset.moteTop),
+  }));
+  const constellationAnimations = new Map<SVGSVGElement, Animation>();
+  let constellationTimer = 0;
+  let activeLayer = -1;
+  let scrollFrame = 0;
+  const constellationIsDisabled = () => document.documentElement.classList.contains('motion-paused');
+  // 随机抽取相邻点，限制节点数量、连接距离与分叉密度。
+  const drawConstellation = (layer: SVGSVGElement) => {
+    const visiblePoints = points.filter((point) => getComputedStyle(point.element).display !== 'none');
+    const lineCount = compactViewport.matches ? constellationConfiguration.mobileLineCount : constellationConfiguration.desktopLineCount;
+    const pointCount = compactViewport.matches ? constellationConfiguration.mobilePointCount : constellationConfiguration.desktopPointCount;
+    const maximumDistance = Math.hypot(window.innerWidth, window.innerHeight) * constellationConfiguration.maximumDistanceRatio;
+    const candidates: { first: typeof points[number]; second: typeof points[number] }[] = [];
+    visiblePoints.forEach((first, index) => visiblePoints.slice(index + 1).forEach((second) => {
+      const distance = Math.hypot((first.x - second.x) * window.innerWidth / 100, (first.y - second.y) * window.innerHeight / 100);
+      if (distance <= maximumDistance) candidates.push({ first, second });
+    }));
+    for (let index = candidates.length - 1; index > 0; index--) {
+      const shuffledIndex = Math.floor(Math.random() * (index + 1));
+      [candidates[index], candidates[shuffledIndex]] = [candidates[shuffledIndex], candidates[index]];
+    }
+    const degrees = new Map<number, number>();
+    const selectedPoints = new Set<number>();
+    const connections: string[] = [];
+    for (const { first, second } of candidates) {
+      if (connections.length >= lineCount) break;
+      if ((degrees.get(first.index) || 0) >= constellationConfiguration.maximumDegree || (degrees.get(second.index) || 0) >= constellationConfiguration.maximumDegree) continue;
+      const addedPoints = Number(!selectedPoints.has(first.index)) + Number(!selectedPoints.has(second.index));
+      if (selectedPoints.size + addedPoints > pointCount) continue;
+      connections.push(`M${first.x} ${first.y}L${second.x} ${second.y}`);
+      [first.index, second.index].forEach((index) => {
+        selectedPoints.add(index);
+        degrees.set(index, (degrees.get(index) || 0) + 1);
+      });
+    }
+    layer.querySelectorAll('path').forEach((path, index) => {
+      if (connections[index]) path.setAttribute('d', connections[index]);
+      else path.removeAttribute('d');
+    });
+  };
+  // 两层星图交替淡入淡出；仅每隔数秒重选连接，无逐帧 JavaScript 循环。
+  const refreshConstellations = () => {
+    constellationTimer = 0;
+    if (document.hidden || constellationIsDisabled()) return;
+    const nextLayer = (activeLayer + 1) % constellationLayers.length;
+    constellationLayers.forEach((layer) => { layer.style.opacity = '0'; });
+    const next = constellationLayers[nextLayer];
+    drawConstellation(next);
+    constellationAnimations.get(next)?.cancel();
+    constellationAnimations.set(next, next.animate([{ opacity: 0 }, { opacity: 1 }], {
+      duration: constellationConfiguration.fadeMilliseconds, easing: 'ease-in-out', fill: 'forwards',
+    }));
+    if (activeLayer >= 0) {
+      const previous = constellationLayers[activeLayer];
+      constellationAnimations.get(previous)?.cancel();
+      constellationAnimations.set(previous, previous.animate([{ opacity: 1 }, { opacity: 0 }], {
+        duration: constellationConfiguration.fadeMilliseconds, easing: 'ease-in-out', fill: 'forwards',
+      }));
+    }
+    activeLayer = nextLayer;
+    constellationTimer = window.setTimeout(refreshConstellations, constellationConfiguration.refreshMilliseconds);
+  };
+  const syncConstellations = () => {
+    window.clearTimeout(constellationTimer);
+    constellationTimer = 0;
+    constellationAnimations.forEach((animation) => animation.cancel());
+    constellationAnimations.clear();
+    if (activeLayer < 0) {
+      activeLayer = 0;
+      drawConstellation(constellationLayers[activeLayer]);
+    }
+    constellationLayers.forEach((layer, index) => { layer.style.opacity = index === activeLayer ? '1' : '0'; });
+    if (!document.hidden && !constellationIsDisabled()) refreshConstellations();
+  };
+  const updateConstellationScroll = () => {
+    scrollFrame = 0;
+    if (document.hidden) return;
+    const progress = window.scrollY / (window.innerHeight * constellationConfiguration.scrollPeriodScreens);
+    const visibility = constellationIsDisabled() ? .3 : .55 + .45 * Math.sin(progress * Math.PI) ** 2;
+    ambientScene!.style.setProperty('--constellation-scroll-opacity', String(visibility));
+  };
+  const scheduleConstellationScroll = () => {
+    if (!scrollFrame) scrollFrame = requestAnimationFrame(updateConstellationScroll);
+  };
+  window.addEventListener('scroll', scheduleConstellationScroll, { passive: true });
+  window.addEventListener('resize', scheduleConstellationScroll);
+  compactViewport.addEventListener('change', syncConstellations);
   let paused = false;
   try { paused = localStorage.getItem('samsblog-motion') === 'paused'; }
   catch (error) { console.warn('Motion preference unavailable', error); }
   const syncMotion = () => {
     const disabled = paused || reducedMotion.matches;
     document.documentElement.classList.toggle('motion-paused', disabled);
+    syncConstellations();
+    updateConstellationScroll();
     if (!motionButton) return;
     motionButton.disabled = reducedMotion.matches;
     motionButton.setAttribute('aria-pressed', String(disabled));
@@ -68,8 +178,11 @@ const motePositions = [
     catch (error) { console.warn('Motion preference unavailable', error); }
     syncMotion();
   });
-  const syncVisibility = () => document.documentElement.classList.toggle('page-hidden', document.hidden);
-  document.addEventListener('visibilitychange', syncVisibility);
+  const syncVisibility = () => {
+    document.documentElement.classList.toggle('page-hidden', document.hidden);
+    if (!document.hidden) updateConstellationScroll();
+  };
+  document.addEventListener('visibilitychange', () => { syncVisibility(); syncConstellations(); });
   syncVisibility();
   // 点击才生成短暂火花，动画结束即移除，不保持空转渲染循环
   document.addEventListener('click', (event) => {

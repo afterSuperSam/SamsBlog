@@ -1,0 +1,102 @@
+---
+import { siteConfig } from '../config/site';
+import { getProjectSettings, getCachedProjectCommit, projectStatusLabels } from '../lib/projects';
+
+const settings = getProjectSettings();
+const projects = settings.projects.filter((project) => project.visible);
+const initialCount = siteConfig.projectPresentation.initialVisibleCount;
+const commitFormatter = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' });
+---
+
+<section class="home-projects" id="projects" data-project-section data-project-reveal={JSON.stringify(siteConfig.reveal)}>
+  <div class="shell" data-reveal>
+    <header><span class="section-kicker">PROJECTS</span><h2 class="section-title">我的项目</h2><span class="project-tape" data-pointer-tilt={siteConfig.effects.pointerTiltDegrees}>{settings.currentWork}</span></header>
+    <div class="project-list" id="home-project-list">
+      {projects.map((project, index) => {
+        const keywordIndex = project.keyword ? project.description.indexOf(project.keyword) : -1;
+        const committedAt = getCachedProjectCommit(project.repository);
+        return <article data-project-extra={index >= initialCount ? '' : undefined} hidden={index >= initialCount}>
+          <span>{String(index + 1).padStart(2, '0')}</span><div>
+            <h3><a href={project.url} target="_blank" rel="noopener noreferrer">{project.name} ↗</a></h3>
+            <p>{keywordIndex >= 0 ? <>{project.description.slice(0, keywordIndex)}<span class="project-keyword">{project.keyword}<svg aria-hidden="true" viewBox="0 0 100 24" preserveAspectRatio="none"><path d="M18 6 Q48 2 78 5 Q88 6 78 10 L12 17 Q3 20 14 20 Q51 17 96 20" pathLength="1" /></svg></span>{project.description.slice(keywordIndex + project.keyword.length)}</> : project.description}</p>
+            <div class="project-meta"><span class="project-status" data-status={project.status}>{projectStatusLabels[project.status]}</span>
+              {project.repository && <span data-project-commit={project.repository}>{committedAt ? <time datetime={committedAt}>{commitFormatter.format(new Date(committedAt))}</time> : '提交日期待更新'}</span>}
+            </div>
+          </div>
+        </article>;
+      })}
+    </div>
+    {projects.length > initialCount && <button type="button" class="project-expand" aria-expanded="false" aria-controls="home-project-list" data-project-expand>更多项目 <span aria-hidden="true">＋</span></button>}
+  </div>
+</section>
+
+<script>
+  import { animateMotion } from '../lib/motion';
+
+  const section = document.querySelector<HTMLElement>('[data-project-section]');
+  const expand = section?.querySelector<HTMLButtonElement>('[data-project-expand]');
+  const extra = [...section?.querySelectorAll<HTMLElement>('[data-project-extra]') || []];
+  const animations = new Set<Animation>();
+  const cancelAnimations = () => { animations.forEach((animation) => animation.cancel()); animations.clear(); };
+  expand?.addEventListener('click', () => {
+    const expanded = expand.getAttribute('aria-expanded') !== 'true';
+    cancelAnimations();
+    expand.setAttribute('aria-expanded', String(expanded));
+    expand.replaceChildren(document.createTextNode(expanded ? '收起项目 ' : '更多项目 '));
+    const symbol = document.createElement('span');
+    symbol.setAttribute('aria-hidden', 'true');
+    symbol.textContent = expanded ? '−' : '＋';
+    expand.append(symbol);
+    const config = JSON.parse(section?.dataset.projectReveal || '{}') as { durationMilliseconds: number; distancePixels: number; itemStaggerMilliseconds: number; maximumStaggerMilliseconds: number };
+    extra.forEach((article, index) => {
+      article.hidden = !expanded;
+      if (expanded) {
+        const animation = animateMotion(article, [{ opacity: 0, translate: `0 ${config.distancePixels}px` }, { opacity: 1, translate: '0 0' }], {
+          duration: config.durationMilliseconds, delay: Math.min(index * config.itemStaggerMilliseconds, config.maximumStaggerMilliseconds),
+          easing: getComputedStyle(document.documentElement).getPropertyValue('--ease-out').trim(), fill: 'backwards',
+        });
+        if (animation) {
+          animations.add(animation);
+          animation.addEventListener('finish', () => { animations.delete(animation); });
+          animation.addEventListener('cancel', () => { animations.delete(animation); });
+        }
+      }
+    });
+  });
+
+  const commitLabels = [...section?.querySelectorAll<HTMLElement>('[data-project-commit]') || []];
+  if (commitLabels.length) {
+    void fetch('/api/public/project-commits.json').then(async (response) => {
+      if (!response.ok) throw new Error(`Project dates returned ${response.status}`);
+      const dates = await response.json() as Record<string, string | null>;
+      const formatter = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' });
+      commitLabels.forEach((label) => {
+        const value = dates[label.dataset.projectCommit!];
+        if (!value || !Number.isFinite(Date.parse(value))) {
+          if (!label.querySelector('time')) label.textContent = '提交日期暂不可用';
+          return;
+        }
+        const time = document.createElement('time');
+        time.dateTime = value;
+        time.textContent = formatter.format(new Date(value));
+        label.replaceChildren(time);
+      });
+    }).catch((error) => {
+      console.warn('Project dates unavailable', error);
+      commitLabels.forEach((label) => { if (!label.querySelector('time')) label.textContent = '提交日期暂不可用'; });
+    });
+  }
+</script>
+
+<style>
+  .project-list article[hidden]{display:none}
+  .project-expand{position:relative;isolation:isolate;display:flex;align-items:center;gap:14px;margin:36px auto 0;padding:12px 26px;border:0;border-radius:0;background:none;color:var(--text-soft);font:400 var(--font-size-body)/1.5 var(--playful);cursor:pointer;box-shadow:none;transition:color .45s var(--ease-out)}
+  .project-expand::before{content:"";position:absolute;inset:-6px -16px;z-index:-1;background:radial-gradient(ellipse,color-mix(in srgb,var(--summer-blue) 20%,transparent),transparent 72%);filter:blur(10px);opacity:0;pointer-events:none;transition:opacity .55s var(--ease-out)}
+  .project-expand span{font-family:var(--display)}
+  .project-expand:focus-visible{color:var(--text);background:none;transform:none;box-shadow:none}
+  .project-expand:focus-visible::before{opacity:1}
+  @media(hover:hover) and (pointer:fine){.project-expand:hover{color:var(--text)}.project-expand:hover::before{opacity:1}}
+  .project-expand:focus-visible{outline:2px solid var(--summer-blue);outline-offset:4px}
+  :global(:root.motion-paused) .project-expand{transition:none}
+  @media(prefers-reduced-motion:reduce){.project-expand,.project-expand::before{transition:none}}
+</style>

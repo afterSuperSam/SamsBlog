@@ -1,6 +1,28 @@
 /* 全站主题、基础元素与动效偏好 */
 
 :root {
+  --motion-feedback-duration: 180ms;
+  --motion-reorder-duration: 420ms;
+  --motion-decoration-duration: 620ms;
+  --article-reading-width: 780px;
+  --article-reading-font-size: clamp(1.12rem,2vw,1.25rem);
+  --article-reading-line-height: 2.15;
+  --article-reading-ambient-opacity: .12;
+  --article-reading-background-opacity: .015;
+  --cover-enter-duration: 620ms;
+  --cover-return-duration: 400ms;
+  --rss-dialog-width: 460px;
+  --project-ink-width: 2.5px;
+  --project-ink-duration: 900ms;
+  --message-wall-height: 34rem;
+  --paper-extra-height: 30px;
+  --message-wall-fade: 120px;
+  --message-wall-blur: 6px;
+  --paper-label-duration: 650ms;
+  --jump-backlight: color-mix(in srgb, var(--summer-blue) 16%, transparent);
+  --project-ink-easing: cubic-bezier(.65,0,.35,1);
+  --project-archived-color: #e28a94;
+  --cover-transition-duration: 580ms;
   color-scheme: dark;
   --bg: #202123;
   --bg-deep: #17191b;
@@ -18,8 +40,25 @@
   --contribution-detail-width: 300px;
   --project-title-glow-close: color-mix(in oklab, var(--summer-blue) 65%, transparent);
   --project-title-glow-wide: color-mix(in oklab, var(--summer-blue) 38%, transparent);
+  --project-number-gap: 24px;
+  --friend-rss-duration: 560ms;
+  --friend-hover-light-strength: 12%;
+  --friend-hover-shadow-strength: 16%;
+  --contact-hover-light-strength: 16%;
+  --contact-hover-shadow-strength: 14%;
+  --constellation-line-opacity: .22;
+  --constellation-drift-duration: 26s;
+  --constellation-fade-duration: 600ms;
   --font-size-jump: clamp(1.125rem, 1.07rem + .35vw, 1.375rem);
   --ease-link: cubic-bezier(.18, 1.25, .3, 1);
+  --signature-width: 148px;
+  --signature-mobile-width: clamp(64px,21vw,112px);
+  --signature-ink: color-mix(in oklab, var(--text) 85%, var(--summer-blue));
+  --signature-reveal-width: 22;
+  --signature-version-gap: 10px;
+  --signature-version-size: var(--font-size-small);
+  --signature-version-color: color-mix(in oklab, var(--muted) 82%, transparent);
+  --signature-hover-glow: color-mix(in oklab, var(--summer-blue) 24%, transparent);
   --text: #f1e9dc;
   --text-strong: #fff3e3;
   --text-soft: #d7cbb9;
@@ -115,12 +154,13 @@
   --text-soft: #49666b;
   --muted: #536f74;
   --accent: #aa6552;
-  --accent-2: #438f98;
-  --summer-blue: #3f9eac;
-  --summer-pink: #cf728e;
-  --summer-orange: #dc8848;
-  --success: #4c846d;
+  --accent-2: #326e77;
+  --summer-blue: #247583;
+  --summer-pink: #a94062;
+  --summer-orange: #995325;
+  --success: #366850;
   --danger: #ae5956;
+  --project-archived-color: #b94b5e;
   --line: rgba(58, 119, 127, 0.14);
   --line-strong: rgba(58, 119, 127, 0.24);
   --hover: rgba(72, 179, 190, 0.07);
@@ -244,8 +284,8 @@ main { position:relative; z-index:1; }
 
 /* 访客可以随时暂停持续装饰动效 */
 :root.motion-paused *, :root.motion-paused *::before, :root.motion-paused *::after { animation:none!important; transition:none!important; }
-:root.motion-paused [data-reveal] { opacity:1!important;transform:none!important; }
-@media(prefers-reduced-motion:reduce){[data-reveal]{opacity:1!important;transform:none!important}}
+:root.motion-paused :is([data-reveal],.reveal-character) { opacity:1!important;translate:none!important; }
+@media(prefers-reduced-motion:reduce){:is([data-reveal],.reveal-character){opacity:1!important;translate:none!important}}
 
 /* 公开页说明浮层，替代浏览器原生悬停小字。 */
 .site-tooltip { position:fixed; inset:auto; width:max-content; max-width:min(290px,calc(100vw - 24px)); margin:0; padding:12px 16px; border:0; border-radius:16px 11px 18px 12px; background:var(--gradient-surface); color:var(--text-soft); box-shadow:var(--shadow); font:var(--font-size-small)/1.6 var(--playful); white-space:pre-line; pointer-events:none; }
@@ -268,3 +308,45 @@ main { position:relative; z-index:1; }
 @media(prefers-reduced-motion:reduce){.home-quick-nav :is(i,span){transition:none}.home-quick-nav a[aria-current="location"] i::after{animation:none;opacity:.15}}
 @media(max-width:760px){.home-quick-nav{display:none}}
 .about-page :is(#contact,#activity,#sponsor){scroll-margin-top:calc(var(--header-height) + 24px)}
+
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
+.form-status .reveal-character{display:inline-block}
+@view-transition{navigation:auto}
+:root[data-cover-direction="enter"]{--cover-transition-duration:var(--cover-enter-duration)}
+:root[data-cover-direction="return"]{--cover-transition-duration:var(--cover-return-duration)}
+::view-transition-old(root),::view-transition-new(root){animation:none}
+::view-transition-group(*){animation-duration:var(--cover-transition-duration);animation-timing-function:var(--ease-out)}
+:root.motion-paused::view-transition-group(*),:root.motion-paused::view-transition-old(*),:root.motion-paused::view-transition-new(*){animation:none!important}
+@media(prefers-reduced-motion:reduce){::view-transition-group(*),::view-transition-old(*),::view-transition-new(*){animation:none!important}}
+
+/* 主题只裁切根快照，避免封面独立层和颜色过渡抢先显露。 */
+html[data-theme-transition],html[data-theme-transition] *,html[data-theme-transition] *::before,html[data-theme-transition] *::after{transition:none!important}
+html[data-theme-transition] *{view-transition-name:none!important}
+html[data-theme-transition]::view-transition-group(root){animation-duration:0s!important}
+html[data-theme-transition]::view-transition-old(root),html[data-theme-transition]::view-transition-new(root){animation:none;mix-blend-mode:normal}
+html[data-theme-transition]::view-transition-old(root){z-index:1}
+html[data-theme-transition]::view-transition-new(root){z-index:2}
+
+/* RSS 说明沿用页脚入口，订阅源本身仍保持标准 XML。 */
+.rss-subscription{position:fixed;inset:0;width:min(var(--rss-dialog-width),calc(100vw - 32px));max-height:calc(100dvh - 32px);margin:auto;padding:32px;border:0;border-radius:26px 16px 30px 18px;background:var(--gradient-surface);color:var(--text);box-shadow:var(--shadow);font:400 var(--font-size-body)/1.8 var(--playful);text-align:left;overflow:auto;scrollbar-width:none}
+.rss-subscription::backdrop{background:color-mix(in srgb,var(--bg) 76%,transparent);backdrop-filter:blur(8px)}
+.rss-subscription h2{font:700 1.7rem/1.5 var(--playful);margin:8px 0 16px}
+.rss-subscription p{margin:0 0 20px}.rss-subscription .form-status{margin:16px 0 0}
+.rss-subscription input{display:block;width:100%;min-width:0;padding:12px;border:0;border-radius:12px;background:color-mix(in srgb,var(--bg) 65%,transparent);color:var(--text);font:inherit;font-size:var(--font-size-small)}
+.rss-subscription__close{position:absolute;right:12px;top:10px;width:44px;height:44px;background:none;font:400 1.8rem/1 var(--playful);cursor:pointer}
+.rss-subscription__actions{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px 16px;margin-top:16px}
+.rss-subscription__actions :is(a,button){display:inline-flex;align-items:center;min-height:44px;padding:4px 0;background:none;color:var(--summer-blue);font:inherit;cursor:pointer}
+
+/* 触摸设备保留点击和键盘反馈，不保留鼠标悬停的位移与光效。 */
+@media(hover:none),(pointer:coarse){
+  .project-list article:hover:not(:has(:focus-visible)),.article-card:hover:not(:has(:focus-visible)),.friend-card:hover:not(:has(:focus-visible)),.about-link:hover:not(:focus-visible){transform:none;box-shadow:none}
+  .project-list article:hover:not(:has(:focus-visible)) h3 a{text-shadow:none;color:var(--text)}
+  .about-link:hover:not(:focus-visible) .about-link__icon{transform:none}
+  .article-card:hover:not(:has(:focus-visible)) .article-card__cover img{transform:none}
+  .article-card:hover:not(:has(:focus-visible))::before,.friend-card:hover:not(:has(:focus-visible))::after,.about-link:hover:not(:focus-visible)::before{opacity:0}
+  .articles-more:hover:not(:focus-visible),.articles-more:hover:not(:focus-visible) span,.friend-card__rss:hover:not(:focus-visible),.article-filters__options button:hover:not(:focus-visible){transform:none}
+  .articles-more:hover:not(:focus-visible)::before,.friend-card__rss:hover:not(:focus-visible)::before{opacity:0}
+  .friend-card__rss:hover:not(:focus-visible) path{stroke-dashoffset:.16;opacity:.65}
+  .project-list article:hover:not(:has(:focus-visible)) .project-keyword{color:inherit}
+  .project-list article:hover:not(:has(:focus-visible)) .project-keyword path{stroke-dashoffset:1}
+}

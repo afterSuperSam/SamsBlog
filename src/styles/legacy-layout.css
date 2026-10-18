@@ -20,16 +20,14 @@ body::before {
 }
 
 .section-title {
+  margin-bottom: 0;
   font-family: var(--display);
+  font-size: clamp(2.5rem, 4.2vw, 3.9rem);
   font-weight: 600;
   letter-spacing: -0.04em;
   line-height: 1.12;
 }
 
-.section-title {
-  margin-bottom: 0;
-  font-size: clamp(2.5rem, 4.2vw, 3.9rem);
-}
 
 .button {
   position: relative;
@@ -48,7 +46,7 @@ body::before {
   transition: color 220ms ease, text-shadow 220ms ease, transform 280ms var(--ease);
 }
 
-.button:is(:hover, :focus-visible) {
+.button:focus-visible {
   color:var(--summer-blue);
   text-shadow:0 0 22px color-mix(in srgb,var(--summer-blue) 28%,transparent);
   transform:translateY(-2px);
@@ -58,7 +56,7 @@ body::before {
   color: var(--text);
 }
 
-.button--primary:hover {
+.button--primary:focus-visible {
   background: transparent;
   color: var(--summer-orange);
 }
@@ -118,15 +116,6 @@ body::before {
   box-shadow: 0 5px 20px rgba(0, 0, 0, 0.18);
 }
 
-.footer-brand {
-  width: fit-content;
-  font-family: var(--playful);
-  font-size: 1.75rem;
-  font-weight: 700;
-  letter-spacing: -0.04em;
-  line-height: 1;
-}
-
 .site-brand__wordmark {
   display: block;
   width: auto;
@@ -137,7 +126,7 @@ body::before {
   transition: filter 280ms ease, transform 320ms var(--ease);
 }
 
-.site-brand:is(:hover,:focus-visible) .site-brand__wordmark {
+.site-brand:focus-visible .site-brand__wordmark {
   filter: drop-shadow(0 5px 13px color-mix(in oklab, var(--summer-pink) 24%, transparent));
   transform: translateY(-1px) rotate(-0.8deg) scale(1.025);
 }
@@ -166,7 +155,7 @@ body::before {
   transition:color 220ms ease,opacity 220ms ease,text-shadow 220ms ease,transform 280ms var(--ease);
 }
 
-.desktop-nav a:hover {
+.desktop-nav a:focus-visible {
   color:var(--summer-blue);
   opacity: 1;
   text-shadow:0 0 20px color-mix(in srgb,var(--summer-blue) 32%,transparent);
@@ -272,7 +261,7 @@ body::before {
   transition: color .22s ease, background .22s ease;
 }
 
-.mobile-menu a:is(:hover, :focus-visible) {
+.mobile-menu a:focus-visible {
   color: var(--summer-blue);
   background: var(--hover);
 }
@@ -387,10 +376,6 @@ body::before {
   border-radius: 50%;
 }
 
-.site-footer nav a:hover {
-  color: var(--accent);
-}
-
 @media (max-width: 1080px) {
   .site-header {
     display: grid;
@@ -449,24 +434,7 @@ body::before {
     font-size: clamp(2.4rem, 13vw, 4.5rem);
   }
 
-  .site-footer {
-    grid-template-columns: auto 1fr;
-    padding-inline: 24px;
-  }
-
-  .site-footer nav {
-    grid-column: 1 / -1;
-    flex-wrap: wrap;
-  }
 }
-
-.site-footer { position: relative; z-index: 1; }
-
-
-
-
-
-
 
 .header-identity { display:flex; align-items:center; gap:19px; min-width:0; }
 
@@ -474,15 +442,15 @@ body::before {
 
 .header-socials :is(a,button) { display:inline-flex; min-width:35px; min-height:42px; padding:0 6px; align-items:center; justify-content:center; gap:5px; border:0; background:transparent; color:inherit; opacity:.7; cursor:pointer; transition:opacity .2s ease,color .2s ease,transform .25s var(--ease); }
 
-.header-socials :is(a,button):hover { opacity:1; transform:translateY(-2px); }
+.header-socials :is(a,button):focus-visible { opacity:1; transform:translateY(-2px); }
 
-.header-social--bilibili:hover { color:var(--summer-blue); }
+.header-social--bilibili:focus-visible { color:var(--summer-blue); }
 
-.header-social--github:hover { color:var(--summer-pink); }
+.header-social--github:focus-visible { color:var(--summer-pink); }
 
-.header-social--qq:hover { color:var(--summer-orange); }
+.header-social--qq:focus-visible { color:var(--summer-orange); }
 
-.header-social--town:hover { color:var(--accent-2); }
+.header-social--town:focus-visible { color:var(--accent-2); }
 
 .header-socials svg { width:20px; height:20px; fill:none; stroke:currentColor; stroke-width:1.55; stroke-linecap:round; stroke-linejoin:round; }
 
@@ -490,30 +458,40 @@ body::before {
 
 .header-socials .header-social span { max-width:0; overflow:hidden; font-family:var(--playful); font-size:var(--font-size-small); opacity:0; white-space:nowrap; transition:max-width .34s var(--ease),opacity .24s ease; }
 
-.header-socials .header-social:is(:hover,:focus-visible) span { max-width:130px; opacity:1; }
+.header-socials .header-social:focus-visible span { max-width:130px; opacity:1; }
 
-.header-social--town:is(:hover,:focus-visible) span { max-width:160px; }
+.header-socials .header-social--town:focus-visible span { max-width:160px; }
 
-[data-reveal] { transition:opacity .8s var(--ease),transform .9s var(--ease); }
+[data-reveal].reveal-pending { opacity:0; }
+.reveal-character { display:inline-block; }
+[data-reveal].reveal-pending .reveal-character { opacity:0; }
 
-[data-reveal].reveal-pending { opacity:0; transform:translateY(28px); }
+.site-footer { position:relative; z-index:1; display:block; padding:84px var(--gutter) 44px; border:0; background:linear-gradient(180deg,transparent 0%,color-mix(in srgb,var(--surface) 18%,transparent) 32%,color-mix(in srgb,var(--surface) 70%,transparent) 76%,var(--surface) 100%); }
 
-.site-footer { display:block; padding:84px var(--gutter) 44px; border:0; background:linear-gradient(180deg,transparent 0%,color-mix(in srgb,var(--surface) 18%,transparent) 32%,color-mix(in srgb,var(--surface) 70%,transparent) 76%,var(--surface) 100%); }
+.footer-main { display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); align-items:center; gap:28px; max-width:var(--max); margin:0 auto; }
+.footer-notes { display:flex; align-items:center; justify-self:center; gap:16px; min-width:0; }
 
-.footer-main { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:28px; max-width:var(--max); margin:0 auto; }
+.footer-identity { min-width:0; }
 
-.footer-identity { display:flex; min-width:0; align-items:center; gap:22px; }
+.footer-brand { display:flex; width:fit-content; align-items:center; gap:10px; font-family:var(--playful); font-size:1.25rem; font-weight:700; letter-spacing:-.04em; line-height:1; white-space:nowrap; }
 
-.site-footer .footer-brand { display:flex; align-items:center; gap:10px; font-size:1.25rem; }
-
-.site-footer .footer-brand img { width:38px; height:38px; object-fit:cover; border-radius:50%; }
-
-.site-footer nav { display:flex; flex-wrap:wrap; justify-content:flex-end; justify-self:end; margin:0; gap:12px 22px; color:var(--muted); font-family:var(--playful); font-size:var(--font-size-small); }
-.site-footer nav a { white-space:nowrap; }
+.site-footer nav { display:flex; flex-wrap:nowrap; justify-content:flex-end; justify-self:end; margin:0; gap:12px 22px; color:var(--muted); font-family:var(--playful); font-size:var(--font-size-small); }
+.site-footer nav a { display:inline-flex; align-items:center; justify-content:center; min-width:44px; min-height:44px; white-space:nowrap; }
+.site-footer nav a:focus-visible { color:var(--accent); }
+.footer-registration { display:inline-flex; align-items:center; min-height:44px; color:var(--muted); font:400 var(--font-size-small)/1.5 var(--playful); white-space:nowrap; }
+.footer-registration:focus-visible { color:var(--accent); }
+.footer-signature { position:relative; isolation:isolate; display:flex; align-items:center; gap:var(--signature-version-gap); width:max-content; margin:0; justify-self:center; color:var(--signature-ink); transition:color .35s var(--ease-out); }
+.footer-signature::before { content:""; position:absolute; z-index:-1; inset:-12px -22px; border-radius:50%; background:radial-gradient(ellipse,var(--signature-hover-glow),transparent 72%); filter:blur(12px); opacity:0; transform:scale(.8); transition:opacity .4s var(--ease-out),transform .6s var(--ease-out); pointer-events:none; }
+.footer-signature svg { display:block; flex:none; width:var(--signature-width); height:auto; overflow:visible; }
+.signature-version { display:inline-flex; white-space:nowrap; color:var(--signature-version-color); font:700 var(--signature-version-size)/1 var(--playful); letter-spacing:.025em; transition:color .35s var(--ease-out); }
+.signature-version-character { display:inline-block; }
+.signature-ink { fill:currentColor; stroke:currentColor; stroke-width:.2; stroke-linejoin:round; }
+.signature-stroke { fill:none; stroke:#fff; stroke-width:var(--signature-reveal-width); stroke-linecap:round; stroke-linejoin:round; stroke-dasharray:1; stroke-dashoffset:0; }
 
 @media(max-width:1080px){ .header-socials{display:none} }
 
-@media(max-width:720px){ .footer-main{grid-template-columns:1fr;gap:16px 22px}.footer-identity{grid-column:1}.site-footer nav{grid-row:2;grid-column:1}.site-footer nav a:nth-child(-n+2){display:none} }
+@media(max-width:720px){ .footer-main{grid-template-columns:auto minmax(0,1fr) auto;gap:6px}.footer-notes{gap:8px}.footer-brand{min-height:44px;font-size:clamp(.6875rem,3vw,.875rem)}.footer-signature{--signature-version-gap:3px;--signature-version-size:clamp(.625rem,2.7vw,.8125rem)}.footer-signature svg{width:var(--signature-mobile-width)}.footer-registration{font-size:clamp(.625rem,2vw,.875rem)}.site-footer nav{gap:2px;font-size:clamp(.75rem,3vw,.875rem)} }
+@media(max-width:480px){.site-footer{padding-inline:8px}.footer-main{gap:4px}.footer-notes{gap:4px}.footer-copyright{display:none}.footer-brand{font-size:clamp(.625rem,2.6vw,.75rem)}.footer-signature{--signature-mobile-width:clamp(56px,16vw,72px);--signature-version-size:clamp(9px,2.5vw,11px);--signature-version-gap:2px}.footer-registration{font-size:clamp(.625rem,2.8vw,.8125rem)}.site-footer nav{gap:4px;font-size:clamp(11px,2.8vw,12px)}.site-footer nav a{min-width:24px}}
 
 @media(prefers-reduced-motion:reduce){ [data-reveal].reveal-pending{opacity:1;transform:none} }
 
@@ -529,5 +507,28 @@ body::before {
 .motion-toggle:disabled { cursor:default; }
 .header-action { display:inline-flex; align-items:center; justify-content:center; gap:0; min-width:44px; flex-shrink:0; }
 .header-action__label { display:block; max-width:0; overflow:hidden; opacity:0; white-space:nowrap; font:400 var(--font-size-small)/1.5 var(--playful); transition:max-width .34s var(--ease-out),opacity .24s ease,margin .34s var(--ease-out); }
-@media(min-width:1081px){.header-action:is(:hover,:focus-visible){width:auto}.header-action:is(:hover,:focus-visible) .header-action__label{max-width:8em;opacity:1;margin-right:8px}}
-@media(max-width:1080px){.header-action{position:relative}.header-action__label{position:absolute;right:4px;top:calc(100% + 6px);text-shadow:0 1px 12px var(--bg)}.header-action:is(:hover,:focus-visible) .header-action__label{max-width:8em;opacity:1}}
+@media(min-width:1081px){.header-action:focus-visible{width:auto}.header-action:focus-visible .header-action__label{max-width:8em;opacity:1;margin-right:8px}}
+@media(max-width:1080px){.header-action{position:relative}.header-action__label{position:absolute;right:4px;top:calc(100% + 6px);text-shadow:0 1px 12px var(--bg)}.header-action:focus-visible .header-action__label{max-width:8em;opacity:1}}
+
+/* 悬浮装饰只响应精确鼠标，键盘效果由各控件的 focus-visible 保留。 */
+@media(hover:hover) and (pointer:fine){
+  .button:hover{color:var(--summer-blue);text-shadow:0 0 22px color-mix(in srgb,var(--summer-blue) 28%,transparent);transform:translateY(-2px)}
+  .button--primary:hover{background:transparent;color:var(--summer-orange)}
+  .site-brand:hover .site-brand__wordmark{filter:drop-shadow(0 5px 13px color-mix(in oklab,var(--summer-pink) 24%,transparent));transform:translateY(-1px) rotate(-.8deg) scale(1.025)}
+  .desktop-nav a:hover{opacity:1;transform:translateY(-2px)}
+  .desktop-nav a:not([aria-current="page"]):hover{color:var(--summer-blue);text-shadow:0 0 20px color-mix(in srgb,var(--summer-blue) 32%,transparent)}
+  .mobile-menu a:not([aria-current="page"]):hover{color:var(--summer-blue);background:var(--hover)}
+  .header-socials :is(a,button):hover{opacity:1;transform:translateY(-2px)}
+  .header-social--bilibili:hover{color:var(--summer-blue)}
+  .header-social--github:hover{color:var(--summer-pink)}
+  .header-social--qq:hover{color:var(--summer-orange)}
+  .header-social--town:hover{color:var(--accent-2)}
+  .header-socials .header-social:hover span{max-width:130px;opacity:1}
+  .header-socials .header-social--town:hover span{max-width:160px}
+  .site-footer nav a:hover,.footer-registration:hover{color:var(--accent)}
+  .footer-signature:hover{color:var(--summer-blue)}
+  .footer-signature:hover::before{opacity:1;transform:scale(1.12)}
+  .footer-signature:hover .signature-version{color:color-mix(in oklab,var(--summer-blue) 72%,var(--muted))}
+  @media(min-width:1081px){.header-action:hover{width:auto}.header-action:hover .header-action__label{max-width:8em;opacity:1;margin-right:8px}}
+  @media(max-width:1080px){.header-action:hover .header-action__label{max-width:8em;opacity:1}}
+}

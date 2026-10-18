@@ -12,6 +12,7 @@ interface Props {
   image?: string;
   bodyClass?: string;
   quickNavigation?: { href: string; label: string; description?: string }[];
+  articleMetadata?: { publishedTime: string; modifiedTime: string; author: string; structuredData: Record<string, unknown> };
 }
 
 const {
@@ -20,6 +21,7 @@ const {
   image = '/media/anime/hero/1719656915755.webp',
   bodyClass = '',
   quickNavigation = [],
+  articleMetadata,
 } = Astro.props;
 const pageTitle = title ? `${title} — ${siteConfig.name}` : siteConfig.name;
 const canonical = new URL(Astro.url.pathname, siteConfig.siteUrl);
@@ -36,24 +38,50 @@ const canonical = new URL(Astro.url.pathname, siteConfig.siteUrl);
     <meta name="theme-color" content="#202123" data-theme-color />
     <link rel="icon" href="/media/brand/logo.jpg" type="image/jpeg" />
     <link rel="canonical" href={canonical} />
+    <link rel="alternate" type="application/rss+xml" title="SamsBlog RSS" href="/rss.xml" />
     <meta property="og:title" content={pageTitle} />
     <meta property="og:description" content={description} />
-    <meta property="og:type" content="website" />
+    <meta property="og:type" content={articleMetadata ? 'article' : 'website'} />
+    {articleMetadata && <>
+      <meta property="article:published_time" content={articleMetadata.publishedTime} />
+      <meta property="article:modified_time" content={articleMetadata.modifiedTime} />
+      <meta property="article:author" content={articleMetadata.author} />
+      <script type="application/ld+json" is:inline set:html={JSON.stringify(articleMetadata.structuredData).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029')} />
+    </>}
     <meta property="og:url" content={canonical} />
     <meta property="og:image" content={new URL(image, siteConfig.siteUrl)} />
     <title>{pageTitle}</title>
+    <script is:inline>
+      // 原生跨文档转场保留多页结构；早于首帧关联同一篇文章的封面。
+      const prepareArticleCovers = (destination = location.href) => {
+        document.documentElement.dataset.coverDirection = /^\/articles\/\d+\/?$/.test(new URL(destination, location.href).pathname) ? 'enter' : 'return';
+        document.querySelectorAll('[data-article-cover]').forEach((cover) => {
+          cover.style.viewTransitionName = `article-cover-${cover.dataset.articleCover}`;
+        });
+      };
+      document.addEventListener('DOMContentLoaded', () => prepareArticleCovers(), { once: true });
+      window.addEventListener('pagereveal', (event) => {
+        prepareArticleCovers();
+        if (matchMedia('(prefers-reduced-motion: reduce)').matches || document.documentElement.classList.contains('motion-paused')) event.viewTransition?.skipTransition();
+      });
+      window.addEventListener('pageswap', (event) => {
+        prepareArticleCovers(event.activation?.entry?.url || location.href);
+        if (matchMedia('(prefers-reduced-motion: reduce)').matches || document.documentElement.classList.contains('motion-paused')) event.viewTransition?.skipTransition();
+      });
+    </script>
     <script is:inline>
       const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
       let initialTheme = systemDark ? 'dark' : 'light';
       try {
         const savedTheme = localStorage.getItem('samsblog-theme');
         if (savedTheme === 'dark' || savedTheme === 'light') initialTheme = savedTheme;
+        document.documentElement.classList.toggle('motion-paused', localStorage.getItem('samsblog-motion') === 'paused');
       } catch (error) { console.warn('Theme preference unavailable', error); }
       document.documentElement.dataset.theme = initialTheme;
       document.querySelector('meta[data-theme-color]')?.setAttribute('content', initialTheme === 'dark' ? '#202123' : '#f4fbfc');
     </script>
   </head>
-  <body class={bodyClass}>
+  <body class={bodyClass} data-reveal-config={!bodyClass.includes('admin-page') ? JSON.stringify(siteConfig.reveal) : undefined}>
     <a class="skip-link" href="#main-content">跳到主要内容</a>
     {!bodyClass.includes('admin-page') && <div class="reading-progress" aria-hidden="true" data-reading-progress hidden></div>}
     {!bodyClass.includes('admin-page') && <AmbientScene />}
@@ -64,9 +92,54 @@ const canonical = new URL(Astro.url.pathname, siteConfig.siteUrl);
       </nav>}
       <slot />
     </main>
-    <Footer />
+    <Footer showSignature={!bodyClass.includes('admin-page')} />
     {!bodyClass.includes('admin-page') && <div id="site-tooltip" class="site-tooltip" popover="manual" role="tooltip"></div>}
     <script>
+      import { animateMotion as animate, createCharacters, animateCharacters } from '../lib/motion';
+      // 返回链接走原历史记录，使封面落回原筛选结果及滚动位置。
+      const pageNavigation = (window as Window & { navigation?: { currentEntry?: { key: string }; entries(): { key: string }[]; traverseTo(key: string): unknown } }).navigation;
+      try {
+        const restore = JSON.parse(sessionStorage.getItem('article-list-return') || 'null');
+        if (restore?.url === location.href && Number.isFinite(restore.scrollY)) {
+          sessionStorage.removeItem('article-list-return');
+          requestAnimationFrame(() => window.scrollTo({ top: restore.scrollY, behavior: 'instant' }));
+        }
+      } catch (error) { console.warn('Article list position unavailable', error); }
+      document.querySelectorAll<HTMLAnchorElement>('.article-card__link').forEach((link) => {
+        link.addEventListener('click', (event) => {
+          if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+          try { sessionStorage.setItem('article-return', JSON.stringify({ article: new URL(link.href).pathname, from: location.href, key: pageNavigation?.currentEntry?.key, scrollY: window.scrollY })); }
+          catch (error) { console.warn('Article return state unavailable', error); }
+        });
+      });
+      const back = document.querySelector<HTMLAnchorElement>('.article-reading__back');
+      if (back) {
+        try {
+          const pending = JSON.parse(sessionStorage.getItem('article-return') || 'null');
+          if (pending?.article === location.pathname) {
+            const from = new URL(pending.from);
+            if (from.origin === location.origin && ['/', '/about'].includes(from.pathname)) {
+              history.replaceState({ ...history.state, articleReturn: { url: from.href, key: pending.key, scrollY: pending.scrollY } }, '');
+            }
+            sessionStorage.removeItem('article-return');
+          }
+          const returnState = history.state?.articleReturn;
+          const from = returnState && new URL(typeof returnState === 'string' ? returnState : returnState.url);
+          if (from && from.origin === location.origin && ['/', '/about'].includes(from.pathname)) {
+            back.href = from.href;
+            back.addEventListener('click', (event) => {
+              if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+              if (returnState.key && pageNavigation?.entries().some((entry) => entry.key === returnState.key)) {
+                event.preventDefault();
+                pageNavigation.traverseTo(returnState.key);
+              } else if (Number.isFinite(returnState.scrollY)) {
+                try { sessionStorage.setItem('article-list-return', JSON.stringify({ url: from.href, scrollY: returnState.scrollY })); }
+                catch (error) { console.warn('Article list position save failed', error); }
+              }
+            });
+          }
+        } catch (error) { console.warn('Article return state unavailable', error); }
+      }
       // 首页和关于页共用区块定位、光晕扩散与疏密交互。
       document.querySelectorAll<HTMLElement>('[data-quick-nav]').forEach((quickNav) => {
         const quickNavItems = [...(quickNav?.querySelectorAll<HTMLAnchorElement>('a[href^="#"]') || [])].flatMap((link) => {
@@ -152,15 +225,6 @@ const canonical = new URL(Astro.url.pathname, siteConfig.siteUrl);
       window.addEventListener('resize', hideTooltip);
       document.addEventListener('keydown', (event) => { if (event.key === 'Escape') hideTooltip(); });
 
-      document.querySelector('[data-theme-toggle]')?.addEventListener('click', () => {
-        const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
-        document.documentElement.dataset.theme = next;
-        try { localStorage.setItem('samsblog-theme', next); }
-        catch (error) { console.warn('Theme preference unavailable', error); }
-        document.querySelector('meta[data-theme-color]')?.setAttribute('content', next === 'dark' ? '#202123' : '#f4fbfc');
-      });
-
-      const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
       const progress = document.querySelector<HTMLElement>('[data-reading-progress]');
       if (progress) {
         let progressFrame = 0;
@@ -177,19 +241,63 @@ const canonical = new URL(Astro.url.pathname, siteConfig.siteUrl);
         window.addEventListener('resize', scheduleProgress);
         updateProgress();
       }
-      const revealTargets = Array.from(document.querySelectorAll<HTMLElement>('[data-reveal]'));
-      if (!reducedMotion && 'IntersectionObserver' in window) {
+      // 区块渐入共用一次性观察；历史返回直接显示，避免干扰封面转场。
+      const revealMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+      const revealIsDisabled = () => revealMotion.matches || document.documentElement.classList.contains('motion-paused');
+      const revealConfiguration = document.body.dataset.revealConfig;
+      const navigation = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
+      if (revealConfiguration && navigation?.type !== 'back_forward' && !revealIsDisabled() && 'IntersectionObserver' in window) {
+        const configuration = JSON.parse(revealConfiguration) as {
+          durationMilliseconds: number; distancePixels: number; itemStaggerMilliseconds: number;
+          maximumStaggerMilliseconds: number; characterDurationMilliseconds: number;
+          characterStaggerMilliseconds: number; visibilityThreshold: number; bottomInsetPercent: number;
+        };
+        const easing = getComputedStyle(document.documentElement).getPropertyValue('--ease-out').trim();
+        const itemSelector = '.project-list > article:not([data-project-extra]), .article-card, .friend-card, .about-link, .contribution-panel, .message-form, .message-item, .site-stats dl > div, .sponsor-smile, .article-reading__footer';
+        document.querySelectorAll<HTMLElement>(itemSelector).forEach((item) => {
+          item.setAttribute('data-reveal', 'item');
+        });
+        document.querySelectorAll<HTMLElement>('.section-kicker, .home-guestbook__header > span, .about-section-heading > span, .sponsor-copy > span').forEach((kicker) => {
+          kicker.setAttribute('data-reveal', 'kicker');
+        });
+        document.querySelectorAll<HTMLElement>('.section-title, .home-guestbook__header h2, .about-section-heading h1, .about-section-heading h2, .sponsor-copy h2').forEach((heading) => {
+          if (heading.children.length) return;
+          const text = heading.textContent || '';
+          heading.setAttribute('aria-label', text);
+          heading.replaceChildren(...createCharacters(text));
+          heading.setAttribute('data-reveal', 'heading');
+        });
+        const revealTargets = [...document.querySelectorAll<HTMLElement>('[data-reveal]')];
         const revealObserver = new IntersectionObserver((entries, observer) => {
           entries.forEach((entry) => {
             if (!entry.isIntersecting) return;
-            (entry.target as HTMLElement).classList.remove('reveal-pending');
+            const target = entry.target as HTMLElement;
+            target.classList.remove('reveal-pending');
             observer.unobserve(entry.target);
+            if (revealIsDisabled() || target.dataset.reordered) return;
+            if (target.dataset.reveal === 'heading') {
+              animateCharacters(target);
+            } else {
+              const siblings = [...(target.parentElement?.children || [])].filter((sibling) => sibling.matches('[data-reveal="item"]'));
+              const delay = target.dataset.reveal === 'item' ? Math.min(siblings.indexOf(target) * configuration.itemStaggerMilliseconds, configuration.maximumStaggerMilliseconds) : 0;
+              animate(target, [
+                { opacity: 0, translate: `0 ${configuration.distancePixels}px` },
+                { opacity: 1, translate: '0 0' },
+              ], { duration: configuration.durationMilliseconds, delay, easing, fill: 'backwards' });
+            }
           });
-        }, { rootMargin: '0px 0px -9% 0px', threshold: 0.08 });
+        }, { rootMargin: `0px 0px -${configuration.bottomInsetPercent}% 0px`, threshold: configuration.visibilityThreshold });
         revealTargets.forEach((target) => {
           revealObserver.observe(target);
           target.classList.add('reveal-pending');
         });
+        const stopReveals = () => {
+          if (!revealIsDisabled()) return;
+          revealObserver.disconnect();
+          revealTargets.forEach((target) => target.classList.remove('reveal-pending'));
+        };
+        revealMotion.addEventListener('change', stopReveals);
+        new MutationObserver(stopReveals).observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
       }
 
     </script>

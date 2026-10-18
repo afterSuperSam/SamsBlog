@@ -5,10 +5,15 @@ import Database from 'better-sqlite3';
 import type { APIContext, APIRoute } from 'astro';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { serverConfig } from '../src/config/server';
+import { siteConfig } from '../src/config/site';
 import { createAdminSession } from '../src/lib/admin-auth';
 import { deleteArticle, getArticle, listArticles, restoreArticle, saveArticle } from '../src/lib/articles';
 import { getDatabase } from '../src/lib/db';
 import { DELETE, GET, PATCH, POST } from '../src/pages/api/admin/articles.json';
+import { getProjectSettings, getProjectCommit, saveProjectSettings } from '../src/lib/projects';
+import { PUT as saveProjects } from '../src/pages/api/admin/projects.json';
+import { GET as getRss } from '../src/pages/rss.xml';
+import { GET as getSiteCard } from '../src/pages/api/public/site-card.json';
 
 const input = { title: '验证文章', coverUrl: 'https://images.example.com/cover.webp', source: 'original', category: 'discussion', content: '# 正文\n\n[链接](https://example.com)\n\n![图片](https://images.example.com/body.webp)' };
 
@@ -35,6 +40,18 @@ describe('article persistence and authenticated management', () => {
     expect(listArticles({ includeDeleted: true })).toEqual([]);
     expect(getDatabase().prepare('SELECT * FROM articles').all()).toEqual([{ id: 1, title: '历史记录' }]);
     expect(getDatabase().prepare("SELECT id FROM schema_migrations WHERE id = '20261017-blog-articles-v1'").get()).toBeTruthy();
+  });
+
+  it('stores repost attribution separately, clears it for originals and preserves source whitespace', () => {
+    const content = '\n  保留原始空白\n\n```js\n\treturn 1;\n```\n';
+    const id = saveArticle({ ...input, source: 'repost', originalAuthor: ' 原作者 ', originalUrl: 'https://example.com/original?a=1&b=2', content });
+    expect(getArticle(id)).toMatchObject({ originalAuthor: '原作者', originalUrl: 'https://example.com/original?a=1&b=2', content });
+    saveArticle({ ...input, id, originalAuthor: '应清空', originalUrl: 'javascript:ignored' });
+    expect(getArticle(id)).toMatchObject({ originalAuthor: '', originalUrl: '' });
+  });
+
+  it.each(['javascript:alert(1)', 'https://name:password@example.com', '//example.com', 'https:example.com', 'file:///tmp/article'])('rejects unsafe or incomplete repost URLs: %s', (originalUrl) => {
+    expect(() => saveArticle({ ...input, source: 'repost', originalUrl })).toThrow();
   });
 
   it('publishes on save, preserves creation date, and hides soft-deleted records until restored', () => {
@@ -103,5 +120,74 @@ describe('article persistence and authenticated management', () => {
     expect((await call(POST, 'POST', oversized)).status).toBe(413);
     expect((await call(POST, 'POST', oversized, true, { 'content-length': '1' })).status).toBe(413);
     expect((await call(POST, 'POST', input, true, { 'content-length': String(serverConfig.articleRequestMaxBytes + 1) })).status).toBe(413);
+  });
+});
+
+describe('project settings and automatically refreshed feeds', () => {
+  it('keeps status defaults, validates settings atomically, and requires an admin session', async () => {
+    const before = getProjectSettings();
+    expect(before.projects.map((project) => project.status)).toEqual(['active', 'maintenance', 'active', 'archived']);
+    const projects = before.projects.map((project) => ({ ...project }));
+    const payload = { currentWork: '最近在做：测试项目', projects };
+    payload.projects[0].name = '项目的新名字';
+    payload.projects[0].url = 'https://example.com/project';
+    payload.projects[0].description = '新的项目简介';
+    payload.projects[0].keyword = '';
+    expect((await call(saveProjects, 'PUT', payload, false)).status).toBe(401);
+    expect((await call(saveProjects, 'PUT', payload)).status).toBe(200);
+    expect(getProjectSettings().currentWork).toBe(payload.currentWork);
+    expect(getProjectSettings().projects[0]).toMatchObject(payload.projects[0]);
+    expect(() => saveProjectSettings({ ...payload, projects: [...projects, projects[0]] })).toThrow();
+    expect(() => saveProjectSettings({ ...payload, projects: projects.map((project) => ({ ...project, status: 'unknown' })) })).toThrow();
+    expect(() => saveProjectSettings({ ...payload, projects: projects.map((project) => ({ ...project, url: 'javascript:alert(1)' })) })).toThrow();
+    expect(() => saveProjectSettings({ ...payload, currentWork: ' ' })).toThrow();
+    expect(getProjectSettings().currentWork).toBe(payload.currentWork);
+  });
+
+  it('coalesces commit requests and keeps valid dates when GitHub later fails', async () => {
+    vi.useFakeTimers();
+    const request = vi.fn().mockResolvedValue(new Response(JSON.stringify([{ commit: { committer: { date: '2026-10-17T01:02:03Z' } } }])));
+    vi.stubGlobal('fetch', request);
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const repository = 'afterSuperSam/SamsBlog';
+      expect(await Promise.all([getProjectCommit(repository), getProjectCommit(repository)])).toEqual(['2026-10-17T01:02:03.000Z', '2026-10-17T01:02:03.000Z']);
+      expect(request).toHaveBeenCalledTimes(1);
+      vi.advanceTimersByTime(serverConfig.githubCacheSeconds * 1000 + 1);
+      request.mockResolvedValue(new Response('', { status: 503 }));
+      expect(await getProjectCommit(repository)).toBe('2026-10-17T01:02:03.000Z');
+      expect(warning).toHaveBeenCalled();
+    } finally { vi.useRealTimers(); vi.unstubAllGlobals(); warning.mockRestore(); }
+  });
+
+  it('updates RSS and cross-site cards after edits and excludes soft-deleted articles', async () => {
+    const id = saveArticle({ ...input, title: 'RSS <更新> & "测试"\u000b' });
+    const feed = () => getRss({} as APIContext) as Response;
+    expect(await feed().text()).toContain('RSS &lt;更新&gt; &amp; &quot;测试&quot;');
+    expect(await feed().text()).not.toContain('\u000b');
+    expect(feed().headers.get('Cache-Control')).toBe('no-cache');
+    saveArticle({ ...input, id, title: '修改后 RSS 标题' });
+    expect(await feed().text()).toContain('修改后 RSS 标题');
+    const response = await getSiteCard({ request: new Request('https://blog.example/api/public/site-card.json', { headers: { Origin: 'https://yingwutown.top' } }) } as APIContext) as Response;
+    expect((await response.json()).latest.some((article: { id: number }) => article.id === id)).toBe(true);
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://yingwutown.top');
+    deleteArticle(id);
+    expect(await feed().text()).not.toContain('修改后 RSS 标题');
+  });
+
+  it('publishes complete formatted RSS content without expanding cross-site summaries', async () => {
+    const content = `# 完整正文\n\n${'正文内容'.repeat(80)}\n\n**这是文章最后一段**\n\n[站内](/about?a=1&b=2)\n\n![正文图片](/images/body.webp)\n\n<script>alert(1)</script>`;
+    const id = saveArticle({ ...input, content });
+    const feed = await (getRss({} as APIContext) as Response).text();
+    expect(feed).toContain('&lt;h1&gt;完整正文&lt;/h1&gt;');
+    expect(feed).toContain('&lt;strong&gt;这是文章最后一段&lt;/strong&gt;');
+    expect(feed).toContain('https://images.example.com/cover.webp');
+    expect(feed).toContain(`${siteConfig.siteUrl}/images/body.webp`);
+    expect(feed).toContain(`${siteConfig.siteUrl}/about?a=1&amp;amp;b=2`);
+    expect(feed).toContain('&amp;lt;script&amp;gt;alert(1)&amp;lt;/script&amp;gt;');
+    const response = await getSiteCard({ request: new Request('https://blog.example/api/public/site-card.json') } as APIContext) as Response;
+    const article = (await response.json()).latest.find((entry: { id: number }) => entry.id === id);
+    expect(article.description).toMatch(/…$/);
+    expect(article).not.toHaveProperty('content');
   });
 });

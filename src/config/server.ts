@@ -36,12 +36,21 @@ export const serverConfig = {
   friendStatusSlowMilliseconds: positiveInteger('FRIEND_STATUS_SLOW_MILLISECONDS', 1800),
   friendStatusConcurrency: positiveInteger('FRIEND_STATUS_CONCURRENCY', 3),
   friendStatusMaxRedirects: positiveInteger('FRIEND_STATUS_MAX_REDIRECTS', 3),
+  friendFeedCacheSeconds: positiveInteger('FRIEND_FEED_CACHE_SECONDS', 1800),
+  friendFeedMaximumBytes: positiveInteger('FRIEND_FEED_MAXIMUM_BYTES', 1024 * 1024),
+  friendFeedMaximumEntries: positiveInteger('FRIEND_FEED_MAXIMUM_ENTRIES', 100),
+  friendFeedMaximumDepth: positiveInteger('FRIEND_FEED_MAXIMUM_DEPTH', 32),
 };
 
 if (serverConfig.friendStatusTimeoutMilliseconds > 15000
   || serverConfig.friendStatusSlowMilliseconds >= serverConfig.friendStatusTimeoutMilliseconds
   || serverConfig.friendStatusConcurrency > 6 || serverConfig.friendStatusMaxRedirects > 5) {
   throw new Error('Invalid friend connectivity configuration');
+}
+
+if (serverConfig.friendFeedMaximumBytes > 4 * 1024 * 1024 || serverConfig.friendFeedMaximumEntries > 500
+  || serverConfig.friendFeedMaximumDepth > 64 || serverConfig.friendFeedCacheSeconds > 86400) {
+  throw new Error('Invalid friend feed configuration');
 }
 
 if (!/^\d{4}-\d{2}-\d{2}$/.test(serverConfig.siteLaunchedAt)

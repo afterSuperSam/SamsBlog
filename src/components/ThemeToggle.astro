@@ -1,5 +1,4 @@
 <button class="theme-toggle header-action" type="button" aria-label="切换深浅色主题" data-theme-toggle>
-  <span class="header-action__label" aria-hidden="true">切换模式</span>
   <svg class="theme-icon theme-icon--sun" width="19" height="19" viewBox="0 0 24 24" aria-hidden="true" fill="none">
     <circle cx="12" cy="12" r="3.6" stroke="currentColor" stroke-width="1.6" />
     <path d="M12 2v2.2M12 19.8V22M4.93 4.93l1.56 1.56M17.51 17.51l1.56 1.56M2 12h2.2M19.8 12H22M4.93 19.07l1.56-1.56M17.51 6.49l1.56-1.56" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
@@ -8,3 +7,53 @@
     <path d="M20.4 14.3A8.5 8.5 0 0 1 9.7 3.6 8.5 8.5 0 1 0 20.4 14.3Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" />
   </svg>
 </button>
+
+<script>
+  import { animateMotion, motionDisabled } from '../lib/motion';
+  import { siteConfig } from '../config/site';
+  const root = document.documentElement;
+  const toggle = document.querySelector<HTMLButtonElement>('[data-theme-toggle]');
+  let changing = false;
+  const updateLabel = () => toggle?.setAttribute('aria-label', `切换到${root.dataset.theme === 'dark' ? '浅色' : '深色'}主题`);
+  updateLabel();
+  toggle?.addEventListener('click', async () => {
+    if (changing) return;
+    const next = root.dataset.theme === 'dark' ? 'light' : 'dark';
+    const applyTheme = () => {
+      root.dataset.theme = next;
+      try { localStorage.setItem('samsblog-theme', next); }
+      catch (error) { console.warn('Theme preference unavailable', error); }
+      document.querySelector('meta[data-theme-color]')?.setAttribute('content', next === 'dark' ? '#202123' : '#f4fbfc');
+      updateLabel();
+    };
+    if (!document.startViewTransition || motionDisabled()) { applyTheme(); return; }
+    changing = true;
+    toggle.setAttribute('aria-busy', 'true');
+    root.dataset.themeTransition = '';
+    const bounds = toggle.getBoundingClientRect();
+    const x = bounds.left + bounds.width / 2;
+    const y = bounds.top + bounds.height / 2;
+    const radius = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
+    let transition: ViewTransition | undefined;
+    try {
+      transition = document.startViewTransition(applyTheme);
+      await transition.ready;
+      const easing = getComputedStyle(root).getPropertyValue('--ease-out').trim();
+      const animation = animateMotion(root, [
+        { clipPath: `circle(0px at ${x}px ${y}px)` },
+        { clipPath: `circle(${radius}px at ${x}px ${y}px)` },
+      ], { duration: siteConfig.interactions.themeRevealMilliseconds, easing, pseudoElement: '::view-transition-new(root)' });
+      if (animation) await animation.finished.catch(() => undefined);
+      else transition.skipTransition();
+      await transition.finished;
+    } catch (error) {
+      transition?.skipTransition();
+      applyTheme();
+      if (!(error instanceof DOMException) || !['AbortError', 'InvalidStateError'].includes(error.name)) console.warn('Theme transition unavailable', error);
+    } finally {
+      delete root.dataset.themeTransition;
+      toggle.removeAttribute('aria-busy');
+      changing = false;
+    }
+  });
+</script>

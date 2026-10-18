@@ -4,6 +4,7 @@ import AdminArticles from '../components/AdminArticles.astro';
 import { readAdminSession } from '../lib/admin-auth';
 import { listAllMessages, type MessageStatus } from '../lib/db';
 import { listFriends } from '../lib/friends';
+import AdminProjects from '../components/AdminProjects.astro';
 import '../styles/guestbook.css';
 import '../styles/admin.css';
 import '../styles/admin-friends.css';
@@ -24,7 +25,12 @@ const statusCounts = Object.fromEntries(statuses.map((status) => [status, rootMe
 const dateFormatter = new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
 ---
 
-<BaseLayout title="内容后台" description="SamsBlog 文章、友链与留言管理。" bodyClass="admin-page">
+<BaseLayout title="内容后台" description="SamsBlog 文章、友链与留言管理。" bodyClass="admin-page" quickNavigation={authenticated ? [
+  { href: '#articles', label: '文章' },
+  { href: '#messages', label: '留言' },
+  { href: '#friends', label: '友链' },
+  { href: '#projects', label: '项目' },
+] : []}>
   <section class="admin-shell shell">
     {authenticated ? (
       <>
@@ -50,7 +56,6 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: 
         <nav class="admin-tabs" aria-label="后台分区">
           <a href="#messages"><b>{rootMessages.length}</b><span>留言</span></a>
           <a href="#friends"><b>{friends.length}</b><span>友链</span></a>
-          <a href="#articles"><span aria-hidden="true">✎</span><span>文章</span></a>
         </nav>
 
         <AdminArticles />
@@ -106,6 +111,7 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: 
             <label><span>简介</span><textarea name="description" rows="2" minlength="1" maxlength="240" placeholder="一句话介绍这个站点" required></textarea></label>
             <label><span>图标网址</span><textarea name="iconUrl" rows="2" inputmode="url" autocapitalize="off" spellcheck="false" placeholder="https://example.com/favicon.ico" required></textarea></label>
             <label><span>背景图片网址 · 可选</span><textarea name="backgroundUrl" rows="2" inputmode="url" autocapitalize="off" spellcheck="false" placeholder="留空时使用头像虚化背景"></textarea></label>
+            <label><span>RSS 地址 · 可选</span><textarea name="rssUrl" rows="2" inputmode="url" autocapitalize="off" spellcheck="false" placeholder="https://example.com/rss.xml"></textarea></label>
             <button class="admin-create" type="submit">＋ 导入友链</button>
             <small class="form-status" role="status" aria-live="polite" data-admin-feedback>图标和背景仅保存网址；背景留空时使用头像虚化效果。</small>
           </form>
@@ -119,6 +125,7 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: 
                   <label><span>简介</span><textarea name="description" rows="2" minlength="1" maxlength="240" aria-label="友链简介" required>{friend.description}</textarea></label>
                   <label><span>图标网址</span><textarea name="iconUrl" rows="2" inputmode="url" autocapitalize="off" spellcheck="false" aria-label="友链图标网址" required>{friend.iconUrl}</textarea></label>
                   <label><span>背景图片网址 · 可选</span><textarea name="backgroundUrl" rows="2" inputmode="url" autocapitalize="off" spellcheck="false" aria-label="友链背景图片网址" placeholder="留空时使用头像虚化背景">{friend.backgroundUrl}</textarea></label>
+                  <label><span>RSS 地址 · 可选</span><textarea name="rssUrl" rows="2" inputmode="url" autocapitalize="off" spellcheck="false" aria-label="友链 RSS 地址" placeholder="留空时不显示 RSS 入口">{friend.rssUrl}</textarea></label>
                 </div>
                 <label class="admin-friend-card__visible"><input name="visible" type="checkbox" checked={friend.visible} />公开</label>
                 <footer><button type="submit">保存</button><button type="button" data-delete-friend>删除</button></footer>
@@ -128,6 +135,7 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: 
           </div>
         </section>
 
+        <AdminProjects />
       </>
     ) : (
       <div class="admin-login-scene">
@@ -165,6 +173,7 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: 
 
 <script>
   import { confirmAdminAction } from '../lib/admin-dialog';
+  import { animateContentHeight } from '../lib/motion';
   // 后台写入统一呈现失败，并防止同一区域重复提交。
   async function sendAdminRequest(url: string, method: string, payload?: unknown) {
     const response = await fetch(url, {
@@ -184,15 +193,13 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: 
     const buttons = [...container.querySelectorAll<HTMLButtonElement>('button')].filter((button) => !button.disabled);
     container.setAttribute('aria-busy', 'true');
     buttons.forEach((button) => { button.disabled = true; });
-    if (status) { status.textContent = '正在处理…'; status.dataset.state = 'loading'; }
+    const feedback = (message: string, state: string) => { if (status) animateContentHeight(status, () => { status.textContent = message; status.dataset.state = state; }); };
+    feedback('正在处理…', 'loading');
     try {
       const message = await action();
-      if (status) { status.textContent = message || '操作成功。'; status.dataset.state = 'success'; }
+      feedback(message || '操作成功。', 'success');
     } catch (error) {
-      if (status) {
-        status.textContent = error instanceof TypeError ? '网络连接失败，请检查连接后重试。' : error instanceof Error ? error.message : '操作失败，请稍后重试。';
-        status.dataset.state = 'error';
-      }
+      feedback(error instanceof TypeError ? '网络连接失败，请检查连接后重试。' : error instanceof Error ? error.message : '操作失败，请稍后重试。', 'error');
       console.warn('Admin action failed', error);
     } finally {
       container.removeAttribute('aria-busy');
@@ -286,6 +293,7 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: 
       description: data.get('description'),
       iconUrl: data.get('iconUrl'),
       backgroundUrl: data.get('backgroundUrl'),
+      rssUrl: data.get('rssUrl'),
       visible: id ? data.get('visible') === 'on' : true,
     };
   };

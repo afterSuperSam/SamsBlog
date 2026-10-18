@@ -1,26 +1,67 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import NotFound from '../404.astro';
-import { getArticle } from '../../lib/articles';
-import { articleExcerpt, renderMarkdown } from '../../lib/markdown';
+import { getArticle, listArticles } from '../../lib/articles';
+import { articleExcerpt, renderArticleMarkdown } from '../../lib/markdown';
+import { siteConfig } from '../../config/site';
 import '../../styles/articles.css';
 
 const identifier = Number(Astro.params.id);
 const article = Number.isSafeInteger(identifier) && identifier > 0 ? getArticle(identifier) : undefined;
 if (!article) Astro.response.status = 404;
+const rendered = article ? renderArticleMarkdown(article.content) : { html: '', headings: [] };
+const articles = article ? listArticles() : [];
+const articleIndex = articles.findIndex((item) => item.id === article?.id);
+const previous = articles[articleIndex + 1];
+const next = articleIndex > 0 ? articles[articleIndex - 1] : undefined;
+const author = article?.source === 'repost' ? article.originalAuthor : siteConfig.name;
+const articleMetadata = article ? {
+  publishedTime: article.createdAt, modifiedTime: article.updatedAt, author: author || '',
+  structuredData: {
+    '@context': 'https://schema.org', '@type': 'BlogPosting', headline: article.title,
+    description: articleExcerpt(article.content), datePublished: article.createdAt, dateModified: article.updatedAt,
+    mainEntityOfPage: new URL(`/articles/${article.id}`, siteConfig.siteUrl).href,
+    ...(article.coverUrl ? { image: article.coverUrl } : {}),
+    ...(author ? { author: { '@type': article.source === 'repost' ? 'Person' : 'Organization', name: author } } : {}),
+    publisher: { '@type': 'Organization', name: siteConfig.name },
+    ...(article.originalUrl ? { isBasedOn: article.originalUrl } : {}),
+  },
+} : undefined;
 const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 ---
 
-{article ? <BaseLayout title={article.title} description={articleExcerpt(article.content)} image={article.coverUrl || undefined} bodyClass="article-page">
-  <article class="article-reading shell">
+{article ? <BaseLayout title={article.title} description={articleExcerpt(article.content)} image={article.coverUrl || undefined} articleMetadata={articleMetadata} bodyClass="article-page">
+  <article class="article-reading shell" data-article-reading data-article-id={article.id} data-article-version={article.updatedAt}>
     <a class="articles-more article-reading__back" href="/about#articles"><span aria-hidden="true">←</span> 回到文章</a>
     <header class="article-reading__heading" data-reveal>
       <div class="article-tags"><span>{article.source === 'original' ? '原创' : '搬运'}</span><span>{article.category === 'discussion' ? '杂谈' : '日志'}</span></div>
       <h1>{article.title}</h1>
       <div class="article-reading__dates"><span>写于 <time datetime={article.createdAt}>{dateLabel(article.createdAt)}</time></span><span>编辑于 <time datetime={article.updatedAt}>{dateLabel(article.updatedAt)}</time></span></div>
+      {article.source === 'repost' && (article.originalAuthor || article.originalUrl) && <p class="article-reading__source">{article.originalAuthor && <span>原作者：{article.originalAuthor}</span>}{article.originalUrl && <a href={article.originalUrl} target="_blank" rel="noopener noreferrer">阅读原文 ↗</a>}</p>}
     </header>
-    {article.coverUrl && <img class="article-reading__cover" src={article.coverUrl} alt="文章首图" referrerpolicy="no-referrer" />}
-    <div class="article-prose" set:html={renderMarkdown(article.content)}></div>
-    <footer class="article-reading__footer"><span aria-hidden="true">✧</span><a class="articles-more" href="/about#articles">继续翻阅 <span aria-hidden="true">↗</span></a></footer>
+    {article.coverUrl && <img class="article-reading__cover" data-article-cover={article.id} src={article.coverUrl} alt="文章首图" referrerpolicy="no-referrer" />}
+    <div class="article-reading__tools" data-reading-tools hidden>
+      <button type="button" data-reading-mode aria-pressed="false">舒适阅读</button>
+      <button type="button" data-reading-resume hidden>回到上次读到的位置</button>
+      <span class="article-reading__status" role="status" data-reading-status></span>
+    </div>
+    {rendered.headings.length > 0 && <details class="article-toc">
+      <summary>文章目录 <span>{rendered.headings.length} 节</span></summary>
+      <nav aria-label="文章目录"><ol>{rendered.headings.map((heading) => <li data-level={heading.level}><a href={`#${heading.id}`}>{heading.text}</a></li>)}</ol></nav>
+    </details>}
+    <div class="article-prose" data-article-prose set:html={rendered.html}></div>
+    {(previous || next) && <nav class="article-reading__footer" aria-label="相邻文章">
+      {previous ? <a href={`/articles/${previous.id}`} rel="prev"><span>上一篇</span><strong>{previous.title}</strong></a> : <span />}
+      {next && <a href={`/articles/${next.id}`} rel="next"><span>下一篇</span><strong>{next.title}</strong></a>}
+    </nav>}
   </article>
+  <dialog class="article-image-dialog" data-article-image-dialog aria-label="正文图片查看器">
+    <div class="article-image-dialog__toolbar"><button type="button" data-image-zoom aria-pressed="false">放大图片</button><button type="button" data-image-close autofocus aria-label="关闭图片查看器">关闭 ×</button></div>
+    <div class="article-image-dialog__viewport" data-image-viewport tabindex="0"><img data-image-full alt="" /></div>
+    <p data-image-caption></p>
+  </dialog>
 </BaseLayout> : <NotFound />}
+
+<script>
+  import '../../lib/article-reading';
+</script>

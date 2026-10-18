@@ -21,6 +21,8 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
       <ThemeSelect name="source" label="来源" options={[{value:'original',label:'原创'},{value:'repost',label:'搬运'}]} />
       <ThemeSelect name="category" label="分类" options={[{value:'discussion',label:'杂谈'},{value:'journal',label:'日志'}]} />
       <label class="article-editor__cover"><span>首图链接 · 可选</span><input name="coverUrl" type="url" inputmode="url" autocomplete="off" placeholder="https://…" /></label>
+      <label data-repost-field hidden><span>原作者 · 可选</span><input name="originalAuthor" maxlength={serverConfig.articleTitleMaxLength} autocomplete="off" /></label>
+      <label class="article-editor__cover" data-repost-field hidden><span>原文链接 · 可选</span><input name="originalUrl" type="url" inputmode="url" autocomplete="off" placeholder="https://…" /></label>
     </div>
     <div class="article-editor__workspace">
       <div class="article-editor__writing">
@@ -67,6 +69,7 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
   import { renderMarkdown } from '../lib/markdown';
   import type { ArticleRecord } from '../lib/articles';
   import { confirmAdminAction } from '../lib/admin-dialog';
+  import { animateContentHeight } from '../lib/motion';
 
   // 编辑器与阅读页共用安全渲染，后台只维护当前一篇文章。
   const root = document.querySelector<HTMLElement>('[data-admin-articles]');
@@ -75,6 +78,8 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
     const title = editor.elements.namedItem('title') as HTMLInputElement;
     const content = editor.elements.namedItem('content') as HTMLTextAreaElement;
     const cover = editor.elements.namedItem('coverUrl') as HTMLInputElement;
+    const originalAuthor = editor.elements.namedItem('originalAuthor') as HTMLInputElement;
+    const originalUrl = editor.elements.namedItem('originalUrl') as HTMLInputElement;
     const id = editor.elements.namedItem('id') as HTMLInputElement;
     const source = editor.elements.namedItem('source') as HTMLSelectElement;
     const category = editor.elements.namedItem('category') as HTMLSelectElement;
@@ -87,6 +92,7 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
     const listFeedback = root.querySelector<HTMLElement>('[data-article-list-feedback]')!;
     let dirty = false;
     const updatePreview = () => {
+      editor.querySelectorAll<HTMLElement>('[data-repost-field]').forEach((field) => { field.hidden = source.value !== 'repost'; });
       previewTitle.textContent = title.value;
       previewTitle.hidden = !title.value;
       preview.innerHTML = content.value.trim() ? renderMarkdown(content.value) : '<p class="article-editor__empty">写下正文后，预览会出现在这里。</p>';
@@ -110,7 +116,7 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
       id.value = '';
       heading.textContent = '写一篇文章';
       dates.textContent = '保存后记录创建与编辑时间';
-      feedback.textContent = '';
+      animateContentHeight(feedback, () => { feedback.textContent = ''; });
       dirty = false;
       updatePreview();
       title.focus();
@@ -122,13 +128,15 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
       title.value = article.title;
       content.value = article.content;
       cover.value = article.coverUrl;
+      originalAuthor.value = article.originalAuthor;
+      originalUrl.value = article.originalUrl;
       source.value = article.source;
       category.value = article.category;
       source.dispatchEvent(new Event('change', { bubbles:true }));
       category.dispatchEvent(new Event('change', { bubbles:true }));
       heading.textContent = '编辑文章';
       dates.textContent = `创建 ${new Date(article.createdAt).toLocaleString('zh-CN')} · 编辑 ${new Date(article.updatedAt).toLocaleString('zh-CN')}`;
-      feedback.textContent = '';
+      animateContentHeight(feedback, () => { feedback.textContent = ''; });
       dirty = false;
       updatePreview();
       title.focus();
@@ -157,16 +165,20 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
       if (root.getAttribute('aria-busy') === 'true') return;
       root.setAttribute('aria-busy', 'true');
       button.disabled = true;
-      status.textContent = '正在保存…';
-      status.dataset.state = 'loading';
+      animateContentHeight(status, () => {
+        status.textContent = '正在保存…';
+        status.dataset.state = 'loading';
+      });
       try {
         await action();
         dirty = false;
         window.location.hash = 'articles';
         window.location.reload();
       } catch (error) {
-        status.textContent = error instanceof TypeError ? '网络连接失败，请检查连接后重试。' : error instanceof Error ? error.message : '文章操作失败。';
-        status.dataset.state = 'error';
+        animateContentHeight(status, () => {
+          status.textContent = error instanceof TypeError ? '网络连接失败，请检查连接后重试。' : error instanceof Error ? error.message : '文章操作失败。';
+          status.dataset.state = 'error';
+        });
       } finally {
         button.disabled = false;
         root.removeAttribute('aria-busy');
@@ -176,13 +188,15 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
       event.preventDefault();
       const invalid = !title.value.trim() ? title : !content.value.trim() ? content : undefined;
       if (invalid) {
-        feedback.textContent = invalid === title ? '请填写文章题目。' : '请填写文章正文。';
-        feedback.dataset.state = 'error';
+        animateContentHeight(feedback, () => {
+          feedback.textContent = invalid === title ? '请填写文章题目。' : '请填写文章正文。';
+          feedback.dataset.state = 'error';
+        });
         invalid.focus();
         return;
       }
       const button = editor.querySelector<HTMLButtonElement>('[type="submit"]')!;
-      const payload = { title: title.value, coverUrl: cover.value, source: source.value, category: category.value, content: content.value, ...(id.value ? { id: Number(id.value) } : {}) };
+      const payload = { title: title.value, coverUrl: cover.value, originalAuthor: originalAuthor.value, originalUrl: originalUrl.value, source: source.value, category: category.value, content: content.value, ...(id.value ? { id: Number(id.value) } : {}) };
       void perform(button, feedback, () => request(id.value ? 'PATCH' : 'POST', payload));
     });
     root.querySelectorAll<HTMLButtonElement>('[data-remove-article],[data-restore-article]').forEach((button) => button.addEventListener('click', async () => {

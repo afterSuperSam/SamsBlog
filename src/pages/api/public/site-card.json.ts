@@ -1,5 +1,6 @@
 import type { APIRoute } from 'astro';
 import { siteConfig } from '../../../config/site';
+import { getArticleUpdates } from '../../../lib/articles';
 
 export const GET: APIRoute = async ({ request }) => {
   const origin = request.headers.get('origin');
@@ -9,13 +10,14 @@ export const GET: APIRoute = async ({ request }) => {
     'Vary': 'Origin',
   });
   if (origin === 'https://yingwutown.top') headers.set('Access-Control-Allow-Origin', origin);
+  const latest = getArticleUpdates(siteConfig.articles.cardCount);
   return new Response(JSON.stringify({
     name: siteConfig.name,
     url: siteConfig.siteUrl,
     description: siteConfig.description,
     icon: new URL('/media/brand/logo.jpg', siteConfig.siteUrl).toString(),
     status: 'online',
-    latest: [],
-    updatedAt: new Date().toISOString(),
+    latest,
+    updatedAt: latest.reduce<string | null>((latestDate, article) => !latestDate || article.updatedAt > latestDate ? article.updatedAt : latestDate, null),
   }), { headers });
 };

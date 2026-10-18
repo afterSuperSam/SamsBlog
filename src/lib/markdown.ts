@@ -46,7 +46,7 @@ function parseDestination(value: string): { address: string; title: string } | n
 }
 
 // 行内格式在输出时统一转义，不执行 Markdown 中的 HTML。
-function inlineMarkdown(text: string, depth = 0, allowLinks = true): string {
+function inlineMarkdown(text: string, baseUrl?: string, depth = 0, allowLinks = true): string {
   if (depth > 10) return escapeHtml(text);
   let result = '';
   let plain = '';
@@ -75,10 +75,11 @@ function inlineMarkdown(text: string, depth = 0, allowLinks = true): string {
         const address = destination && safeDestination(destination.address, isImage);
         if (address && destination) {
           flush();
+          const resolvedAddress = baseUrl ? new URL(address, baseUrl).href : address;
           const label = text.slice(start + 1, labelEnd);
           const title = destination.title ? ` title="${escapeHtml(destination.title)}"` : '';
-          if (isImage) result += `<img src="${escapeHtml(address)}" alt="${escapeHtml(label)}"${title} loading="lazy" decoding="async">`;
-          else result += `<a href="${escapeHtml(address)}"${title}${/^https?:/i.test(address) ? ' target="_blank" rel="noopener noreferrer"' : ''}>${inlineMarkdown(label, depth + 1, false)}</a>`;
+          if (isImage) result += `<img src="${escapeHtml(resolvedAddress)}" alt="${escapeHtml(label)}"${title} loading="lazy" decoding="async">`;
+          else result += `<a href="${escapeHtml(resolvedAddress)}"${title}${/^https?:/i.test(address) ? ' target="_blank" rel="noopener noreferrer"' : ''}>${inlineMarkdown(label, baseUrl, depth + 1, false)}</a>`;
           index = destinationEnd + 1; continue;
         }
       }
@@ -89,7 +90,7 @@ function inlineMarkdown(text: string, depth = 0, allowLinks = true): string {
       if (end > index + delimiter.length && !/^\s|\s$/.test(text.slice(index + delimiter.length, end))) {
         flush();
         const tag = delimiter === '~~' ? 'del' : delimiter.length === 2 ? 'strong' : 'em';
-        result += `<${tag}>${inlineMarkdown(text.slice(index + delimiter.length, end), depth + 1, allowLinks)}</${tag}>`;
+        result += `<${tag}>${inlineMarkdown(text.slice(index + delimiter.length, end), baseUrl, depth + 1, allowLinks)}</${tag}>`;
         index = end + delimiter.length; continue;
       }
     }
@@ -110,7 +111,7 @@ function startsBlock(line: string): boolean {
 }
 
 // 保持单一的浏览器和服务端渲染入口，代码围栏、引用和列表均不接受原始 HTML。
-function renderBlocks(markdown: string, depth = 0): string {
+function renderBlocks(markdown: string, baseUrl?: string, depth = 0): string {
   if (depth > 16) return `<p>${escapeHtml(markdown)}</p>`;
   const lines = markdown.replace(/\r\n?/g, '\n').replace(/\u0000/g, '').split('\n');
   const result: string[] = [];
@@ -122,17 +123,18 @@ function renderBlocks(markdown: string, depth = 0): string {
       const body: string[] = [];
       index += 1;
       while (index < lines.length && !new RegExp(`^ {0,3}${fence[1][0]}{${fence[1].length},}\\s*$`).test(lines[index])) body.push(lines[index++]);
+      const code = body.join('\n') + (body.length && index < lines.length ? '\n' : '');
       index += 1;
-      result.push(`<pre><code${fence[2] ? ` class="language-${escapeHtml(fence[2])}"` : ''}>${escapeHtml(body.join('\n'))}</code></pre>`);
+      result.push(`<pre><code${fence[2] ? ` class="language-${escapeHtml(fence[2])}"` : ''}>${escapeHtml(code)}</code></pre>`);
       continue;
     }
     const heading = line.match(headingMarker);
-    if (heading) { result.push(`<h${heading[1].length}>${inlineMarkdown(heading[2])}</h${heading[1].length}>`); index += 1; continue; }
+    if (heading) { result.push(`<h${heading[1].length}>${inlineMarkdown(heading[2], baseUrl)}</h${heading[1].length}>`); index += 1; continue; }
     if (ruleMarker.test(line)) { result.push('<hr>'); index += 1; continue; }
     if (quoteMarker.test(line)) {
       const body: string[] = [];
       while (index < lines.length && quoteMarker.test(lines[index])) body.push(lines[index++].replace(quoteMarker, ''));
-      result.push(`<blockquote>${renderBlocks(body.join('\n'), depth + 1)}</blockquote>`);
+      result.push(`<blockquote>${renderBlocks(body.join('\n'), baseUrl, depth + 1)}</blockquote>`);
       continue;
     }
     const list = line.match(listMarker);
@@ -156,7 +158,7 @@ function renderBlocks(markdown: string, depth = 0): string {
           if (lines[index].length - lines[index].trimStart().length < contentIndentation) break;
           body.push(lines[index++].slice(contentIndentation));
         }
-        let content = renderBlocks(body.join('\n'), depth + 1);
+        let content = renderBlocks(body.join('\n'), baseUrl, depth + 1);
         if (content.startsWith('<p>') && content.indexOf('</p>') === content.length - 4) content = content.slice(3, -4);
         items.push(`<li>${content}</li>`);
       }
@@ -167,13 +169,34 @@ function renderBlocks(markdown: string, depth = 0): string {
     const body = [line];
     index += 1;
     while (index < lines.length && !startsBlock(lines[index])) body.push(lines[index++]);
-    result.push(`<p>${inlineMarkdown(body.join('\n')).replace(/ {2,}\n/g, '<br>')}</p>`);
+    result.push(`<p>${inlineMarkdown(body.join('\n'), baseUrl).replace(/ {2,}\n/g, '<br>')}</p>`);
   }
   return result.join('\n');
 }
 
-export function renderMarkdown(markdown: string): string {
-  return renderBlocks(markdown);
+export function renderMarkdown(markdown: string, baseUrl?: string): string {
+  return renderBlocks(markdown, baseUrl);
+}
+
+export interface ArticleHeading { id: string; level: number; text: string }
+
+// 阅读目录只处理已安全渲染的标题，重复标题和自然后缀均保持唯一。
+export function renderArticleMarkdown(markdown: string) {
+  const headings: ArticleHeading[] = [];
+  const identifiers = new Set<string>();
+  const html = renderMarkdown(markdown).replace(/<h([1-6])>(.*?)<\/h\1>/g, (_, level: string, content: string) => {
+    const text = content.replace(/<img\b[^>]*\balt="([^"]*)"[^>]*>/g, '$1').replace(/<[^>]*>/g, '')
+      .replace(/&(amp|lt|gt|quot|#39);/g, (_, entity: string) => ({ amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'" })[entity]!);
+    const slug = text.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}_-]+/gu, '-').replace(/^-+|-+$/g, '') || 'section';
+    const base = `article-heading-${slug}`;
+    let id = base;
+    let suffix = 2;
+    while (identifiers.has(id)) id = `${base}-${suffix++}`;
+    identifiers.add(id);
+    headings.push({ id, level: Number(level), text });
+    return `<h${level} id="${escapeHtml(id)}" tabindex="-1">${content}</h${level}>`;
+  });
+  return { html, headings };
 }
 
 export function articleExcerpt(markdown: string): string {

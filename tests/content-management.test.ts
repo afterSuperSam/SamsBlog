@@ -80,6 +80,23 @@ describe('SQLite content management', () => {
     expect(parseFriendInput({ ...input, backgroundUrl: undefined }).backgroundUrl).toBe('');
   });
 
+  it('migrates optional friend RSS addresses and supports create, edit and clearing', () => {
+    const existing = listFriends().find((friend) => friend.url === 'https://yingwutown.top/')!;
+    expect(existing.rssUrl).toBe('');
+    expect(getDatabase().prepare("SELECT id FROM schema_migrations WHERE id = '20261018-friend-rss-v1'").get()).toBeTruthy();
+    const input = parseFriendInput({ name: '订阅友链', url: 'https://rss.example.com', description: '可订阅的友链', iconUrl: 'https://rss.example.com/icon.png', rssUrl: ' https://rss.example.com/feed.xml?a=1&b=2#ignored ' });
+    const id = Number(saveFriend(input));
+    expect(listFriends().find((friend) => friend.id === id)?.rssUrl).toBe('https://rss.example.com/feed.xml?a=1&b=2');
+    expect(saveFriend(parseFriendInput({ ...input, id, rssUrl: 'http://rss.example.com/atom.xml' }))).toBe(true);
+    expect(listFriends().find((friend) => friend.id === id)?.rssUrl).toBe('http://rss.example.com/atom.xml');
+    expect(saveFriend(parseFriendInput({ ...input, id, rssUrl: '  ' }))).toBe(true);
+    expect(listFriends().find((friend) => friend.id === id)?.rssUrl).toBe('');
+    expect(parseFriendInput({ ...input, rssUrl: undefined }).rssUrl).toBe('');
+    for (const rssUrl of [123, null, '/rss.xml', 'javascript:alert(1)', 'ftp://example.com/rss.xml', 'https://user:secret@example.com/rss.xml']) {
+      expect(() => parseFriendInput({ ...input, rssUrl })).toThrow();
+    }
+  });
+
   it('parses real consecutive GitHub dates and rejects incomplete responses', () => {
     const cells = Array.from({ length: 365 }, (_, index) => {
       const date = new Date(Date.UTC(2025, 0, index + 1)).toISOString().slice(0, 10);

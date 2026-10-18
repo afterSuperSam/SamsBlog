@@ -1,0 +1,165 @@
+---
+import { siteConfig } from '../config/site';
+import { getProjectSettings, projectStatusLabels } from '../lib/projects';
+
+const settings = getProjectSettings();
+---
+
+<section class="admin-panel" id="projects">
+  <header class="admin-panel__heading"><div><span>PROJECTS</span><h2>项目</h2></div><p>按顺序展示可见项目，首页先显示前 {siteConfig.projectPresentation.initialVisibleCount} 个。</p></header>
+  <form class="admin-projects" data-admin-projects novalidate>
+    <label><span>最近在做</span><input name="currentWork" value={settings.currentWork} maxlength={siteConfig.currentWork.maximumLength} required aria-describedby="project-settings-status" /></label>
+    <div class="project-editor-list" data-project-items>
+      {[...settings.projects, null].map((project) => {
+        const Wrapper = project ? 'div' : 'template';
+        return <Wrapper data-project-item={project ? '' : undefined} data-project-template={!project ? '' : undefined}>
+          <fieldset data-project-entry data-project-id={project?.id}>
+            <legend data-project-heading>{project?.name || '新项目'}</legend>
+            <div class="admin-project-fields">
+              <label><span>名称</span><input data-project-field="name" value={project?.name || ''} maxlength={siteConfig.projectFields.nameMaximumLength} required aria-describedby="project-settings-status" /></label>
+              <label><span>跳转地址</span><input data-project-field="url" type="url" value={project?.url || ''} maxlength={siteConfig.projectFields.urlMaximumLength} placeholder="https://…" required aria-describedby="project-settings-status" /></label>
+              <label><span>简介</span><textarea data-project-field="description" rows="2" maxlength={siteConfig.projectFields.descriptionMaximumLength} required aria-describedby="project-settings-status">{project?.description || ''}</textarea></label>
+              <label><span>划线关键词 · 可选，填写简介中的词</span><input data-project-field="keyword" value={project?.keyword || ''} maxlength={siteConfig.projectFields.keywordMaximumLength} aria-describedby="project-settings-status" /></label>
+              <label><span>GitHub 仓库 · 可选，用于提交日期</span><input data-project-field="repository" value={project?.repository || ''} maxlength={siteConfig.projectFields.repositoryMaximumLength} placeholder="owner/repo" aria-describedby="project-settings-status" /></label>
+            </div>
+            <div class="project-status-options" role="group" aria-label="项目状态">{Object.entries(projectStatusLabels).map(([value, label]) => <label class="project-status-option"><input data-project-field="status" type="radio" name={`project-status-${project?.id || 'new'}`} value={value} checked={(project?.status || 'active') === value} /><span>{label}</span></label>)}</div>
+            <div class="project-editor-actions">
+              <label class="project-visibility"><input type="checkbox" data-project-field="visible" checked={project?.visible ?? true} /><span>在首页展示</span></label>
+              <button type="button" data-project-move="up">上移</button><button type="button" data-project-move="down">下移</button>
+              {!project && <button type="button" data-project-discard>取消新增</button>}
+            </div>
+          </fieldset>
+        </Wrapper>;
+      })}
+    </div>
+    <div class="project-editor-footer"><button type="button" data-project-add>＋ 新增项目</button><button class="admin-create" type="submit">保存项目设置</button></div>
+    <p class="form-status" id="project-settings-status" role="status" aria-live="polite" data-project-feedback></p>
+  </form>
+</section>
+
+<script>
+  import type { ProjectRecord } from '../lib/projects';
+  import { animateContentHeight } from '../lib/motion';
+
+  // 列表顺序即展示顺序；保存后回填稳定编号，避免重复新增。
+  const form = document.querySelector<HTMLFormElement>('[data-admin-projects]');
+  if (form) {
+    const items = form.querySelector<HTMLElement>('[data-project-items]')!;
+    const template = form.querySelector<HTMLTemplateElement>('[data-project-template]')!;
+    const feedback = form.querySelector<HTMLElement>('[data-project-feedback]')!;
+    const showFeedback = (message: string, state = '') => animateContentHeight(feedback, () => { feedback.textContent = message; feedback.dataset.state = state; });
+    const entries = () => [...items.querySelectorAll<HTMLFieldSetElement>('[data-project-entry]')];
+    let draftSequence = 0;
+    const updateOrder = () => {
+      const fields = entries();
+      fields.forEach((field, index) => {
+        field.querySelector<HTMLButtonElement>('[data-project-move="up"]')!.disabled = index === 0;
+        field.querySelector<HTMLButtonElement>('[data-project-move="down"]')!.disabled = index === fields.length - 1;
+        const heading = field.querySelector<HTMLElement>('[data-project-heading]')!;
+        const name = field.querySelector<HTMLInputElement>('[data-project-field="name"]')!.value.trim() || '新项目';
+        heading.textContent = `${String(index + 1).padStart(2, '0')} · ${name}`;
+        field.querySelector<HTMLButtonElement>('[data-project-move="up"]')!.setAttribute('aria-label', `上移${name}`);
+        field.querySelector<HTMLButtonElement>('[data-project-move="down"]')!.setAttribute('aria-label', `下移${name}`);
+      });
+    };
+    form.addEventListener('input', updateOrder);
+    form.addEventListener('click', (event) => {
+      const button = (event.target as HTMLElement).closest<HTMLButtonElement>('button');
+      if (!button || form.getAttribute('aria-busy') === 'true') return;
+      if (button.hasAttribute('data-project-add')) {
+        const wrapper = document.createElement('div');
+        wrapper.dataset.projectItem = '';
+        wrapper.append(template.content.cloneNode(true));
+        wrapper.querySelectorAll<HTMLInputElement>('[data-project-field="status"]').forEach((radio) => { radio.name = `project-draft-${draftSequence}`; });
+        draftSequence += 1;
+        items.insertBefore(wrapper, template);
+        updateOrder();
+        wrapper.querySelector<HTMLInputElement>('input')?.focus();
+        showFeedback('新项目已加入草稿，填写后保存。');
+        return;
+      }
+      const field = button.closest<HTMLFieldSetElement>('[data-project-entry]');
+      const wrapper = field?.closest<HTMLElement>('[data-project-item]');
+      if (!field || !wrapper) return;
+      if (button.hasAttribute('data-project-discard')) {
+        wrapper.remove();
+        updateOrder();
+        form.querySelector<HTMLButtonElement>('[data-project-add]')?.focus();
+        return;
+      }
+      const direction = button.dataset.projectMove;
+      const fields = entries();
+      const index = fields.indexOf(field);
+      if (direction === 'up' && index > 0) items.insertBefore(wrapper, fields[index - 1].closest('[data-project-item]'));
+      if (direction === 'down' && index < fields.length - 1) items.insertBefore(fields[index + 1].closest('[data-project-item]')!, wrapper);
+      updateOrder();
+      if (direction) {
+        showFeedback('项目顺序已调整，保存后生效。');
+        const focusTarget = button.disabled ? field.querySelector<HTMLButtonElement>(`[data-project-move="${direction === 'up' ? 'down' : 'up'}"]`) : button;
+        focusTarget?.focus();
+      }
+    });
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if (form.getAttribute('aria-busy') === 'true') return;
+      const fields = [...form.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input,textarea')];
+      fields.forEach((field) => field.removeAttribute('aria-invalid'));
+      const invalid = fields.find((field) => !field.validity.valid || field.required && !field.value.trim());
+      if (invalid) {
+        invalid.setAttribute('aria-invalid', 'true');
+        invalid.focus();
+        showFeedback(`请正确填写${invalid.closest('label')?.querySelector('span')?.textContent || '项目内容'}。`, 'error');
+        return;
+      }
+      const projectFields = entries();
+      const projects = projectFields.map((field) => {
+        const value = (name: string) => field.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[data-project-field="${name}"]`)!.value;
+        return { id: field.dataset.projectId ? Number(field.dataset.projectId) : undefined,
+          name: value('name'), url: value('url'), description: value('description'), keyword: value('keyword'), repository: value('repository'),
+          visible: field.querySelector<HTMLInputElement>('[data-project-field="visible"]')!.checked,
+          status: field.querySelector<HTMLInputElement>('[data-project-field="status"]:checked')!.value };
+      });
+      const payload = { currentWork: (form.elements.namedItem('currentWork') as HTMLInputElement).value, projects };
+      const controls = [...form.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLButtonElement>('input,textarea,button')].filter((control) => !control.disabled);
+      form.setAttribute('aria-busy', 'true');
+      controls.forEach((control) => { control.disabled = true; });
+      showFeedback('正在保存…', 'loading');
+      try {
+        const response = await fetch('/api/admin/projects.json', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        if (!response.headers.get('content-type')?.includes('application/json')) throw new Error('项目服务暂时不可用，请稍后重试。');
+        const result = await response.json() as { error?: string; projects: ProjectRecord[] };
+        if (!response.ok) throw new Error(result.error || '项目保存失败，请稍后重试。');
+        result.projects.forEach((project, index) => {
+          projectFields[index].dataset.projectId = String(project.id);
+          projectFields[index].querySelector('[data-project-discard]')?.remove();
+        });
+        showFeedback('项目设置已保存。', 'success');
+      } catch (error) {
+        showFeedback(error instanceof TypeError ? '网络连接失败，请检查连接后重试。' : error instanceof Error ? error.message : '项目保存失败。', 'error');
+        console.warn('Project settings save failed', error);
+      } finally {
+        form.removeAttribute('aria-busy');
+        controls.forEach((control) => { control.disabled = false; });
+        updateOrder();
+      }
+    });
+    updateOrder();
+  }
+</script>
+
+<style>
+  .project-editor-list{display:grid;gap:32px}
+  .project-editor-list [data-project-item]{padding-block:8px}
+  .project-editor-list fieldset{gap:18px}
+  .project-editor-list .admin-project-fields label{grid-column:auto}
+  .project-editor-list .admin-project-fields label:nth-child(3){grid-column:1/-1}
+  .project-editor-actions,.project-editor-footer{display:flex;flex-wrap:wrap;align-items:center;gap:12px;width:100%}
+  .project-editor-actions button,.project-editor-footer>button:first-child{padding:10px 18px;border:0;border-radius:12px;background:var(--surface);color:var(--text-soft);font:inherit;cursor:pointer;transition:background .4s var(--ease-out),color .4s var(--ease-out)}
+  .project-editor-actions button:hover,.project-editor-footer>button:first-child:hover{background:color-mix(in srgb,var(--summer-blue) 15%,var(--surface));color:var(--text)}
+  .project-editor-actions button:disabled{opacity:.4;cursor:default}
+  .project-visibility{display:inline-flex;align-items:center;gap:10px;margin-right:auto;cursor:pointer}
+  .project-visibility input{width:18px;height:18px;accent-color:var(--summer-blue)}
+  .project-editor-actions button:focus-visible,.project-editor-footer button:focus-visible{outline:2px solid var(--summer-blue);outline-offset:3px}
+  :global(:root.motion-paused) .project-editor-actions button,:global(:root.motion-paused) .project-editor-footer>button:first-child{transition:none}
+  @media(prefers-reduced-motion:reduce){.project-editor-actions button,.project-editor-footer>button:first-child{transition:none}}
+</style>

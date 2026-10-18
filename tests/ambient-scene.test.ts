@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { transpile } from 'typescript';
 import { describe, expect, it } from 'vitest';
+import { siteConfig } from '../src/config/site';
 
 const component = readFileSync(new URL('../src/components/AmbientScene.astro', import.meta.url), 'utf8');
 const script = component.match(/<script>([\s\S]*?)<\/script>/)?.[1];
@@ -16,15 +17,19 @@ describe('ambient particle positioning under strict CSP', () => {
         return { setProperty: (name: string, value: string) => this.properties.set(name, value) };
       },
     }));
+    const scene = { dataset: { constellationConfig: JSON.stringify(siteConfig.effects.constellation) }, style: { setProperty() {} } };
+    const layers = [0, 1].map(() => ({ style: {}, querySelectorAll: () => [] }));
     runInNewContext(transpile(script), {
       document: {
-        querySelector: () => null,
-        querySelectorAll: (selector: string) => selector === '.ambient-mote' ? particles : [],
-        documentElement: { classList: { toggle() {} } },
+        querySelector: (selector: string) => selector === '[data-ambient-scene]' ? scene : null,
+        querySelectorAll: (selector: string) => selector === '.ambient-mote' ? particles : selector === '[data-constellation]' ? layers : [],
+        documentElement: { classList: { toggle() {}, contains: () => true } },
         addEventListener() {},
         hidden: false,
       },
-      matchMedia: () => ({ matches: false, addEventListener() {} }),
+      window: { innerWidth: 1280, innerHeight: 720, scrollY: 0, addEventListener() {}, clearTimeout() {} },
+      getComputedStyle: () => ({ display: 'block' }),
+      matchMedia: () => ({ matches: true, addEventListener() {} }),
       localStorage: { getItem: () => null },
       console,
     });

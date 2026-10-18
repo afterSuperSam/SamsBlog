@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import fs from 'node:fs';
 import path from 'node:path';
 import { serverConfig } from '../config/server';
+import { siteConfig } from '../config/site';
 import { HttpError } from './http';
 
 export type MessageStatus = 'pending' | 'published' | 'hidden';
@@ -84,6 +85,25 @@ export function getDatabase() {
         `);
         connection.prepare('INSERT INTO schema_migrations (id, applied_at) VALUES (?, ?)').run('20261017-blog-articles-v1', new Date().toISOString());
       }
+      if (!appliedMigrations.has('20261018-project-settings')) {
+        connection.exec(`
+          CREATE TABLE project_statuses (
+            repository TEXT PRIMARY KEY,
+            status TEXT NOT NULL CHECK(status IN ('active', 'maintenance', 'archived'))
+          );
+          CREATE TABLE site_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+        `);
+        connection.prepare('INSERT INTO schema_migrations (id, applied_at) VALUES (?, ?)').run('20261018-project-settings', new Date().toISOString());
+      }
+      if (!appliedMigrations.has('20261018-project-details')) {
+        connection.exec(`
+          ALTER TABLE project_statuses RENAME TO project_settings;
+          ALTER TABLE project_settings ADD COLUMN name TEXT NOT NULL DEFAULT '';
+          ALTER TABLE project_settings ADD COLUMN description TEXT NOT NULL DEFAULT '';
+          ALTER TABLE project_settings ADD COLUMN url TEXT NOT NULL DEFAULT '';
+        `);
+        connection.prepare('INSERT INTO schema_migrations (id, applied_at) VALUES (?, ?)').run('20261018-project-details', new Date().toISOString());
+      }
       if (!appliedMigrations.has('friends-active-url-v1')) {
         const friendsSchema = connection.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'friends'").get() as { sql?: string } | undefined;
         if (friendsSchema?.sql?.includes('url TEXT NOT NULL UNIQUE')) {
@@ -123,6 +143,44 @@ export function getDatabase() {
           connection.exec("ALTER TABLE friends ADD COLUMN background_url TEXT NOT NULL DEFAULT ''");
         }
         connection.prepare('INSERT INTO schema_migrations (id, applied_at) VALUES (?, ?)').run('20261015-friend-background-v1', new Date().toISOString());
+      }
+      if (!appliedMigrations.has('20261018-friend-rss-v1')) {
+        connection.exec("ALTER TABLE friends ADD COLUMN rss_url TEXT NOT NULL DEFAULT ''");
+        connection.prepare('INSERT INTO schema_migrations (id, applied_at) VALUES (?, ?)').run('20261018-friend-rss-v1', new Date().toISOString());
+      }
+      if (!appliedMigrations.has('20261018-dynamic-projects-v1')) {
+        connection.exec(`CREATE TABLE blog_projects (
+          id INTEGER PRIMARY KEY AUTOINCREMENT, repository TEXT NOT NULL DEFAULT '',
+          name TEXT NOT NULL CHECK(length(trim(name)) > 0), description TEXT NOT NULL,
+          url TEXT NOT NULL, keyword TEXT NOT NULL DEFAULT '',
+          status TEXT NOT NULL CHECK(status IN ('active','maintenance','archived')),
+          visible INTEGER NOT NULL DEFAULT 1 CHECK(visible IN (0,1)), position INTEGER NOT NULL,
+          created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+        )`);
+        const previous = new Map((connection.prepare('SELECT * FROM project_settings').all() as Array<Record<string, string>>).map((entry) => [entry.repository, entry]));
+        const insertProject = connection.prepare(`INSERT INTO blog_projects(repository,name,description,url,keyword,status,position,created_at,updated_at)
+          VALUES (@repository,@name,@description,@url,@keyword,@status,@position,@now,@now)`);
+        const now = new Date().toISOString();
+        siteConfig.projects.forEach((project, position) => {
+          const saved = previous.get(project.repository);
+          const description = saved?.description || project.description;
+          insertProject.run({ repository: project.repository, name: saved?.name || project.name, description,
+            url: saved?.url || `https://github.com/${project.repository}`, keyword: description.includes(project.keyword) ? project.keyword : '',
+            status: saved?.status || project.status, position, now });
+        });
+        connection.prepare('INSERT INTO schema_migrations (id, applied_at) VALUES (?, ?)').run('20261018-dynamic-projects-v1', now);
+      }
+      if (!appliedMigrations.has('20261018-article-attribution-v1')) {
+        connection.exec("ALTER TABLE blog_articles ADD COLUMN original_author TEXT NOT NULL DEFAULT ''; ALTER TABLE blog_articles ADD COLUMN original_url TEXT NOT NULL DEFAULT ''");
+        connection.prepare('INSERT INTO schema_migrations (id, applied_at) VALUES (?, ?)').run('20261018-article-attribution-v1', new Date().toISOString());
+      }
+      if (!appliedMigrations.has('20261018-friend-feed-cache-v1')) {
+        connection.exec(`CREATE TABLE friend_feed_cache (
+          friend_id INTEGER PRIMARY KEY REFERENCES friends(id) ON DELETE CASCADE,
+          rss_url TEXT NOT NULL, title TEXT NOT NULL DEFAULT '', entry_url TEXT NOT NULL DEFAULT '',
+          published_at TEXT, checked_at TEXT NOT NULL
+        )`);
+        connection.prepare('INSERT INTO schema_migrations (id, applied_at) VALUES (?, ?)').run('20261018-friend-feed-cache-v1', new Date().toISOString());
       }
       connection.exec('CREATE UNIQUE INDEX IF NOT EXISTS friends_active_url_idx ON friends(url) WHERE deleted_at IS NULL');
       connection.exec('CREATE INDEX IF NOT EXISTS friends_public_idx ON friends(visible, created_at ASC)');

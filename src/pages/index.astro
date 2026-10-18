@@ -4,15 +4,18 @@ import ArticleList from '../components/ArticleList.astro';
 import BaseLayout from '../layouts/BaseLayout.astro';
 import { getSiteStats } from '../lib/stats';
 import { listFriends } from '../lib/friends';
+import { getCachedFriendFeed } from '../lib/friend-feeds';
 import { listArticles } from '../lib/articles';
 import { serverConfig } from '../config/server';
 import { siteConfig } from '../config/site';
+import ProjectsSection from '../components/ProjectsSection.astro';
 import '../styles/home.css';
 
 const siteStats = getSiteStats();
 const hasArticles = listArticles().length > 0;
 const friends = listFriends().map((friend) => ({
   ...friend,
+  latest: friend.rssUrl ? getCachedFriendFeed(friend.id, friend.rssUrl) : null,
   description: friend.description.replace(/[。.]+$/u, ''),
   hostname: new URL(friend.url).hostname.replace(/^www\./, ''),
 }));
@@ -40,17 +43,7 @@ const friendStatusTimeout = Math.ceil(friends.length / serverConfig.friendStatus
     <span class="hero-sticker hero-sticker--note" aria-hidden="true">Scroll down<br />to see more ↓</span>
   </section>
 
-  <section class="home-projects" id="projects">
-    <div class="shell" data-reveal>
-      <header><span class="section-kicker">PROJECTS</span><h2 class="section-title">我的项目</h2><span class="project-tape" aria-hidden="true">made with love ❤</span></header>
-      <div class="project-list">
-        <article><span>01</span><div><h3><a href="https://github.com/afterSuperSam/SamsTownWeb" target="_blank" rel="noreferrer">SamsTownWeb ↗</a></h3><p>楹雾镇 Minecraft 社区网站</p></div></article>
-        <article><span>02</span><div><h3><a href="https://github.com/afterSuperSam/FlayerBot" target="_blank" rel="noreferrer">FlayerBot ↗</a></h3><p>单进程 Minecraft 自动化 Bot</p></div></article>
-        <article><span>03</span><div><h3><a href="https://github.com/afterSuperSam/SamsBlog" target="_blank" rel="noreferrer">SamsBlog ↗</a></h3><p>夏日插画风的个人项目与日常站点</p></div></article>
-        <article><span>04</span><div><h3><a href="https://github.com/afterSuperSam/ItemsaddderConfigGenerator" target="_blank" rel="noreferrer">ItemsAdder 配置生成器 ↗</a></h3><p>批量生成普通 2D 材质的配置文件</p></div></article>
-      </div>
-    </div>
-  </section>
+  <ProjectsSection />
 
   <ArticleList featured />
 
@@ -60,43 +53,75 @@ const friendStatusTimeout = Math.ceil(friends.length / serverConfig.friendStatus
     <header><span class="section-kicker">FRIENDS</span><h2 class="section-title" id="friends-title">网站友链</h2></header>
     <div class="friend-grid">
       {friends.map((friend) => (
-        <a class="friend-card" href={friend.url} target="_blank" rel="noreferrer">
+        <article class="friend-card">
           <img class:list={['friend-card__background', { 'is-avatar-background': !friend.backgroundUrl }]} src={friend.backgroundUrl || friend.iconUrl} alt="" loading="lazy" referrerpolicy="no-referrer" data-friend-background data-fallback={friend.iconUrl} />
           <span class="friend-card__icon"><b>{friend.name.slice(0, 1)}</b><img src={friend.iconUrl} alt="" loading="lazy" referrerpolicy="no-referrer" data-friend-icon /></span>
-          <span class="friend-card__copy"><strong>{friend.name}</strong><small>{friend.description}</small></span>
-          <i aria-hidden="true">↗</i>
+          <a class="friend-card__copy" href={friend.url} target="_blank" rel="noopener noreferrer"><strong>{friend.name}</strong><small>{friend.description}</small></a>
+          {friend.rssUrl && <a class="friend-card__rss" href={friend.rssUrl} target="_blank" rel="noopener noreferrer" aria-label={`订阅 ${friend.name} 的 RSS`}>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="19" r="1.5" /><path pathLength="1" d="M5 11a8 8 0 0 1 8 8" /><path pathLength="1" d="M5 5a14 14 0 0 1 14 14" /></svg><span>RSS</span>
+          </a>}
           <span class="friend-card__footer">
             <em>{friend.hostname}</em>
             <span class="friend-card__status" data-friend-status={friend.id} data-state="checking" role="status" aria-live="polite"><i aria-hidden="true"></i><span data-friend-status-label>检测中</span></span>
           </span>
-        </a>
+          {friend.rssUrl && <details class="friend-card__updates" data-friend-feed={friend.id} hidden={!friend.latest?.title}>
+            <summary><span>最近更新 <time data-feed-date datetime={friend.latest?.publishedAt || undefined}>{friend.latest?.publishedAt ? new Date(friend.latest.publishedAt).toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' }) : '日期未提供'}</time></span><span aria-hidden="true">⌄</span></summary>
+            <a data-feed-entry href={friend.latest?.url || friend.rssUrl} target="_blank" rel="noopener noreferrer">{friend.latest?.title}</a>
+          </details>}
+        </article>
       ))}
     </div>
   </section>
-  <section class="site-stats shell" id="site-stats" aria-label="站点统计" data-reveal>
+  <section class="site-stats shell" id="site-stats" aria-label="站点统计" data-reveal data-statistics-config={JSON.stringify(siteConfig.statistics)}>
     <div class="site-stats__panel">
       <dl>
-        <div><dt>运行天数</dt><dd>{siteStats.runtimeDays.toLocaleString('zh-CN')}<small>天</small></dd></div>
-        {[['友链', siteStats.friends], ['累计访客', siteStats.visitors], ['总浏览量', siteStats.pageViews]].map(([label, value]) => <div><dt>{label}</dt><dd>{Number(value).toLocaleString('zh-CN')}</dd></div>)}
+        <div><dt>运行天数</dt><dd><span data-stat-value={siteStats.runtimeDays} aria-hidden="true">{siteStats.runtimeDays.toLocaleString('zh-CN')}</span><span class="stat-reader-value">{siteStats.runtimeDays.toLocaleString('zh-CN')}</span><small>天</small></dd></div>
+        {[['友链', siteStats.friends], ['累计访客', siteStats.visitors], ['总浏览量', siteStats.pageViews]].map(([label, value]) => <div><dt>{label}</dt><dd><span data-stat-value={value} aria-hidden="true">{Number(value).toLocaleString('zh-CN')}</span><span class="stat-reader-value">{Number(value).toLocaleString('zh-CN')}</span></dd></div>)}
       </dl>
     </div>
   </section>
 </BaseLayout>
 
 <script>
+  import { animateContentHeight } from '../lib/motion';
+  import type { FriendFeedRecord } from '../lib/friend-feeds';
+  const feedCards = [...document.querySelectorAll<HTMLDetailsElement>('[data-friend-feed]')];
+  feedCards.forEach((details) => details.querySelector('summary')?.addEventListener('click', (event) => {
+    event.preventDefault();
+    animateContentHeight(details, () => { details.open = !details.open; });
+  }));
+  if (feedCards.length) {
+    const timeout = Number(document.querySelector<HTMLElement>('[data-status-timeout]')?.dataset.statusTimeout) || 7000;
+    void fetch('/api/friends/feeds.json', { signal: AbortSignal.timeout(timeout) }).then(async (response) => {
+      if (!response.ok) throw new Error(`Friend feeds returned ${response.status}`);
+      const { feeds } = await response.json() as { feeds: FriendFeedRecord[] };
+      feedCards.forEach((details) => {
+        const entry = feeds.find((feed) => feed.id === Number(details.dataset.friendFeed));
+        if (!entry?.title) return;
+        const link = details.querySelector<HTMLAnchorElement>('[data-feed-entry]')!;
+        const date = details.querySelector<HTMLTimeElement>('[data-feed-date]')!;
+        link.textContent = entry.title; link.href = entry.url;
+        date.textContent = entry.publishedAt ? new Date(entry.publishedAt).toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' }) : '日期未提供';
+        if (entry.publishedAt) date.dateTime = entry.publishedAt;
+        else date.removeAttribute('datetime');
+        details.hidden = false;
+      });
+    }).catch((error) => console.warn('Friend feeds unavailable', error));
+  }
   import type { FriendStatus } from '../lib/friend-status';
-  const hero = document.querySelector<HTMLElement>('[data-pointer-tilt]');
-  const sticker = hero?.querySelector<HTMLElement>('.hero-sticker--note');
   const pointerMotion = matchMedia('(hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference)');
-  hero?.addEventListener('pointermove', (event) => {
-    if (!sticker || !pointerMotion.matches || event.pointerType !== 'mouse' || document.documentElement.classList.contains('motion-paused')) return;
-    const bounds = hero.getBoundingClientRect();
-    const degrees = Number(hero.dataset.pointerTilt);
-    sticker.style.setProperty('--pointer-tilt', `${(2 * (event.clientX - bounds.left) / bounds.width - 1) * degrees}deg`);
+  document.querySelectorAll<HTMLElement>('[data-pointer-tilt]').forEach((surface) => {
+    const target = surface.querySelector<HTMLElement>('.hero-sticker--note') || surface;
+    surface.addEventListener('pointermove', (event) => {
+      if (!pointerMotion.matches || event.pointerType !== 'mouse' || document.documentElement.classList.contains('motion-paused')) return;
+      const bounds = surface.getBoundingClientRect();
+      const degrees = Number(surface.dataset.pointerTilt);
+      target.style.setProperty('--pointer-tilt', `${(2 * (event.clientX - bounds.left) / bounds.width - 1) * degrees}deg`);
+    });
+    const resetTilt = () => target.style.removeProperty('--pointer-tilt');
+    surface.addEventListener('pointerleave', resetTilt);
+    pointerMotion.addEventListener('change', resetTilt);
   });
-  const resetTilt = () => sticker?.style.removeProperty('--pointer-tilt');
-  hero?.addEventListener('pointerleave', resetTilt);
-  pointerMotion.addEventListener('change', resetTilt);
 
 
   document.querySelectorAll<HTMLImageElement>('[data-friend-icon]').forEach((image) => {
@@ -115,6 +140,65 @@ const friendStatusTimeout = Math.ceil(friends.length / serverConfig.friendStatus
     image.addEventListener('error', recoverBackground);
     if (image.complete && image.naturalWidth === 0) recoverBackground();
   });
+
+  // 统计在首次进入视野时从零增长，读屏始终读取真实数值。
+  const statisticsSection = document.querySelector<HTMLElement>('[data-statistics-config]');
+  const statisticsPanel = statisticsSection?.querySelector<HTMLElement>('.site-stats__panel');
+  if (statisticsSection && statisticsPanel) {
+    const configuration = JSON.parse(statisticsSection.dataset.statisticsConfig!) as {
+      countDurationMilliseconds: number; countStaggerMilliseconds: number; easingPower: number; visibilityThreshold: number;
+    };
+    const counters = [...statisticsPanel.querySelectorAll<HTMLElement>('[data-stat-value]')].map((element) => ({ element, value: Number(element.dataset.statValue), displayed: -1 }));
+    const formatter = new Intl.NumberFormat('zh-CN');
+    const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+    const motionIsDisabled = () => reducedMotion.matches || document.documentElement.classList.contains('motion-paused');
+    let countFrame = 0;
+    let started = false;
+    const finishCounters = () => {
+      cancelAnimationFrame(countFrame);
+      countFrame = 0;
+      counters.forEach((counter) => { counter.element.textContent = formatter.format(counter.value); });
+    };
+    const startCounters = () => {
+      if (started) return;
+      started = true;
+      if (motionIsDisabled()) { finishCounters(); return; }
+      const start = performance.now();
+      const update = (now: number) => {
+        if (motionIsDisabled()) { finishCounters(); return; }
+        let complete = true;
+        counters.forEach((counter, index) => {
+          const elapsed = now - start - index * configuration.countStaggerMilliseconds;
+          const progress = Math.max(0, Math.min(1, elapsed / configuration.countDurationMilliseconds));
+          const eased = progress < .5 ? Math.pow(2 * progress, configuration.easingPower) / 2 : 1 - Math.pow(2 * (1 - progress), configuration.easingPower) / 2;
+          const value = Math.round(counter.value * eased);
+          if (value !== counter.displayed) {
+            counter.element.textContent = formatter.format(value);
+            counter.displayed = value;
+          }
+          if (progress < 1) complete = false;
+        });
+        if (complete) finishCounters();
+        else countFrame = requestAnimationFrame(update);
+      };
+      counters.forEach((counter) => { counter.element.textContent = '0'; });
+      countFrame = requestAnimationFrame(update);
+    };
+    if ('IntersectionObserver' in window) {
+      const observer = new IntersectionObserver((entries) => {
+        if (!entries.some((entry) => entry.isIntersecting && entry.intersectionRatio >= configuration.visibilityThreshold)) return;
+        observer.disconnect();
+        startCounters();
+      }, { threshold: configuration.visibilityThreshold });
+      observer.observe(statisticsPanel);
+    }
+    const syncMotion = () => {
+      if (!motionIsDisabled()) return;
+      finishCounters();
+    };
+    reducedMotion.addEventListener('change', syncMotion);
+    new MutationObserver(syncMotion).observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+  }
 
   const friendSection = document.querySelector<HTMLElement>('#friends');
   const statusNodes = [...document.querySelectorAll<HTMLElement>('[data-friend-status]')];

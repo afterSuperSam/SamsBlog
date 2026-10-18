@@ -44,6 +44,7 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month:
       </form>
 
       <div class="message-wall">
+        <div class="message-wall__scroll" role="region" aria-label="留言列表，可滚动查看" tabindex="0" data-message-scroll>
         {messages.length === 0 ? (
           <div class="message-empty">
             <b>这里还很安静。</b>
@@ -57,25 +58,83 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month:
                   <header><b>{message.nickname}</b><time datetime={message.createdAt}>{dateFormatter.format(new Date(message.createdAt))}</time></header>
                   <p>{message.content}</p>
                   {message.replies?.map((reply) => (
-                    <blockquote class="message-reply"><b>站长回复</b><p>{reply.content}</p></blockquote>
+                    <blockquote class="message-reply"><b>Sam</b><p>{reply.content}</p></blockquote>
                   ))}
                 </div>
               </li>
             ))}
           </ol>
         )}
+        </div>
       </div>
     </div>
   </div>
 </section>
 
 <script>
+  import { createCharacters, animateCharacters, animateContentHeight } from '../lib/motion';
+  import { siteConfig } from '../config/site';
   const form = document.querySelector<HTMLFormElement>('[data-message-form]');
   const nickname = form?.querySelector<HTMLInputElement>('input[name="nickname"]');
   const textarea = form?.querySelector<HTMLTextAreaElement>('textarea[name="content"]');
   const counter = form?.querySelector<HTMLElement>('[data-message-count]');
   const status = form?.querySelector<HTMLElement>('[data-form-status]');
+  const messageScroll = document.querySelector<HTMLElement>('[data-message-scroll]');
+  const messageWall = messageScroll?.parentElement;
+  if (form && messageScroll && messageWall) {
+    const updateWall = () => {
+      messageWall.style.height = `${form.offsetHeight}px`;
+      const remaining = messageScroll.scrollHeight - messageScroll.clientHeight - messageScroll.scrollTop;
+      messageWall.dataset.overflow = String(remaining > 1);
+      messageScroll.tabIndex = messageScroll.scrollHeight > messageScroll.clientHeight + 1 ? 0 : -1;
+    };
+    messageScroll.addEventListener('scroll', updateWall, { passive: true });
+    const wallObserver = new ResizeObserver(updateWall);
+    wallObserver.observe(form);
+    if (messageScroll.firstElementChild) wallObserver.observe(messageScroll.firstElementChild);
+    updateWall();
+  }
   let submitting = false;
+  const showStatus = (text: string, state: string) => {
+    if (!status) return;
+    status.querySelectorAll('.reveal-character').forEach((character) => character.getAnimations().forEach((animation) => animation.cancel()));
+    animateContentHeight(status, () => {
+      if (!text) { status.replaceChildren(); delete status.dataset.state; return; }
+      const announcement = document.createElement('span');
+      announcement.className = 'sr-only';
+      announcement.textContent = text;
+      status.replaceChildren(announcement, ...createCharacters(text));
+      status.dataset.state = state;
+    });
+    animateCharacters(status);
+  };
+
+  // 软键盘只调整页面视口，不重新聚焦或改写原生输入法选区。
+  let viewportFrame = 0;
+  const keepWritingVisible = () => {
+    viewportFrame = 0;
+    const field = document.activeElement;
+    const viewport = window.visualViewport;
+    if (!viewport || (field !== nickname && field !== textarea) || !(field instanceof HTMLElement)) return;
+    const inset = siteConfig.interactions.keyboardInsetPixels;
+    const bounds = field.getBoundingClientRect();
+    const headerBottom = document.querySelector('.site-header')?.getBoundingClientRect().bottom || 0;
+    const top = Math.max(viewport.offsetTop, headerBottom) + inset;
+    const bottom = viewport.offsetTop + viewport.height - inset;
+    const caret = field.closest('label')?.querySelector<HTMLElement>('.paper-caret:not([hidden])');
+    const caretBounds = caret?.getBoundingClientRect() || bounds;
+    const controlsBottom = Math.max(form?.querySelector('.message-form__footer')?.getBoundingClientRect().bottom || 0, status?.getBoundingClientRect().bottom || 0);
+    const target = controlsBottom - caretBounds.top <= bottom - top
+      ? { top: caretBounds.top, bottom: Math.max(caretBounds.bottom, controlsBottom) } : caretBounds;
+    const overflow = target.bottom > bottom ? target.bottom - bottom : target.top < top ? target.top - top : 0;
+    if (overflow) window.scrollBy({ top: overflow, behavior: 'instant' });
+  };
+  const scheduleWritingVisibility = () => {
+    if (!viewportFrame) viewportFrame = requestAnimationFrame(keepWritingVisible);
+  };
+  window.visualViewport?.addEventListener('resize', scheduleWritingVisibility);
+  form?.addEventListener('focusin', scheduleWritingVisibility);
+  form?.addEventListener('input', scheduleWritingVisibility);
 
   // 手绘光标跟随真实插入点，原生文本框继续处理输入法、选区和滚动。
   [nickname, textarea].forEach((field) => {
@@ -98,11 +157,12 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month:
     document.body.append(mirror);
     let frame = 0;
     let revealCaret = false;
+    let composing = false;
     const updateCaret = () => {
       frame = 0;
       const reveal = revealCaret;
       revealCaret = false;
-      if (document.activeElement !== field || field.selectionStart !== field.selectionEnd) {
+      if (composing || document.activeElement !== field || field.selectionStart !== field.selectionEnd) {
         caret.hidden = true;
         return;
       }
@@ -146,10 +206,20 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month:
       revealCaret ||= reveal;
       if (!frame) frame = requestAnimationFrame(updateCaret);
     };
-    ['focus', 'input', 'keyup', 'click', 'select', 'compositionupdate', 'compositionend'].forEach((event) => field.addEventListener(event, () => scheduleCaret(true)));
+    ['focus', 'input', 'keyup', 'click', 'select'].forEach((event) => field.addEventListener(event, () => { if (!composing) scheduleCaret(true); }));
+    field.addEventListener('compositionstart', () => {
+      composing = true;
+      field.dataset.composing = 'true';
+      caret.hidden = true;
+    });
+    field.addEventListener('compositionend', () => {
+      composing = false;
+      delete field.dataset.composing;
+      scheduleCaret();
+    });
     field.addEventListener('scroll', () => scheduleCaret(), { passive: true });
-    field.addEventListener('blur', () => { caret.hidden = true; });
-    document.addEventListener('selectionchange', () => { if (document.activeElement === field) scheduleCaret(true); });
+    field.addEventListener('blur', () => { caret.hidden = true; composing = false; delete field.dataset.composing; });
+    document.addEventListener('selectionchange', () => { if (!composing && document.activeElement === field) scheduleCaret(); });
     form?.addEventListener('reset', () => scheduleCaret(true));
     new ResizeObserver(() => scheduleCaret()).observe(field);
   });
@@ -160,18 +230,17 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month:
     field.setAttribute('writingsuggestions', 'false');
     field.addEventListener('input', () => {
       field.removeAttribute('aria-invalid');
-      if (status?.dataset.state === 'invalid') { status.textContent = ''; delete status.dataset.state; }
+      if (status?.dataset.state === 'invalid') showStatus('', '');
     });
   });
   form?.addEventListener('submit', async (event) => {
     event.preventDefault();
-    if (submitting) return;
+    if (submitting || nickname?.dataset.composing === 'true' || textarea?.dataset.composing === 'true') return;
     const invalidField = [nickname, textarea].find((field) => field && (field.value.trim().length < field.minLength || field.value.trim().length > field.maxLength));
     if (invalidField) {
       const label = invalidField.name === 'nickname' ? '称呼' : '留言';
       if (status) {
-        status.textContent = invalidField.value.trim().length === 0 ? `请先填写${label}。` : `${label}需要 ${invalidField.minLength} 至 ${invalidField.maxLength} 个字符。`;
-        status.dataset.state = 'invalid';
+        showStatus(invalidField.value.trim().length === 0 ? `请先填写${label}。` : `${label}需要 ${invalidField.minLength} 至 ${invalidField.maxLength} 个字符。`, 'invalid');
       }
       invalidField.setAttribute('aria-invalid', 'true');
       invalidField.focus();
@@ -181,7 +250,7 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month:
     const submit = form.querySelector<HTMLButtonElement>('button[type="submit"]');
     const data = new FormData(form);
     submit?.setAttribute('disabled', 'true');
-    if (status) { status.textContent = '正在送出…'; status.dataset.state = 'loading'; }
+    showStatus('正在送出…', 'loading');
     try {
       const response = await fetch('/api/guestbook/messages.json', {
         method: 'POST',
@@ -193,9 +262,9 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month:
       if (!response.ok || !result.ok) throw new Error(result.error || '提交失败，请稍后重试。');
       form.reset();
       if (counter) counter.textContent = '0';
-      if (status) { status.textContent = result.message || '留言已送出。'; status.dataset.state = 'success'; }
+      showStatus(result.message || '留言已送出。', 'success');
     } catch (error) {
-      if (status) { status.textContent = error instanceof TypeError ? '网络连接失败，请检查连接后重试。' : error instanceof Error ? error.message : '提交失败，请稍后重试。'; status.dataset.state = 'error'; }
+      showStatus(error instanceof TypeError ? '网络连接失败，请检查连接后重试。' : error instanceof Error ? error.message : '提交失败，请稍后重试。', 'error');
     } finally {
       submitting = false;
       submit?.removeAttribute('disabled');

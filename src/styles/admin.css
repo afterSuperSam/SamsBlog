@@ -12,3 +12,21 @@
 .admin-confirm__actions button{min-height:44px;padding:8px 20px;border:0;border-radius:13px 10px 15px 11px;background:var(--surface-2);color:var(--text);font:400 var(--font-size-control)/1.5 var(--playful);cursor:pointer}
 .admin-confirm__actions button:last-child{background:color-mix(in oklab,var(--summer-pink) 18%,var(--surface));color:var(--summer-pink)}
 .admin-confirm__actions button:is(:hover,:focus-visible){outline:2px solid var(--summer-blue);outline-offset:3px}
+
+.admin-projects{display:grid;gap:24px;max-width:760px;font-family:var(--playful)}
+.admin-projects>label,.admin-project-fields label{display:grid;gap:12px;color:var(--text-soft)}
+.admin-projects>label input,.admin-project-fields :is(input,textarea){width:100%;padding:12px 16px;border:1px solid var(--line);border-radius:14px;background:var(--surface);color:var(--text);font:inherit}
+.admin-projects fieldset{display:flex;gap:10px;flex-wrap:wrap;margin:0;padding:0;border:0}
+.admin-projects legend{margin-bottom:12px;color:var(--text-soft);overflow-wrap:anywhere}
+.project-status-option{position:relative;cursor:pointer}
+.project-status-option input{position:absolute;opacity:0;width:1px;height:1px}
+.project-status-option span{display:block;min-height:44px;padding:10px 18px;border-radius:13px;background:var(--surface);color:var(--muted)}
+.project-status-option input:checked+span{background:color-mix(in oklab,var(--summer-blue) 16%,var(--surface));color:var(--summer-blue)}
+.project-status-option input:focus-visible+span{outline:2px solid var(--summer-blue);outline-offset:3px}
+.admin-projects>.admin-create{justify-self:start}
+
+.admin-project-fields{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;width:100%}
+.admin-project-fields label:last-child{grid-column:1/-1}
+.admin-project-fields textarea{resize:vertical}
+.project-status-options{display:flex;gap:10px;flex-wrap:wrap}
+@media(max-width:620px){.admin-project-fields{grid-template-columns:minmax(0,1fr)}}

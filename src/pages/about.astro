@@ -37,14 +37,17 @@ const gptTokenUsage = buildTokenUsageCalendar(new Map<string, TokenUsage>([
   ['2026-08-23', { cacheHit: 28335104, cacheMiss: 885428, output: 119448 }],
   ['2026-08-24', { cacheHit: 2902272, cacheMiss: 246394, output: 13922 }],
   ['2026-08-25', { cacheHit: 4076544, cacheMiss: 416155, output: 33842 }],
-  ['2026-08-26', { cacheHit: 6972672, cacheMiss: 396202, output: 36770 }],
+  ['2026-08-26', { cacheHit: 17835392, cacheMiss: 679007, output: 74836 }],
   ['2026-08-27', { cacheHit: 19595008, cacheMiss: 1244689, output: 74399 }],
   ['2026-08-28', { cacheHit: 16583424, cacheMiss: 342557, output: 53787 }],
   ['2026-08-29', { cacheHit: 10476416, cacheMiss: 437208, output: 60610 }],
-  ['2026-08-30', { cacheHit: 17112064, cacheMiss: 620549, output: 56679 }],
+  ['2026-08-30', { cacheHit: 69468160, cacheMiss: 2099976, output: 177168 }],
+  ['2026-08-31', { cacheHit: 8690688, cacheMiss: 293932, output: 35038 }],
+  ['2026-09-04', { cacheHit: 19998592, cacheMiss: 595170, output: 73542 }],
   ['2026-09-05', { cacheHit: 687616, cacheMiss: 108317, output: 7076 }],
   ['2026-09-06', { cacheHit: 40576, cacheMiss: 12474, output: 42 }],
-  ['2026-09-29', { cacheHit: 4523904, cacheMiss: 543881, output: 61152 }],
+  ['2026-09-29', { cacheHit: 8854656, cacheMiss: 690777, output: 117816 }],
+  ['2026-09-30', { cacheHit: 1884928, cacheMiss: 174099, output: 10211 }],
   ['2026-10-02', { cacheHit: 1190272, cacheMiss: 168617, output: 8173 }],
   ['2026-10-04', { cacheHit: 1007616, cacheMiss: 79756, output: 8193 }],
   ['2026-10-05', { cacheHit: 6716672, cacheMiss: 154694, output: 25467 }],
@@ -53,12 +56,13 @@ const gptTokenUsage = buildTokenUsageCalendar(new Map<string, TokenUsage>([
   ['2026-10-08', { cacheHit: 8243456, cacheMiss: 559791, output: 24722 }],
   ['2026-10-09', { cacheHit: 49833600, cacheMiss: 1884024, output: 314893 }],
   ['2026-10-10', { cacheHit: 17008128, cacheMiss: 616266, output: 41210 }],
-  ['2026-10-11', { cacheHit: 11084032, cacheMiss: 1495631, output: 60925 }],
-  ['2026-10-12', { cacheHit: 2046720, cacheMiss: 102251, output: 14947 }],
-  ['2026-10-13', { cacheHit: 36350336, cacheMiss: 786877, output: 67909 }],
-  ['2026-10-14', { cacheHit: 14346496, cacheMiss: 567932, output: 30073 }],
-  ['2026-10-15', { cacheHit: 356608, cacheMiss: 357498, output: 507 }],
-  ['2026-10-17', { cacheHit: 17680768, cacheMiss: 297866, output: 79978 }],
+  ['2026-10-11', { cacheHit: 54042752, cacheMiss: 3576970, output: 235753 }],
+  ['2026-10-12', { cacheHit: 70865024, cacheMiss: 2944829, output: 250662 }],
+  ['2026-10-13', { cacheHit: 71313280, cacheMiss: 1680250, output: 152411 }],
+  ['2026-10-14', { cacheHit: 43058816, cacheMiss: 1764263, output: 68600 }],
+  ['2026-10-15', { cacheHit: 36797440, cacheMiss: 766744, output: 93037 }],
+  ['2026-10-17', { cacheHit: 222461952, cacheMiss: 4817099, output: 709134 }],
+  ['2026-10-18', { cacheHit: 84069760, cacheMiss: 1935168, output: 390853 }],
 ]));
 const deepseekTokenUsage = buildTokenUsageCalendar(new Map<string, TokenUsage>([
   ['2026-07-28', { cacheHit: 27344768, cacheMiss: 749990, output: 71258 }], ['2026-07-29', { cacheHit: 86561152, cacheMiss: 3915929, output: 465942 }], ['2026-07-30', { cacheHit: 52268800, cacheMiss: 1755878, output: 358305 }], ['2026-07-31', { cacheHit: 53601280, cacheMiss: 2068349, output: 486681 }],
@@ -109,7 +113,7 @@ const deepseekTokenUsage = buildTokenUsageCalendar(new Map<string, TokenUsage>([
       </header>
       <div class="contribution-panels">
         <ContributionGraph title="GitHub 提交" eyebrow="CODE" calendar={githubContributions} href={siteConfig.social.github} inlineTotal latestContribution={latestContribution} />
-        <ContributionGraph title="GPT 用量" eyebrow="TOKENS" calendar={gptTokenUsage} unit="Token" period="CCswitch 记录 · 2026-10-17" showUsage />
+        <ContributionGraph title="GPT 用量" eyebrow="TOKENS" calendar={gptTokenUsage} unit="Token" period="CCswitch 记录 · 2026-10-18" showUsage />
         <ContributionGraph title="DeepSeek 用量" eyebrow="TOKENS" calendar={deepseekTokenUsage} unit="Token" period="已核对数据 · 2026-08-09" showUsage />
       </div>
     </div>
