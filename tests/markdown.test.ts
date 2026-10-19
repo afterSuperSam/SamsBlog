@@ -65,16 +65,54 @@ describe('article Markdown', () => {
     expect(() => renderMarkdown('['.repeat(10_000))).not.toThrow();
   });
 
+  it('preserves code spans, unmatched runs and shorter delimiter fallback', () => {
+    expect(renderMarkdown('x``code ` literal``')).toBe('<p>x<code>code ` literal</code></p>');
+    expect(renderMarkdown('x``unfinished `tail')).toBe('<p>x`<code>unfinished </code>tail</p>');
+    expect(renderMarkdown('x`first```second``')).toBe('<p>x<code>first</code><code>second</code></p>');
+    expect(renderMarkdown('x`[link](/a)`')).toBe('<p>x<code>[link](/a)</code></p>');
+    expect(renderMarkdown('x\\`literal\\`')).toBe('<p>x`literal`</p>');
+    expect(renderMarkdown('x```unfinished')).toBe('<p>x```unfinished</p>');
+  });
+
+  it('preserves nested and escaped brackets while recovering after malformed destinations', () => {
+    expect(renderMarkdown('[outer [inner]](/a_(b))')).toBe('<p><a href="/a_(b)">outer [inner]</a></p>');
+    expect(renderMarkdown('[escaped\\]](/a\\(b\\))')).toBe('<p><a href="/a(b)">escaped]</a></p>');
+    expect(renderMarkdown('x[a]([b]([valid](/ok)')).toBe('<p>x[a]([b](<a href="/ok">valid</a></p>');
+    expect(renderMarkdown('x\\[label](/plain)')).toBe('<p>x[label](/plain)</p>');
+  });
+
+  it.each(['`', '[a]('])('scales bounded malformed input without repeated suffix scans: %s', (token) => {
+    const measure = (size: number) => {
+      const input = 'x' + token.repeat(Math.floor((size - 1) / token.length));
+      const samples: number[] = [];
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const started = performance.now();
+        const html = renderMarkdown(input);
+        samples.push(performance.now() - started);
+        expect(html).toBe(`<p>${input}</p>`);
+      }
+      return Math.min(...samples);
+    };
+    measure(1000);
+    const small = measure(10000);
+    const large = measure(100000);
+    expect(large).toBeLessThan(small * 30 + 100);
+  });
+
   it.each([
     'javascript:alert(1)', 'JaVaScRiPt:alert(1)', 'data:text/html,payload', 'vbscript:payload',
     '//example.com', '\\example.com', '%2f%2fexample.com', '%5cexample.com',
     'java%73cript%3Aalert(1)', 'java%2573cript%253Aalert(1)', 'https:%5c%5cexample.com',
     'java%0ascript:alert(1)', 'javascript&#58;alert(1)', 'file:///secret',
     'java%20script:alert(1)', 'https://example.com/a%0Ab', 'https://example.com/a%5Cb', '%20//example.com',
+    'https://user:secret@example.com/', 'http://user@example.com/image.png',
+    'https://:secret@example.com/', 'https://us%65r:sec%72et@example.com/',
   ])('does not generate active markup for unsafe destination %s', (destination) => {
-    const html = renderMarkdown(`[点击](${destination}) ![图片](${destination})`);
-    expect(html).not.toContain('<a ');
-    expect(html).not.toContain('<img ');
+    for (const baseUrl of [undefined, 'https://blog.example.com/articles/7']) {
+      const html = renderMarkdown(`[点击](${destination}) ![图片](${destination})`, baseUrl);
+      expect(html).not.toContain('<a ');
+      expect(html).not.toContain('<img ');
+    }
   });
 
   it('escapes raw HTML and attribute quotes; cannot nest links inside links', () => {

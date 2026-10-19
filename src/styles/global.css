@@ -12,6 +12,10 @@
   --cover-enter-duration: 620ms;
   --cover-return-duration: 400ms;
   --rss-dialog-width: 460px;
+  --sponsor-reveal-distance: 24px;
+  --not-found-code-size: clamp(1.5rem,2.5vw,2rem);
+  --not-found-title-size: clamp(3.25rem,6vw,5rem);
+  --not-found-copy-size: clamp(1.125rem,1rem + .5vw,1.375rem);
   --project-ink-width: 2.5px;
   --project-ink-duration: 900ms;
   --message-wall-height: 34rem;
@@ -330,12 +334,28 @@ html[data-theme-transition]::view-transition-new(root){z-index:2}
 /* RSS 说明沿用页脚入口，订阅源本身仍保持标准 XML。 */
 .rss-subscription{position:fixed;inset:0;width:min(var(--rss-dialog-width),calc(100vw - 32px));max-height:calc(100dvh - 32px);margin:auto;padding:32px;border:0;border-radius:26px 16px 30px 18px;background:var(--gradient-surface);color:var(--text);box-shadow:var(--shadow);font:400 var(--font-size-body)/1.8 var(--playful);text-align:left;overflow:auto;scrollbar-width:none}
 .rss-subscription::backdrop{background:color-mix(in srgb,var(--bg) 76%,transparent);backdrop-filter:blur(8px)}
+.rss-subscription[open],.rss-subscription[open]::backdrop{animation:rss-dialog-fade-in var(--motion-decoration-duration) var(--ease-out) both}
+@keyframes rss-dialog-fade-in{from{opacity:0}to{opacity:1}}
+:root.motion-paused .rss-subscription[open]::backdrop{animation:none}
+@media(prefers-reduced-motion:reduce){.rss-subscription[open],.rss-subscription[open]::backdrop{animation:none}}
 .rss-subscription h2{font:700 1.7rem/1.5 var(--playful);margin:8px 0 16px}
 .rss-subscription p{margin:0 0 20px}.rss-subscription .form-status{margin:16px 0 0}
 .rss-subscription input{display:block;width:100%;min-width:0;padding:12px;border:0;border-radius:12px;background:color-mix(in srgb,var(--bg) 65%,transparent);color:var(--text);font:inherit;font-size:var(--font-size-small)}
 .rss-subscription__close{position:absolute;right:12px;top:10px;width:44px;height:44px;background:none;font:400 1.8rem/1 var(--playful);cursor:pointer}
 .rss-subscription__actions{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px 16px;margin-top:16px}
 .rss-subscription__actions :is(a,button){display:inline-flex;align-items:center;min-height:44px;padding:4px 0;background:none;color:var(--summer-blue);font:inherit;cursor:pointer}
+.rss-subscription .section-kicker{display:block;padding-right:18px;font-size:var(--font-size-small);letter-spacing:.04em;text-transform:none}
+
+/* 代码和订阅地址共用复制成功的粉色反馈。 */
+.copy-feedback{position:relative;isolation:isolate;transition:color var(--motion-feedback-duration) var(--ease-out)}
+.copy-feedback::before{position:absolute;inset:5px -14px;z-index:-1;content:"";border-radius:50%;background:radial-gradient(ellipse,color-mix(in srgb,var(--summer-pink) 24%,transparent),transparent 72%);opacity:0;pointer-events:none;transition:opacity var(--motion-decoration-duration) var(--ease-out)}
+.copy-feedback[data-copy-state="success"]{color:var(--summer-pink)}
+.copy-feedback[data-copy-state="success"]::before{opacity:1}
+.copy-feedback[data-copy-state="success"] span{background:linear-gradient(110deg,var(--summer-pink),color-mix(in srgb,var(--summer-pink) 70%,var(--text)));background-clip:text;-webkit-background-clip:text;color:transparent;animation:copy-confirm var(--motion-decoration-duration) var(--ease-out)}
+.copy-feedback[data-copy-state="error"]{color:var(--danger)}
+.copy-feedback:disabled{cursor:progress}
+@keyframes copy-confirm{from{opacity:.35;translate:0 2px}to{opacity:1;translate:0 0}}
+@media(prefers-reduced-motion:reduce){.copy-feedback,.copy-feedback::before{transition:none}.copy-feedback[data-copy-state="success"] span{animation:none}}
 
 /* 触摸设备保留点击和键盘反馈，不保留鼠标悬停的位移与光效。 */
 @media(hover:none),(pointer:coarse){

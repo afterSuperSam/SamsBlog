@@ -20,7 +20,7 @@ const commitFormatter = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shang
             <h3><a href={project.url} target="_blank" rel="noopener noreferrer">{project.name} ↗</a></h3>
             <p>{keywordIndex >= 0 ? <>{project.description.slice(0, keywordIndex)}<span class="project-keyword">{project.keyword}<svg aria-hidden="true" viewBox="0 0 100 24" preserveAspectRatio="none"><path d="M18 6 Q48 2 78 5 Q88 6 78 10 L12 17 Q3 20 14 20 Q51 17 96 20" pathLength="1" /></svg></span>{project.description.slice(keywordIndex + project.keyword.length)}</> : project.description}</p>
             <div class="project-meta"><span class="project-status" data-status={project.status}>{projectStatusLabels[project.status]}</span>
-              {project.repository && <span data-project-commit={project.repository}>{committedAt ? <time datetime={committedAt}>{commitFormatter.format(new Date(committedAt))}</time> : '提交日期待更新'}</span>}
+              {project.repository && <span data-project-commit={project.repository} hidden={!committedAt}>{committedAt && <time datetime={committedAt}>{commitFormatter.format(new Date(committedAt))}</time>}</span>}
             </div>
           </div>
         </article>;
@@ -73,17 +73,16 @@ const commitFormatter = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shang
       commitLabels.forEach((label) => {
         const value = dates[label.dataset.projectCommit!];
         if (!value || !Number.isFinite(Date.parse(value))) {
-          if (!label.querySelector('time')) label.textContent = '提交日期暂不可用';
           return;
         }
         const time = document.createElement('time');
         time.dateTime = value;
         time.textContent = formatter.format(new Date(value));
         label.replaceChildren(time);
+        label.hidden = false;
       });
     }).catch((error) => {
       console.warn('Project dates unavailable', error);
-      commitLabels.forEach((label) => { if (!label.querySelector('time')) label.textContent = '提交日期暂不可用'; });
     });
   }
 </script>

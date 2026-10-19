@@ -2,12 +2,16 @@ import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import Database from 'better-sqlite3';
+import type { APIContext, APIRoute } from 'astro';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { parseGithubContributions } from '../src/lib/contributions';
 import { serverConfig } from '../src/config/server';
 import { deleteFriend, listFriends, parseFriendInput, saveFriend } from '../src/lib/friends';
 import { getSiteStats, hashVisitorToken, recordPageView } from '../src/lib/stats';
 import { createMessage, createAdminReply, deleteMessage, getDatabase, listAllMessages, listPublishedMessages, updateMessageStatus } from '../src/lib/db';
+import { createAdminSession } from '../src/lib/admin-auth';
+import { POST as postPublicMessage } from '../src/pages/api/guestbook/messages.json';
+import { POST as postAdminReply } from '../src/pages/api/admin/messages.json';
 
 beforeAll(async () => {
   const dataDirectory = await mkdtemp(path.join(tmpdir(), 'samsblog-content-'));
@@ -27,6 +31,18 @@ beforeAll(async () => {
     .run('历史友链', 'https://deleted.example.com/', '保留删除状态', 'https://deleted.example.com/icon.png', '2026-08-22', '2026-08-22', '2026-09-01', 'https://deleted.example.com/background.jpg');
   existing.close();
 });
+
+let messageRequestSequence = 0;
+async function callMessageApi(handler: APIRoute, body: Record<string, unknown>, authorized = true) {
+  messageRequestSequence += 1;
+  return handler({
+    request: new Request('https://blog.example.com/api/messages.json', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+    }),
+    clientAddress: `203.0.113.${messageRequestSequence}`,
+    cookies: { get: () => authorized ? { value: createAdminSession() } : undefined },
+  } as unknown as APIContext) as Promise<Response>;
+}
 
 describe('SQLite content management', () => {
   it('counts runtime days at Shanghai midnight and stays zero before launch', () => {
@@ -66,6 +82,13 @@ describe('SQLite content management', () => {
     expect(listFriends({ includeHidden: true }).some((friend) => friend.id === id)).toBe(false);
     expect(getDatabase().prepare('SELECT deleted_at FROM friends WHERE id = ?').get(id)).toMatchObject({ deleted_at: expect.any(String) });
     expect(saveFriend(input)).toBeGreaterThan(id);
+  });
+
+  it('rejects incomplete HTTP addresses in every friend URL field', () => {
+    const input = { name: '地址验证', url: 'https://example.com/', description: '验证完整网址', iconUrl: 'https://example.com/icon.png', visible: true };
+    for (const field of ['url', 'iconUrl', 'backgroundUrl', 'rssUrl']) {
+      expect(() => parseFriendInput({ ...input, [field]: 'https:example.com/image' })).toThrow('完整的网址');
+    }
   });
 
   it('preserves existing friends during background migration and allows clearing a background', () => {
@@ -108,6 +131,56 @@ describe('SQLite content management', () => {
     expect(() => parseGithubContributions('')).toThrow();
   });
 
+  it.each([
+    { nickname: '😀', content: '有效留言' },
+    { nickname: '访客', content: '😀' },
+    { nickname: '名\u0000字', content: '有效留言' },
+    { nickname: '访客', content: '留\u0000言' },
+    { nickname: '😀'.repeat(25), content: '有效留言' },
+    { nickname: '访客', content: '😀'.repeat(501) },
+  ])('rejects invalid public message character counts and NUL with a client error (case %#)', async (body) => {
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const response = await callMessageApi(postPublicMessage, body);
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({ error: expect.any(String) });
+      expect(errorLog).not.toHaveBeenCalled();
+    } finally { errorLog.mockRestore(); }
+  });
+
+  it.each([
+    { nickname: '😀😀', content: '😀😀' },
+    { nickname: '😀'.repeat(24), content: '😀'.repeat(500) },
+    { nickname: '名'.repeat(24), content: '文'.repeat(500) },
+    { nickname: 'a'.repeat(24), content: 'b'.repeat(500) },
+  ])('counts public message limits by Unicode code points (case %#)', async (body) => {
+    const response = await callMessageApi(postPublicMessage, body);
+    expect(response.status).toBe(201);
+    expect(getDatabase().prepare('SELECT nickname,content,status FROM messages ORDER BY id DESC LIMIT 1').get())
+      .toEqual({ ...body, status: 'pending' });
+  });
+
+  it('applies the same Unicode limits and NUL rejection to authenticated replies', async () => {
+    const parentId = createMessage({ nickname: '原留言', content: '管理员回复验证', fingerprintHash: 'reply-validation-root' });
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      expect((await callMessageApi(postAdminReply, { parentId, content: '有效回复' }, false)).status).toBe(401);
+      for (const content of ['😀', '回\u0000复', '😀'.repeat(501)]) {
+        const response = await callMessageApi(postAdminReply, { parentId, content });
+        expect(response.status).toBe(400);
+        expect(await response.json()).toMatchObject({ error: expect.any(String) });
+      }
+      for (const content of ['😀😀', '😀'.repeat(500), '文'.repeat(500), 'a'.repeat(500)]) {
+        const response = await callMessageApi(postAdminReply, { parentId, content });
+        expect(response.status).toBe(201);
+        const { id } = await response.json();
+        expect(getDatabase().prepare('SELECT parent_id,nickname,content,status FROM messages WHERE id=?').get(id))
+          .toEqual({ parent_id: parentId, nickname: 'Sam', content, status: 'published' });
+      }
+      expect(errorLog).not.toHaveBeenCalled();
+    } finally { errorLog.mockRestore(); }
+  });
+
   it('keeps replies with their root and soft-deletes the complete thread', () => {
     const id = createMessage({ nickname: '访客', content: '较早的留言', fingerprintHash: 'visitor' });
     updateMessageStatus(id, 'published');
@@ -119,5 +192,50 @@ describe('SQLite content management', () => {
     expect(deleteMessage(id)).toBe(true);
     expect(listAllMessages().some((message) => message.id === id || message.id === reply)).toBe(false);
     expect(getDatabase().prepare('SELECT count(*) AS count FROM messages WHERE id IN (?, ?) AND deleted_at IS NOT NULL').get(id, reply)).toEqual({ count: 2 });
+  });
+
+  it('keeps older moderation threads accessible beyond 200 roots without expanding the public window', () => {
+    const parentId = createMessage({ nickname: '旧访客', content: '旧的公开留言', fingerprintHash: 'older-root' });
+    updateMessageStatus(parentId, 'published');
+    const replyId = createMessage({ parentId, nickname: '回复者', content: '旧线程待审核回复', fingerprintHash: 'older-reply' });
+    const pendingId = createMessage({ nickname: '待审核', content: '旧的待审核留言', fingerprintHash: 'older-pending' });
+    const newerIds = Array.from({ length: 201 }, (_, index) => {
+      const id = createMessage({ nickname: '新访客', content: `较新的留言 ${index}`, fingerprintHash: `newer-${index}` });
+      updateMessageStatus(id, 'published');
+      return id;
+    });
+    const messages = listAllMessages();
+    expect(messages.find((message) => message.id === parentId)).toBeDefined();
+    expect(messages.find((message) => message.id === replyId)?.status).toBe('pending');
+    expect(messages.find((message) => message.id === pendingId)?.status).toBe('pending');
+    expect(updateMessageStatus(replyId, 'published')).toBe(true);
+    expect(updateMessageStatus(pendingId, 'hidden')).toBe(true);
+    expect(listAllMessages().find((message) => message.id === replyId)?.status).toBe('published');
+    expect(listAllMessages().find((message) => message.id === pendingId)?.status).toBe('hidden');
+    expect(listPublishedMessages().map((message) => message.id)).toEqual(newerIds.slice(-60).reverse());
+    expect(deleteMessage(parentId)).toBe(true);
+    expect(listAllMessages().some((message) => message.id === parentId || message.id === replyId)).toBe(false);
+  });
+
+  it('reads all moderation threads without exhausting SQLite parameter limits', () => {
+    const database = getDatabase();
+    const fingerprintHash = 'large-moderation-fixture';
+    let parentId = 0;
+    let replyId = 0;
+    database.transaction(() => {
+      const insert = database.prepare("INSERT INTO messages (nickname,content,fingerprint_hash,status) VALUES ('测试访客','参数边界验证',?,'published')");
+      parentId = Number(insert.run(fingerprintHash).lastInsertRowid);
+      replyId = createAdminReply(parentId, '边界线程回复');
+      for (let index = 0; index < 32766; index += 1) insert.run(fingerprintHash);
+    })();
+    try {
+      const messages = listAllMessages();
+      expect(messages.find((message) => message.id === parentId)).toBeDefined();
+      expect(messages.find((message) => message.id === replyId)?.parentId).toBe(parentId);
+      expect(messages.filter((message) => message.parentId === null).length).toBeGreaterThanOrEqual(32767);
+      expect(listPublishedMessages()).toHaveLength(60);
+    } finally {
+      database.prepare('UPDATE messages SET deleted_at = ? WHERE fingerprint_hash = ? OR id = ?').run(new Date().toISOString(), fingerprintHash, replyId);
+    }
   });
 });

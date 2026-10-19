@@ -15,7 +15,7 @@ interface Props {
 
 const { title, eyebrow, calendar, href, unit = '次', period = '过去一年', showUsage = false, inlineTotal = false, latestContribution } = Astro.props;
 const formatCount = (count: number) => count >= 100000000 ? `${(count / 100000000).toFixed(1)}亿` : count >= 10000 ? `${(count / 10000).toFixed(1)}万` : count.toLocaleString('zh-CN');
-const totalLabel = calendar.available ? `${formatCount(calendar.total)} ${unit}` : '暂时离线';
+const totalLabel = calendar.available ? `${formatCount(calendar.total)} ${unit}` : '';
 const detailId = `usage-${eyebrow.toLowerCase()}-${title.toLowerCase().replace(/\s+/g, '-')}`;
 const months = [...new Set(calendar.days.map((day) => day.date.slice(0, 7)))];
 const monthLabel = (month: string) => `${month.slice(0, 4)} 年 ${Number(month.slice(5))} 月`;
@@ -25,10 +25,10 @@ const monthLabel = (month: string) => `${month.slice(0, 4)} 年 ${Number(month.s
   <header>
     <div class="contribution-heading">
       <span>{eyebrow}</span>
-      <div class="contribution-title-line"><h3>{title}</h3>{inlineTotal && <strong>{totalLabel}</strong>}</div>
+      <div class="contribution-title-line"><h3>{title}</h3>{inlineTotal && totalLabel && <strong>{totalLabel}</strong>}</div>
       {latestContribution && <p class="activity-date"><span aria-hidden="true">✦</span> 最近一次公开贡献 <time datetime={latestContribution} data-local-date>{latestContribution}</time></p>}
     </div>
-    {!inlineTotal && <strong>{totalLabel}</strong>}
+    {!inlineTotal && totalLabel && <strong>{totalLabel}</strong>}
   </header>
   {showUsage && <nav class="contribution-months" aria-label={`${title}按月浏览`}>
     <button type="button" data-month-previous aria-label="上一个月">←</button>
@@ -76,7 +76,16 @@ const monthLabel = (month: string) => `${month.slice(0, 4)} 年 ${Number(month.s
 <script>
   import { animateMotion, motionDisabled } from '../lib/motion';
   import { siteConfig } from '../config/site';
-  document.querySelectorAll<HTMLElement>('.contribution-panel:has([data-token-cell]) .contribution-scroll').forEach((scroll) => {
+  document.querySelectorAll<HTMLElement>('.contribution-scroll').forEach((scroll) => {
+    let previousMaximum = 0;
+    new ResizeObserver(() => {
+      const wasAtEnd = Math.abs(scroll.scrollLeft - previousMaximum) <= 1;
+      previousMaximum = Math.max(0, scroll.scrollWidth - scroll.clientWidth);
+      if (wasAtEnd) scroll.scrollLeft = previousMaximum;
+    }).observe(scroll);
+    scroll.scrollLeft = scroll.scrollWidth;
+    previousMaximum = Math.max(0, scroll.scrollWidth - scroll.clientWidth);
+    if (!scroll.querySelector('[data-token-cell]')) return;
     const panel = scroll.closest<HTMLElement>('.contribution-panel')!;
     const cells = [...scroll.querySelectorAll<HTMLElement>('[data-contribution-cell]')];
     const months = [...new Set(cells.map((cell) => cell.dataset.date!.slice(0, 7)))];
@@ -128,14 +137,6 @@ const monthLabel = (month: string) => `${month.slice(0, 4)} 年 ${Number(month.s
       const first = cells.find((cell) => cell.dataset.date?.startsWith(months[selectedMonth]));
       first?.focus({ preventScroll: true });
     });
-    let previousMaximum = 0;
-    new ResizeObserver(() => {
-      const wasAtEnd = Math.abs(scroll.scrollLeft - previousMaximum) <= 1;
-      previousMaximum = Math.max(0, scroll.scrollWidth - scroll.clientWidth);
-      if (wasAtEnd) scroll.scrollLeft = previousMaximum;
-    }).observe(scroll);
-    scroll.scrollLeft = scroll.scrollWidth;
-    previousMaximum = Math.max(0, scroll.scrollWidth - scroll.clientWidth);
     updateMonth();
   });
 

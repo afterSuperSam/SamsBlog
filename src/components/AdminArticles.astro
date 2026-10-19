@@ -13,7 +13,7 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
 
 <section class="admin-panel admin-articles" id="articles" data-admin-articles>
   <header class="admin-panel__heading"><div><span>ARTICLES</span><h2>文章</h2></div><p>写下想法，保存即公开。删除的文章可在下方恢复。</p></header>
-  <form class="article-editor" data-article-editor novalidate>
+  <form method="post" class="article-editor" data-article-editor novalidate>
     <header class="article-editor__heading"><h3 data-editor-heading>写一篇文章</h3><button type="button" data-new-article>＋ 新文章</button></header>
     <input type="hidden" name="id" />
     <div class="article-editor__fields">
@@ -47,7 +47,7 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
         <div class="article-prose" data-article-preview><p class="article-editor__empty">写下正文后，预览会出现在这里。</p></div>
       </section>
     </div>
-    <footer class="article-editor__footer"><span data-editor-dates>保存后记录创建与编辑时间</span><button class="admin-create" type="submit">保存并公开</button></footer>
+    <footer class="article-editor__footer"><span data-editor-dates>保存后记录创建与编辑时间</span><button class="admin-create" type="submit" disabled>保存并公开</button></footer>
     <p class="form-status" role="status" aria-live="polite" data-article-feedback></p>
   </form>
   <div class="article-management-list" aria-label="已公开文章">
@@ -111,7 +111,7 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
     editor.addEventListener('change', () => { dirty = true; updatePreview(); });
     const mayDiscard = async () => !dirty || await confirmAdminAction('当前修改尚未保存，是否放弃这些修改？', '放弃修改');
     root.querySelector('[data-new-article]')?.addEventListener('click', async () => {
-      if (!await mayDiscard()) return;
+      if (!await mayDiscard() || root.getAttribute('aria-busy') === 'true') return;
       editor.reset();
       id.value = '';
       heading.textContent = '写一篇文章';
@@ -122,7 +122,7 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
       title.focus();
     });
     root.querySelectorAll<HTMLButtonElement>('[data-edit-article]').forEach((button) => button.addEventListener('click', async () => {
-      if (!await mayDiscard()) return;
+      if (!await mayDiscard() || root.getAttribute('aria-busy') === 'true') return;
       const article = JSON.parse(button.dataset.article || '{}') as ArticleRecord;
       id.value = String(article.id);
       title.value = article.title;
@@ -161,10 +161,12 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
       const result = await response.json() as { error?: string };
       if (!response.ok) throw new Error(result.error || '文章操作失败，请稍后重试。');
     };
-    const perform = async (button: HTMLButtonElement, status: HTMLElement, action: () => Promise<void>) => {
+    const perform = async (status: HTMLElement, action: () => Promise<void>) => {
       if (root.getAttribute('aria-busy') === 'true') return;
+      const controls = [...root.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | HTMLButtonElement>('input,textarea,select,button')];
+      const disabledStates = controls.map((control) => control.disabled);
       root.setAttribute('aria-busy', 'true');
-      button.disabled = true;
+      controls.forEach((control) => { control.disabled = true; });
       animateContentHeight(status, () => {
         status.textContent = '正在保存…';
         status.dataset.state = 'loading';
@@ -175,17 +177,17 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
         window.location.hash = 'articles';
         window.location.reload();
       } catch (error) {
+        controls.forEach((control, index) => { control.disabled = disabledStates[index]; });
+        root.removeAttribute('aria-busy');
         animateContentHeight(status, () => {
           status.textContent = error instanceof TypeError ? '网络连接失败，请检查连接后重试。' : error instanceof Error ? error.message : '文章操作失败。';
           status.dataset.state = 'error';
         });
-      } finally {
-        button.disabled = false;
-        root.removeAttribute('aria-busy');
       }
     };
     editor.addEventListener('submit', (event) => {
       event.preventDefault();
+      if (root.getAttribute('aria-busy') === 'true') return;
       const invalid = !title.value.trim() ? title : !content.value.trim() ? content : undefined;
       if (invalid) {
         animateContentHeight(feedback, () => {
@@ -195,22 +197,24 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
         invalid.focus();
         return;
       }
-      const button = editor.querySelector<HTMLButtonElement>('[type="submit"]')!;
       const payload = { title: title.value, coverUrl: cover.value, originalAuthor: originalAuthor.value, originalUrl: originalUrl.value, source: source.value, category: category.value, content: content.value, ...(id.value ? { id: Number(id.value) } : {}) };
-      void perform(button, feedback, () => request(id.value ? 'PATCH' : 'POST', payload));
+      void perform(feedback, () => request(id.value ? 'PATCH' : 'POST', payload));
     });
+    editor.querySelector<HTMLButtonElement>('button[type="submit"]')?.removeAttribute('disabled');
     root.querySelectorAll<HTMLButtonElement>('[data-remove-article],[data-restore-article]').forEach((button) => button.addEventListener('click', async () => {
-      if (!await mayDiscard()) return;
+      if (!await mayDiscard() || root.getAttribute('aria-busy') === 'true') return;
       const restore = button.hasAttribute('data-restore-article');
       if (!restore && !await confirmAdminAction('删除后将停止公开展示，仍可在“已删除”中恢复。确定删除吗？', '删除文章')) return;
       const articleId = Number(restore ? button.dataset.restoreArticle : button.dataset.removeArticle);
-      void perform(button, listFeedback, () => request(restore ? 'PATCH' : 'DELETE', { id: articleId, ...(restore ? { restore: true } : {}) }));
+      void perform(listFeedback, () => request(restore ? 'PATCH' : 'DELETE', { id: articleId, ...(restore ? { restore: true } : {}) }));
     }));
     document.addEventListener('click', async (event) => {
       const link = event.target instanceof Element ? event.target.closest<HTMLAnchorElement>('a[href]') : null;
-      if (!dirty || !link || link.target === '_blank' || link.hasAttribute('download') || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+      if (!link || event.button !== 0 || link.target === '_blank' || link.hasAttribute('download') || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
       const url = new URL(link.href);
       if (url.pathname === location.pathname && url.search === location.search && url.hash) return;
+      if (root.getAttribute('aria-busy') === 'true') { event.preventDefault(); return; }
+      if (!dirty) return;
       event.preventDefault();
       if (await mayDiscard()) { dirty = false; window.location.assign(link.href); }
     });

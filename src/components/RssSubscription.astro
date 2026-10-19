@@ -5,17 +5,21 @@ const feedUrl = new URL('/rss.xml', siteConfig.siteUrl).href;
 <a href="/rss.xml" data-rss-subscribe aria-haspopup="dialog">RSS</a>
 <dialog class="rss-subscription" aria-labelledby="rss-subscription-title" data-rss-dialog>
   <button type="button" class="rss-subscription__close" aria-label="关闭订阅说明" data-rss-close>×</button>
-  <span class="section-kicker">RSS</span><h2 id="rss-subscription-title">把下一页带走</h2>
-  <p>把这个地址添加到你的 RSS 阅读器，新文章会随订阅器刷新出现，正文与图片都在里面。</p>
+  <span class="section-kicker">Really Simple Syndication</span><h2 id="rss-subscription-title">RSS 订阅</h2>
+  <p>将该地址添加到您的 RSS 阅读器</p>
   <label><span class="sr-only">订阅地址</span><input type="url" value={feedUrl} readonly data-rss-address /></label>
-  <div class="rss-subscription__actions"><button type="button" data-rss-copy>复制地址</button><a href="/rss.xml">打开订阅源 ↗</a></div>
+  <div class="rss-subscription__actions"><button class="copy-feedback" type="button" data-rss-copy aria-live="polite" aria-atomic="true"><span>复制地址</span></button><a href="/rss.xml">打开订阅源 ↗</a></div>
   <p class="form-status" role="status" aria-live="polite" data-rss-feedback></p>
 </dialog>
 <script>
   import { animateContentHeight } from '../lib/motion';
+  import { siteConfig } from '../config/site';
   const trigger = document.querySelector<HTMLAnchorElement>('[data-rss-subscribe]');
   const dialog = document.querySelector<HTMLDialogElement>('[data-rss-dialog]');
   if (trigger && dialog) {
+    const copy = dialog.querySelector<HTMLButtonElement>('[data-rss-copy]')!;
+    const copyLabel = copy.querySelector('span')!;
+    let copyTimer: ReturnType<typeof setTimeout>;
     trigger.addEventListener('click', (event) => {
       if (event.button || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
       event.preventDefault(); dialog.showModal();
@@ -23,11 +27,23 @@ const feedUrl = new URL('/rss.xml', siteConfig.siteUrl).href;
     dialog.querySelector('[data-rss-close]')?.addEventListener('click', () => dialog.close());
     dialog.addEventListener('click', (event) => { if (event.target === dialog) { const bounds = dialog.getBoundingClientRect(); if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) dialog.close(); } });
     dialog.addEventListener('close', () => trigger.focus({ preventScroll: true }));
-    dialog.querySelector('[data-rss-copy]')?.addEventListener('click', async () => {
+    copy.addEventListener('click', async () => {
+      if (copy.disabled) return;
       const address = dialog.querySelector<HTMLInputElement>('[data-rss-address]')!;
       const feedback = dialog.querySelector<HTMLElement>('[data-rss-feedback]')!;
-      try { await navigator.clipboard.writeText(address.value); animateContentHeight(feedback, () => { feedback.textContent = '订阅地址已复制'; feedback.dataset.state = 'success'; }); }
-      catch { address.focus(); address.select(); animateContentHeight(feedback, () => { feedback.textContent = '请复制上方已选中的订阅地址'; feedback.dataset.state = 'error'; }); }
+      clearTimeout(copyTimer);
+      copy.disabled = true;
+      try {
+        await navigator.clipboard.writeText(address.value);
+        copy.dataset.copyState = 'success'; copyLabel.textContent = '复制成功';
+        animateContentHeight(feedback, () => { feedback.textContent = ''; delete feedback.dataset.state; });
+        copyTimer = setTimeout(() => { delete copy.dataset.copyState; copyLabel.textContent = '复制地址'; }, siteConfig.articleReading.copyFeedbackMilliseconds);
+      } catch (error) {
+        console.warn('RSS clipboard write failed', error);
+        delete copy.dataset.copyState; copyLabel.textContent = '复制地址';
+        address.focus(); address.select();
+        animateContentHeight(feedback, () => { feedback.textContent = '请复制上方已选中的订阅地址'; feedback.dataset.state = 'error'; });
+      } finally { copy.disabled = false; }
     });
   }
 </script>

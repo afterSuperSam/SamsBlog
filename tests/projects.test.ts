@@ -47,7 +47,7 @@ describe('dynamic project management', () => {
   it('rejects stale lists and invalid repositories, keywords and addresses atomically', () => {
     const before = getProjectSettings();
     const first = before.projects[0];
-    for (const patch of [{ id: 123456 }, { id: 1.5 }, { repository: 'https://github.com/a/b' }, { repository: '../commits' }, { keyword: '简介中没有这个词' }, { visible: 1 }, { url: 'javascript:alert(1)' }, { url: 'https://user:pass@example.com/' }]) {
+    for (const patch of [{ id: 123456 }, { id: 1.5 }, { repository: 'https://github.com/a/b' }, { repository: '../commits' }, { keyword: '简介中没有这个词' }, { visible: 1 }, { url: 'javascript:alert(1)' }, { url: 'https:example.com/project' }, { url: 'https://user:pass@example.com/' }]) {
       expect(() => saveProjectSettings({ ...before, currentWork: '不得写入', projects: [{ ...first, ...patch }, ...before.projects.slice(1)] })).toThrow();
     }
     expect(() => saveProjectSettings({ ...before, projects: before.projects.slice(1) })).toThrow('项目列表已变化');

@@ -2,7 +2,7 @@
 Description=Daily SamsBlog content backup
 
 [Timer]
-OnCalendar=*-*-* 03:20:00
+OnCalendar=*-*-* 11:20:00 Asia/Shanghai
 Persistent=true
 
 [Install]

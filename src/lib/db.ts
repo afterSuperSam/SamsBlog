@@ -230,10 +230,11 @@ function listMessageThreads(limit: number, publishedOnly: boolean) {
     FROM messages WHERE parent_id IS NULL AND deleted_at IS NULL ${visibility}
     ORDER BY created_at DESC, id DESC LIMIT ?`).all(limit) as Record<string, unknown>[];
   if (roots.length === 0) return [];
-  const rootIds = roots.map((row) => Number(row.id));
   const replies = getDatabase().prepare(`SELECT id, parent_id, nickname, content, status, created_at
-    FROM messages WHERE deleted_at IS NULL ${visibility} AND parent_id IN (${rootIds.map(() => '?').join(',')})
-    ORDER BY created_at ASC, id ASC`).all(...rootIds) as Record<string, unknown>[];
+    FROM messages WHERE deleted_at IS NULL ${visibility} AND parent_id IN (
+      SELECT id FROM messages WHERE parent_id IS NULL AND deleted_at IS NULL ${visibility}
+      ORDER BY created_at DESC, id DESC LIMIT ?
+    ) ORDER BY created_at ASC, id ASC`).all(limit) as Record<string, unknown>[];
   return [...roots, ...replies].map(mapRow);
 }
 
@@ -244,7 +245,7 @@ export function listPublishedMessages(limit = 60) {
   return parents;
 }
 
-export function listAllMessages(limit = 200) {
+export function listAllMessages(limit = -1) {
   return listMessageThreads(limit, false);
 }
 

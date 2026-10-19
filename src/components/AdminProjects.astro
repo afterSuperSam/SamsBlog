@@ -7,7 +7,7 @@ const settings = getProjectSettings();
 
 <section class="admin-panel" id="projects">
   <header class="admin-panel__heading"><div><span>PROJECTS</span><h2>项目</h2></div><p>按顺序展示可见项目，首页先显示前 {siteConfig.projectPresentation.initialVisibleCount} 个。</p></header>
-  <form class="admin-projects" data-admin-projects novalidate>
+  <form method="post" class="admin-projects" data-admin-projects novalidate>
     <label><span>最近在做</span><input name="currentWork" value={settings.currentWork} maxlength={siteConfig.currentWork.maximumLength} required aria-describedby="project-settings-status" /></label>
     <div class="project-editor-list" data-project-items>
       {[...settings.projects, null].map((project) => {
@@ -32,7 +32,7 @@ const settings = getProjectSettings();
         </Wrapper>;
       })}
     </div>
-    <div class="project-editor-footer"><button type="button" data-project-add>＋ 新增项目</button><button class="admin-create" type="submit">保存项目设置</button></div>
+    <div class="project-editor-footer"><button type="button" data-project-add>＋ 新增项目</button><button class="admin-create" type="submit" disabled>保存项目设置</button></div>
     <p class="form-status" id="project-settings-status" role="status" aria-live="polite" data-project-feedback></p>
   </form>
 </section>
@@ -144,6 +144,7 @@ const settings = getProjectSettings();
       }
     });
     updateOrder();
+    form.querySelector<HTMLButtonElement>('button[type="submit"]')?.removeAttribute('disabled');
   }
 </script>
 

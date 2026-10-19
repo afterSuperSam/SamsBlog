@@ -33,7 +33,7 @@ const friendStatusTimeout = Math.ceil(friends.length / serverConfig.friendStatus
 
   <section class="home-hero" id="home" data-pointer-tilt={siteConfig.effects.pointerTiltDegrees}>
     <div class="hero-media" aria-hidden="true">
-      <img src="/media/anime/hero/1753341045990.png" alt="" class="hero-media__image" fetchpriority="high" />
+      <img src="/media/anime/hero/1753341045990-1772.webp" srcset="/media/anime/hero/1753341045990-768.webp 768w, /media/anime/hero/1753341045990-1772.webp 1772w" sizes="100vw" width="1772" height="2500" alt="" class="hero-media__image" fetchpriority="high" />
       <span class="hero-media__edge"></span>
     </div>
     <div class="hero-copy">
@@ -57,17 +57,21 @@ const friendStatusTimeout = Math.ceil(friends.length / serverConfig.friendStatus
           <img class:list={['friend-card__background', { 'is-avatar-background': !friend.backgroundUrl }]} src={friend.backgroundUrl || friend.iconUrl} alt="" loading="lazy" referrerpolicy="no-referrer" data-friend-background data-fallback={friend.iconUrl} />
           <span class="friend-card__icon"><b>{friend.name.slice(0, 1)}</b><img src={friend.iconUrl} alt="" loading="lazy" referrerpolicy="no-referrer" data-friend-icon /></span>
           <a class="friend-card__copy" href={friend.url} target="_blank" rel="noopener noreferrer"><strong>{friend.name}</strong><small>{friend.description}</small></a>
-          {friend.rssUrl && <a class="friend-card__rss" href={friend.rssUrl} target="_blank" rel="noopener noreferrer" aria-label={`订阅 ${friend.name} 的 RSS`}>
-            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="19" r="1.5" /><path pathLength="1" d="M5 11a8 8 0 0 1 8 8" /><path pathLength="1" d="M5 5a14 14 0 0 1 14 14" /></svg><span>RSS</span>
-          </a>}
+          {friend.rssUrl && <div class="friend-card__subscription">
+            <a class="friend-card__rss" href={friend.rssUrl} target="_blank" rel="noopener noreferrer" aria-label={`订阅 ${friend.name} 的 RSS`}>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="19" r="1.5" /><path pathLength="1" d="M5 11a8 8 0 0 1 8 8" /><path pathLength="1" d="M5 5a14 14 0 0 1 14 14" /></svg><span>RSS</span>
+            </a>
+            <button class="friend-card__update-toggle" type="button" aria-label={`查看 ${friend.name} 的最近文章`} aria-expanded="false" aria-controls={`friend-update-${friend.id}`} data-feed-toggle hidden={!friend.latest?.title}>
+              <time data-feed-date datetime={friend.latest?.publishedAt || undefined} hidden={!friend.latest?.publishedAt}>{friend.latest?.publishedAt && new Date(friend.latest.publishedAt).toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' })}</time><span aria-hidden="true">⌄</span>
+            </button>
+          </div>}
           <span class="friend-card__footer">
             <em>{friend.hostname}</em>
-            <span class="friend-card__status" data-friend-status={friend.id} data-state="checking" role="status" aria-live="polite"><i aria-hidden="true"></i><span data-friend-status-label>检测中</span></span>
+            <span class="friend-card__status" data-friend-status={friend.id} data-state="checking" role="status" aria-live="polite" hidden><i aria-hidden="true"></i><span data-friend-status-label></span></span>
           </span>
-          {friend.rssUrl && <details class="friend-card__updates" data-friend-feed={friend.id} hidden={!friend.latest?.title}>
-            <summary><span>最近更新 <time data-feed-date datetime={friend.latest?.publishedAt || undefined}>{friend.latest?.publishedAt ? new Date(friend.latest.publishedAt).toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' }) : '日期未提供'}</time></span><span aria-hidden="true">⌄</span></summary>
+          {friend.rssUrl && <div class="friend-card__updates" id={`friend-update-${friend.id}`} data-friend-feed={friend.id} hidden>
             <a data-feed-entry href={friend.latest?.url || friend.rssUrl} target="_blank" rel="noopener noreferrer">{friend.latest?.title}</a>
-          </details>}
+          </div>}
         </article>
       ))}
     </div>
@@ -85,11 +89,16 @@ const friendStatusTimeout = Math.ceil(friends.length / serverConfig.friendStatus
 <script>
   import { animateContentHeight } from '../lib/motion';
   import type { FriendFeedRecord } from '../lib/friend-feeds';
-  const feedCards = [...document.querySelectorAll<HTMLDetailsElement>('[data-friend-feed]')];
-  feedCards.forEach((details) => details.querySelector('summary')?.addEventListener('click', (event) => {
-    event.preventDefault();
-    animateContentHeight(details, () => { details.open = !details.open; });
-  }));
+  const feedCards = [...document.querySelectorAll<HTMLElement>('[data-friend-feed]')];
+  feedCards.forEach((panel) => {
+    const card = panel.closest<HTMLElement>('.friend-card')!;
+    const toggle = card.querySelector<HTMLButtonElement>('[data-feed-toggle]')!;
+    toggle.addEventListener('click', () => {
+      const open = toggle.getAttribute('aria-expanded') !== 'true';
+      toggle.setAttribute('aria-expanded', String(open));
+      animateContentHeight(card, () => { panel.hidden = !open; });
+    });
+  });
   if (feedCards.length) {
     const timeout = Number(document.querySelector<HTMLElement>('[data-status-timeout]')?.dataset.statusTimeout) || 7000;
     void fetch('/api/friends/feeds.json', { signal: AbortSignal.timeout(timeout) }).then(async (response) => {
@@ -99,12 +108,15 @@ const friendStatusTimeout = Math.ceil(friends.length / serverConfig.friendStatus
         const entry = feeds.find((feed) => feed.id === Number(details.dataset.friendFeed));
         if (!entry?.title) return;
         const link = details.querySelector<HTMLAnchorElement>('[data-feed-entry]')!;
-        const date = details.querySelector<HTMLTimeElement>('[data-feed-date]')!;
+        const card = details.closest('.friend-card')!;
+        const date = card.querySelector<HTMLTimeElement>('[data-feed-date]')!;
         link.textContent = entry.title; link.href = entry.url;
-        date.textContent = entry.publishedAt ? new Date(entry.publishedAt).toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' }) : '日期未提供';
-        if (entry.publishedAt) date.dateTime = entry.publishedAt;
+        const hasDate = Boolean(entry.publishedAt && Number.isFinite(Date.parse(entry.publishedAt)));
+        date.hidden = !hasDate;
+        date.textContent = hasDate ? new Date(entry.publishedAt!).toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' }) : '';
+        if (hasDate) date.dateTime = entry.publishedAt!;
         else date.removeAttribute('datetime');
-        details.hidden = false;
+        card.querySelector<HTMLButtonElement>('[data-feed-toggle]')!.hidden = false;
       });
     }).catch((error) => console.warn('Friend feeds unavailable', error));
   }
@@ -213,18 +225,18 @@ const friendStatusTimeout = Math.ceil(friends.length / serverConfig.friendStatus
       statusNodes.forEach((node) => {
         const status = statuses.get(node.dataset.friendStatus || '');
         const label = node.querySelector('[data-friend-status-label]');
-        if (!status || !statusLabels[status.status] || !label) throw new Error('Missing friend connectivity result');
+        if (!status || !statusLabels[status.status] || status.status === 'blocked' || !label) { node.hidden = true; return; }
         node.dataset.state = status.status;
         const latency = Number.isSafeInteger(status.latencyMilliseconds) && Number(status.latencyMilliseconds) > 0 ? ` · ${status.latencyMilliseconds} ms` : '';
         label.textContent = `${statusLabels[status.status]}${latency}`;
+        node.hidden = false;
       });
     } catch (error) {
       console.warn('Friend connectivity display unavailable', error);
       statusNodes.forEach((node) => {
         if (node.dataset.state !== 'checking') return;
         node.dataset.state = 'unknown';
-        const label = node.querySelector('[data-friend-status-label]');
-        if (label) label.textContent = '暂未检测';
+        node.hidden = true;
       });
     }
   };

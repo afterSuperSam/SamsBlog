@@ -72,12 +72,11 @@ export function parseGithubContributions(html: string): ContributionCalendar {
   return { days, total: days.reduce((sum, day) => sum + day.count, 0), available: true };
 }
 
-// 共用正在进行的请求，失败后短暂缓存降级结果
+// 旧快照立即返回并单飞刷新，首次无缓存才等待；失败保留快照并短暂退避。
 export function getGithubContributions(): Promise<ContributionCalendar> {
   if (githubCache && githubCache.expiresAt > Date.now()) return Promise.resolve(githubCache.value);
-  if (pendingGithubRequest) return pendingGithubRequest;
-  pendingGithubRequest = fetchGithubContributions().finally(() => { pendingGithubRequest = undefined; });
-  return pendingGithubRequest;
+  pendingGithubRequest ??= fetchGithubContributions().finally(() => { pendingGithubRequest = undefined; });
+  return githubCache ? Promise.resolve(githubCache.value) : pendingGithubRequest;
 }
 
 async function fetchGithubContributions(): Promise<ContributionCalendar> {

@@ -68,11 +68,27 @@
 .about-sponsor::after { position:absolute; z-index:0; top:36%; left:50%; width:clamp(210px,30vw,420px); aspect-ratio:1; border-radius:50%; content:""; pointer-events:none; background:radial-gradient(circle,color-mix(in oklab,var(--summer-pink) 9%,transparent),transparent 66%); opacity:.55; transform:translate(-50%,-50%) scale(.92); animation:sponsor-aura 7s ease-in-out infinite alternate; }
 .sponsor-layout { position:relative; z-index:1; display:grid; grid-template-columns:minmax(0,1.2fr) minmax(0,1fr); gap:clamp(32px,5vw,64px); align-items:center; max-width:1050px; }
 .sponsor-copy { text-align:center; }
-.sponsor-copy h2 { margin:8px 0 22px; font-family:var(--display); font-size:clamp(2.8rem,4.5vw,4.8rem); letter-spacing:-.055em; line-height:1.1; }
-.sponsor-copy p { color:var(--text-soft); font-family:var(--body); font-size:var(--font-size-body); line-height:2; transition:color .35s ease,transform .55s var(--ease); }
+.sponsor-copy h2 { margin:8px 0 22px; font-family:var(--display); font-size:clamp(2.8rem,4.5vw,4.8rem); letter-spacing:-.055em; line-height:1.1; transition:color var(--motion-reorder-duration) var(--ease-out),text-shadow var(--motion-decoration-duration) var(--ease-out); }
+.sponsor-copy p { margin:0; color:var(--text-soft); font-family:var(--body); font-size:var(--font-size-body); line-height:1.8; transition:color .35s ease,transform .55s var(--ease); }
+.sponsor-copy a{position:relative;z-index:3;color:var(--summer-blue);font:inherit;overflow-wrap:anywhere}
+.sponsor-toggle{position:absolute;inset:0;z-index:2;width:100%;height:100%;padding:0;border:0;border-radius:24px;background:none;cursor:pointer}
+.sponsor-toggle:focus-visible{outline:2px solid var(--summer-blue);outline-offset:8px}
+.sponsor-display{position:relative;isolation:isolate;display:flex;flex-direction:column;gap:18px;min-width:0}
+.sponsor-display::before{position:absolute;inset:-12px 0;z-index:-1;content:"";border-radius:50%;background:radial-gradient(ellipse,color-mix(in srgb,var(--summer-blue) 18%,transparent),transparent 72%);filter:blur(12px);opacity:0;pointer-events:none;transition:opacity var(--motion-decoration-duration) var(--ease-out)}
+.sponsor-layout:has(.sponsor-toggle:focus-visible) :is(.sponsor-copy h2,.sponsor-smile){color:var(--summer-blue)}
+.sponsor-layout:has(.sponsor-toggle:focus-visible) .sponsor-copy h2{text-shadow:0 0 18px color-mix(in srgb,var(--summer-blue) 42%,transparent),0 0 38px color-mix(in srgb,var(--summer-blue) 22%,transparent)}
+.sponsor-layout:has(.sponsor-toggle:focus-visible) .sponsor-display::before{opacity:1}
+@media(hover:hover) and (pointer:fine){.sponsor-layout:hover :is(.sponsor-copy h2,.sponsor-smile){color:var(--summer-blue)}.sponsor-layout:hover .sponsor-copy h2{text-shadow:0 0 18px color-mix(in srgb,var(--summer-blue) 42%,transparent),0 0 38px color-mix(in srgb,var(--summer-blue) 22%,transparent)}.sponsor-layout:hover .sponsor-display::before{opacity:1}}
+.sponsor-display [hidden]{display:none}
+.sponsor-list{font:400 var(--font-size-body)/1.8 var(--playful)}
+.sponsor-list h3{margin:0 0 18px;color:var(--text-soft);font:700 var(--font-size-body)/1.7 var(--playful)}
+.sponsor-list ol{display:grid;gap:10px;margin:0;padding:0;list-style:none}
+.sponsor-list li{display:flex;align-items:baseline;justify-content:space-between;gap:16px}
+.sponsor-list li span{min-width:0;overflow-wrap:anywhere}
+.sponsor-list strong{color:var(--summer-pink);font-weight:700;white-space:nowrap}
 
-.sponsor-smile { min-width:0; text-align:center; color:var(--summer-pink); font:700 clamp(32px,4.5vw,62px)/1.5 var(--playful); white-space:nowrap; text-shadow:0 12px 36px color-mix(in oklab,var(--summer-pink) 18%,transparent); animation:sponsor-wave 4s var(--ease-out) infinite alternate; }
-@keyframes sponsor-wave { to{transform:translateY(-6px) rotate(2deg)} }
+.sponsor-smile { min-width:0; text-align:center; color:var(--summer-pink); font:700 clamp(40px,5.5vw,76px)/1.5 var(--playful); white-space:nowrap; animation:sponsor-wave 4s ease-in-out infinite alternate; transition:color var(--motion-reorder-duration) var(--ease-out); }
+@keyframes sponsor-wave { from{transform:translate(-4px,6px) rotate(-2deg)} to{transform:translate(4px,-12px) rotate(3deg)} }
 
 @keyframes sponsor-aura { to{opacity:.82;transform:translate(-50%,-50%) scale(1.12)} }
 @media(prefers-reduced-motion:reduce){ .about-sponsor::after,.sponsor-smile{animation:none} }

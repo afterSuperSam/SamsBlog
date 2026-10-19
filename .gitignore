@@ -18,7 +18,8 @@ pnpm-debug.log*
 
 # environment variables
 .env
-.env.production
+.env.*
+!.env.example
 
 # runtime data
 data/*.db

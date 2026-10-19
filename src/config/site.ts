@@ -10,6 +10,14 @@ export const siteConfig = {
   ],
   effects: { particleCount: 60, mobileParticleCount: 18, pointerTiltDegrees: 2.5, constellation: { desktopLineCount: 10, mobileLineCount: 5, desktopPointCount: 14, mobilePointCount: 8, refreshMilliseconds: 4200, fadeMilliseconds: 1100, maximumDistanceRatio: 0.26, maximumDegree: 2, scrollPeriodScreens: 2 } },
   navigation: { sectionActivationRatio: 0.35 },
+  network: { sampleCount: 3, timeoutMilliseconds: 5000 },
+  sponsors: [
+    { name: 'Aresgao', amount: 100 },
+    { name: 'Dix2de', amount: 30 },
+    { name: 'budongputong', amount: 3 },
+    { name: 'fume_shroom', amount: 10 },
+    { name: 'DogTable_Kcid', amount: 30 },
+  ],
   articles: { homepageCount: 2, feedCount: 20, cardCount: 3, reorderMilliseconds: 420 },
   articleReading: { positionStorageKey: 'sams-blog-reading-positions', preferenceStorageKey: 'sams-blog-reading-mode', positionLimit: 50, positionSaveMilliseconds: 1000, positionMinimumPixels: 240, imageZoomScale: 2, copyFeedbackMilliseconds: 1800 },
   interactions: { feedbackResizeMilliseconds: 260, themeRevealMilliseconds: 760, monthScrollMilliseconds: 360, keyboardInsetPixels: 18 },
@@ -33,6 +41,12 @@ export const siteConfig = {
 } as const;
 
 const registrationUrl = new URL(siteConfig.registration.href);
+if (!Number.isSafeInteger(siteConfig.network.sampleCount) || siteConfig.network.sampleCount < 1 || siteConfig.network.sampleCount % 2 !== 1
+  || !Number.isSafeInteger(siteConfig.network.timeoutMilliseconds) || siteConfig.network.timeoutMilliseconds <= 0
+  || siteConfig.sponsors.some(({ name, amount }) => !name.trim() || !Number.isFinite(amount) || amount <= 0)
+  || new Set(siteConfig.sponsors.map(({ name }) => name)).size !== siteConfig.sponsors.length) {
+  throw new Error('Invalid network or sponsor configuration');
+}
 if (!siteConfig.registration.label.trim() || registrationUrl.protocol !== 'https:' || registrationUrl.username || registrationUrl.password) {
   throw new Error('Invalid registration configuration');
 }

@@ -23,7 +23,17 @@ export const onRequest = defineMiddleware(async ({ cookies, request, url }, next
       path: '/',
       maxAge: 60 * 60 * 24 * 365,
     });
-    recordPageView(hashVisitorToken(token));
+    // 匿名统计降级不影响已生成的公开页面，日志只记录错误分类。
+    try {
+      recordPageView(hashVisitorToken(token));
+    } catch (error) {
+      const code = error && typeof error === 'object' && 'code' in error && typeof error.code === 'string' ? error.code : '';
+      if (/^SQLITE_(?:BUSY|LOCKED|FULL|IOERR|READONLY|CANTOPEN|CORRUPT|NOTADB)(?:_|$)/.test(code)) {
+        console.warn('Page view statistics storage unavailable', { code });
+      } else {
+        console.error('Page view statistics failed unexpectedly', { errorType: error instanceof Error ? error.name : typeof error });
+      }
+    }
   }
 
   return response;

@@ -166,9 +166,9 @@ const constellationSlots = Array.from({ length: siteConfig.effects.constellation
     if (!motionButton) return;
     motionButton.disabled = reducedMotion.matches;
     motionButton.setAttribute('aria-pressed', String(disabled));
-    motionButton.setAttribute('aria-label', disabled ? '启用装饰动效' : '暂停装饰动效');
+    motionButton.setAttribute('aria-label', reducedMotion.matches ? '已按系统设置减少动效' : disabled ? '开启动效' : '关闭动效');
     const actionLabel = motionButton.querySelector('[data-motion-action-label]');
-    if (actionLabel) actionLabel.textContent = reducedMotion.matches ? '系统减少动效' : paused ? '开启动效' : '暂停动效';
+    if (actionLabel) actionLabel.textContent = reducedMotion.matches ? '减少动效' : paused ? '开启动效' : '关闭动效';
   };
   syncMotion();
   reducedMotion.addEventListener('change', syncMotion);

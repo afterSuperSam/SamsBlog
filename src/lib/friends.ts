@@ -41,6 +41,7 @@ function mapFriend(row: Record<string, unknown>): FriendRecord {
 }
 
 function normalizeWebUrl(value: string, field: string) {
+  if (!/^https?:\/\//i.test(value.trim())) throw new HttpError(400, `${field}必须是完整的网址`);
   let url: URL;
   try { url = new URL(value.trim()); }
   catch { throw new HttpError(400, `${field}必须是完整的网址`); }

@@ -14,7 +14,7 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month:
     </header>
 
     <div class="guestbook-layout">
-      <form class="message-form" data-message-form autocomplete="off" novalidate>
+      <form method="post" class="message-form" data-message-form autocomplete="off" novalidate>
         <span class="message-form__decor" aria-hidden="true"><i>✿</i><i>✧</i><i>✦</i></span>
         <div class="message-form__title">
           <span aria-hidden="true">
@@ -24,23 +24,24 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month:
         </div>
         <label>
           <span>怎么称呼你</span>
-          <input name="nickname" type="text" minlength="2" maxlength="24" autocomplete="off" spellcheck="false" placeholder="2–24 个字符" aria-required="true" aria-describedby="message-form-status" />
+          <input name="nickname" type="text" minlength="2" maxlength="48" data-character-maximum="24" autocomplete="off" spellcheck="false" placeholder="2–24 个字符" aria-required="true" aria-describedby="message-form-status" />
         </label>
         <label>
           <span>想说的话</span>
-          <textarea name="content" minlength="2" maxlength="500" rows="4" autocomplete="off" spellcheck="false" aria-required="true" aria-describedby="message-form-status"></textarea>
+          <textarea name="content" minlength="2" maxlength="1000" data-character-maximum="500" rows="4" autocomplete="off" spellcheck="false" aria-required="true" aria-describedby="message-form-status"></textarea>
         </label>
         <label class="message-form__honeypot" aria-hidden="true" hidden>
           <span>网站</span><input name="website" tabindex="-1" autocomplete="off" />
         </label>
         <div class="message-form__footer">
           <span><b data-message-count>0</b> / 500</span>
-          <button class="button button--primary message-submit" type="submit">
+          <button class="button button--primary message-submit" type="submit" disabled>
             <span>送出留言</span>
             <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m4 5 16 7-16 7 3-7-3-7Z" /><path d="M7 12h13" /></svg>
           </button>
         </div>
         <p class="form-status" id="message-form-status" role="status" data-form-status></p>
+        <noscript><p>留言需要启用 JavaScript 后才能提交。</p></noscript>
       </form>
 
       <div class="message-wall">
@@ -58,7 +59,7 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month:
                   <header><b>{message.nickname}</b><time datetime={message.createdAt}>{dateFormatter.format(new Date(message.createdAt))}</time></header>
                   <p>{message.content}</p>
                   {message.replies?.map((reply) => (
-                    <blockquote class="message-reply"><b>Sam</b><p>{reply.content}</p></blockquote>
+                    <blockquote class="message-reply"><b>{reply.nickname}</b><p>{reply.content}</p></blockquote>
                   ))}
                 </div>
               </li>
@@ -224,7 +225,7 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month:
     new ResizeObserver(() => scheduleCaret()).observe(field);
   });
 
-  textarea?.addEventListener('input', () => { if (counter) counter.textContent = String(textarea.value.length); });
+  textarea?.addEventListener('input', () => { if (counter) counter.textContent = String(Array.from(textarea.value).length); });
   [nickname, textarea].forEach((field) => {
     if (!field) return;
     field.setAttribute('writingsuggestions', 'false');
@@ -236,11 +237,11 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month:
   form?.addEventListener('submit', async (event) => {
     event.preventDefault();
     if (submitting || nickname?.dataset.composing === 'true' || textarea?.dataset.composing === 'true') return;
-    const invalidField = [nickname, textarea].find((field) => field && (field.value.trim().length < field.minLength || field.value.trim().length > field.maxLength));
+    const invalidField = [nickname, textarea].find((field) => field && (field.value.includes('\0') || Array.from(field.value.trim()).length < field.minLength || Array.from(field.value.trim()).length > Number(field.dataset.characterMaximum)));
     if (invalidField) {
       const label = invalidField.name === 'nickname' ? '称呼' : '留言';
       if (status) {
-        showStatus(invalidField.value.trim().length === 0 ? `请先填写${label}。` : `${label}需要 ${invalidField.minLength} 至 ${invalidField.maxLength} 个字符。`, 'invalid');
+        showStatus(invalidField.value.includes('\0') ? `${label}不能包含空字符。` : invalidField.value.trim().length === 0 ? `请先填写${label}。` : `${label}需要 ${invalidField.minLength} 至 ${invalidField.dataset.characterMaximum} 个字符。`, 'invalid');
       }
       invalidField.setAttribute('aria-invalid', 'true');
       invalidField.focus();
@@ -260,8 +261,13 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month:
       if (!response.headers.get('content-type')?.includes('application/json')) throw new Error('留言服务暂时不可用，请稍后重试。');
       const result = await response.json() as { ok?: boolean; message?: string; error?: string };
       if (!response.ok || !result.ok) throw new Error(result.error || '提交失败，请稍后重试。');
-      form.reset();
-      if (counter) counter.textContent = '0';
+      // 只清空本次送出后未变化的字段，不打断等待期间的新输入或中文组词。
+      [nickname, textarea].forEach((field) => {
+        if (!field || field.dataset.composing === 'true' || field.value !== data.get(field.name)) return;
+        field.value = '';
+        field.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+      if (counter) counter.textContent = String(Array.from(textarea?.value || '').length);
       showStatus(result.message || '留言已送出。', 'success');
     } catch (error) {
       showStatus(error instanceof TypeError ? '网络连接失败，请检查连接后重试。' : error instanceof Error ? error.message : '提交失败，请稍后重试。', 'error');
@@ -270,4 +276,5 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month:
       submit?.removeAttribute('disabled');
     }
   });
+  form?.querySelector<HTMLButtonElement>('button[type="submit"]')?.removeAttribute('disabled');
 </script>

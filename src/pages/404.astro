@@ -2,27 +2,47 @@
 import BaseLayout from '../layouts/BaseLayout.astro';
 ---
 
-<BaseLayout title="走丢了" description="这里没有你要找的页面。">
-  <section class="not-found shell">
-    <p class="eyebrow">404 · Lost frame</p>
-    <h1>这一帧，<em>不在胶卷里。</em></h1>
-    <p>链接可能已经改变，也可能从未存在。回到首页，继续看下一段故事吧。</p>
+<BaseLayout title="404 Not Found." description="这里没有你要找的页面。" bodyClass="not-found-page">
+  <section class="not-found shell" aria-labelledby="not-found-title" data-reveal>
+    <p class="not-found__code">404 Not Found.</p>
+    <h1 id="not-found-title">网址错误</h1>
+    <p class="not-found__description">链接可能已经改变，也可能从未存在。<br />回到首页，继续看下一段故事吧。</p>
     <a class="button button--primary" href="/">回到首页</a>
   </section>
 </BaseLayout>
 
 <style>
-  .not-found {
-    min-height: 72vh;
-    padding-block: calc(var(--header-height) + 48px) 64px;
-    display: grid;
-    place-content: center;
-    justify-items: start;
-    gap: 1.25rem;
-    max-width: 50rem;
+  :global(body.not-found-page) {
+    display: flex;
+    flex-direction: column;
+    min-height: 100svh;
+    min-height: 100dvh;
   }
 
-  h1 { max-width: 12ch; }
-  h1 em { color: var(--accent); font-style: italic; }
-  p:not(.eyebrow) { max-width: 34rem; color: var(--muted); }
+  :global(.not-found-page #main-content) {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+  }
+
+  :global(.not-found-page .site-footer) {
+    flex-shrink: 0;
+    padding-block: 28px calc(24px + env(safe-area-inset-bottom));
+  }
+
+  .not-found {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 20px;
+    max-width: 56rem;
+    padding-block: calc(var(--header-height) + clamp(32px, 5vw, 64px)) clamp(32px, 5vw, 64px);
+  }
+
+  .not-found__code { margin: 0; color: var(--summer-blue); font: 600 var(--not-found-code-size)/1.5 var(--playful); }
+  h1 { margin: 0; color: var(--text-strong); font: 700 var(--not-found-title-size)/1.2 var(--playful); letter-spacing: .03em; }
+  .not-found__description { max-width: 38rem; margin: 4px 0 8px; color: var(--text-soft); font: 400 var(--not-found-copy-size)/1.95 var(--playful); }
+  .not-found .button { min-height: 48px; color: var(--summer-blue); font: 700 var(--not-found-copy-size)/1.5 var(--playful); }
 </style>

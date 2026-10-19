@@ -55,7 +55,8 @@
 .home-friends{padding-block:clamp(24px,3vw,40px) clamp(32px,4vw,52px);scroll-margin-top:calc(var(--header-height) + 24px)}
 .home-friends header{margin-bottom:28px}.home-friends .section-title{font-size:clamp(32px,4vw,48px)}
 .friend-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}
-.friend-card{position:relative;display:grid;grid-template-columns:58px minmax(0,1fr) auto;gap:16px;align-items:center;min-height:176px;padding:22px;border-radius:22px;overflow:hidden;isolation:isolate;background:transparent;color:var(--text);transition:transform .42s var(--ease-out),box-shadow .5s var(--ease-out)}
+.friend-card [hidden],.project-meta [hidden]{display:none}
+.friend-card{position:relative;display:grid;grid-template-columns:58px minmax(0,1fr);gap:16px;align-items:center;min-height:176px;padding:22px;border-radius:22px;overflow:hidden;isolation:isolate;background:transparent;color:var(--text);transition:transform .42s var(--ease-out),box-shadow .5s var(--ease-out)}
 .friend-card__background{position:absolute;inset:0;z-index:0;width:100%;height:100%;border-radius:inherit;object-fit:cover;opacity:var(--friend-background-opacity);filter:blur(var(--friend-background-blur));mask-image:var(--friend-edge-mask);pointer-events:none}
 .friend-card__background.is-avatar-background{filter:blur(var(--friend-avatar-background-blur));opacity:var(--friend-avatar-background-opacity)}
 .friend-card::before{position:absolute;inset:0;z-index:1;border-radius:inherit;content:"";background:linear-gradient(105deg,var(--friend-overlay-start),var(--friend-overlay-middle) 55%,var(--friend-overlay-end));mask-image:var(--friend-edge-mask);pointer-events:none}
@@ -87,15 +88,16 @@
 .friend-card__rss:is(:hover,:focus-visible)::before{opacity:1;transform:scale(1.2)}
 .friend-card__rss:is(:hover,:focus-visible) path{stroke-dashoffset:0;opacity:1}
 .friend-card__rss:focus-visible{outline:2px solid currentColor;outline-offset:3px}
+.friend-card__subscription{position:relative;z-index:3;grid-column:1/-1;grid-row:1;justify-self:end;display:flex;align-items:center;gap:6px;margin:-12px 0 -12px}
+.friend-card__update-toggle{display:inline-flex;align-items:center;gap:6px;min-height:44px;padding:0;background:none;color:var(--friend-accent,var(--summer-blue));font:400 var(--font-size-small)/1.3 var(--playful);white-space:nowrap;cursor:pointer}
+.friend-card__update-toggle>span{transition:rotate var(--motion-feedback-duration) var(--ease-out)}
+.friend-card__update-toggle[aria-expanded="true"]>span{rotate:180deg}
+.friend-card__update-toggle:focus-visible{outline:2px solid currentColor;outline-offset:3px}
 .friend-card__updates{position:relative;z-index:3;grid-column:1/-1;min-width:0;color:var(--text-soft);font:400 var(--font-size-small)/1.6 var(--playful)}
-.friend-card__updates summary{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px;cursor:pointer;list-style:none}
-.friend-card__updates summary::-webkit-details-marker{display:none}
-.friend-card__updates summary>span:last-child{color:var(--friend-accent,var(--summer-blue));transition:rotate var(--motion-feedback-duration) var(--ease-out)}
-.friend-card__updates[open] summary>span:last-child{rotate:180deg}
 .friend-card__updates a{display:block;padding:4px 0 8px;color:var(--friend-accent,var(--summer-blue));overflow-wrap:anywhere}
-.friend-card__updates summary:focus-visible,.friend-card__updates a:focus-visible{outline:2px solid var(--friend-accent,var(--summer-blue));outline-offset:2px}
+.friend-card__updates a:focus-visible{outline:2px solid var(--friend-accent,var(--summer-blue));outline-offset:2px}
 @media(max-width:1000px){.friend-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:620px){.friend-grid{grid-template-columns:minmax(0,1fr)}.friend-card{grid-template-columns:48px minmax(0,1fr) auto;gap:12px;padding:20px}.friend-card__icon{width:48px;height:48px}}
+@media(max-width:620px){.friend-grid{grid-template-columns:minmax(0,1fr)}.friend-card{grid-template-columns:48px minmax(0,1fr);gap:12px;padding:20px}.friend-card__icon{width:48px;height:48px}}
 @media(prefers-reduced-motion:reduce){.friend-card,.friend-card__rss,.friend-card__rss::before,.friend-card__rss path{transition:none}.friend-card:is(:hover,:focus-within),.friend-card__rss:is(:hover,:focus-visible){transform:none}}
 @keyframes summer-arrive{from{opacity:0;transform:translateY(24px);filter:blur(4px)}to{opacity:1;transform:none;filter:blur(0)}}
 @keyframes hero-breathe{from{transform:scale(1.04)}to{transform:scale(1)}}

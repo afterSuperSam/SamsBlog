@@ -34,6 +34,7 @@ function parseCoverUrl(value: unknown) {
   if (value === undefined || value === '') return '';
   if (typeof value !== 'string') throw new HttpError(400, '首图地址必须是文本');
   if (!value.trim()) return '';
+  if (!/^https?:\/\//i.test(value.trim())) throw new HttpError(400, '首图地址必须是完整的网址');
   let url: URL;
   try { url = new URL(value.trim()); }
   catch { throw new HttpError(400, '首图地址必须是完整的网址'); }

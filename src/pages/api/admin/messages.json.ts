@@ -14,7 +14,9 @@ export const POST = adminRoute(async ({ request }) => {
   const body = await readJsonObject(request);
   const parentId = readPositiveId(body.parentId);
   const content = typeof body.content === 'string' ? body.content.trim() : '';
-  if (content.length < 2 || content.length > 500) throw new HttpError(400, '回复需要 2–500 个字符');
+  const contentLength = Array.from(content).length;
+  if (contentLength < 2 || contentLength > 500) throw new HttpError(400, '回复需要 2–500 个字符');
+  if (content.includes('\u0000')) throw new HttpError(400, '回复包含不支持的字符');
   return json({ ok: true, id: createAdminReply(parentId, content) }, 201);
 });
 

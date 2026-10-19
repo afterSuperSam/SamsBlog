@@ -84,7 +84,7 @@ if (root && prose) {
     const tools = document.createElement('div');
     tools.className = 'article-code-tools';
     const copy = document.createElement('button');
-    copy.type = 'button'; copy.className = 'article-code-copy';
+    copy.type = 'button'; copy.className = 'article-code-copy copy-feedback';
     copy.setAttribute('aria-live', 'polite'); copy.setAttribute('aria-atomic', 'true');
     const copyLabel = document.createElement('span');
     copyLabel.textContent = '复制代码'; copy.append(copyLabel);
@@ -139,6 +139,8 @@ if (root && prose) {
   };
   prose.querySelectorAll<HTMLImageElement>('img').forEach((image) => {
     const link = image.closest<HTMLAnchorElement>('a');
+    // 外部目标和多图链接保留原始导航，只有明确的单图链接参与放大。
+    if (link && (link.querySelectorAll('img').length !== 1 || ![image.src, image.currentSrc].includes(link.href))) return;
     const trigger = link || document.createElement('button');
     if (!link) {
       (trigger as HTMLButtonElement).type = 'button';
@@ -148,7 +150,7 @@ if (root && prose) {
     if (!link || link.querySelector('img') === image) trigger.setAttribute('aria-label', `放大图片：${image.alt || '正文图片'}`);
     trigger.setAttribute('aria-haspopup', 'dialog');
     trigger.addEventListener('click', (event) => {
-      if (link && (event.target instanceof HTMLImageElement ? event.target !== image : link.querySelector('img') !== image)) return;
+      if (link && event instanceof MouseEvent && (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)) return;
       event.preventDefault();
       imageTrigger = trigger;
       fullImage.src = image.currentSrc || image.src; fullImage.alt = image.alt;

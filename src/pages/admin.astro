@@ -21,7 +21,7 @@ const statusLabels: Record<MessageStatus, string> = {
   published: '已公开',
   hidden: '已隐藏',
 };
-const statusCounts = Object.fromEntries(statuses.map((status) => [status, rootMessages.filter((message) => message.status === status).length]));
+const statusCounts = Object.fromEntries(statuses.map((status) => [status, messages.filter((message) => message.status === status).length]));
 const dateFormatter = new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
 ---
 
@@ -32,6 +32,7 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: 
   { href: '#projects', label: '项目' },
 ] : []}>
   <section class="admin-shell shell">
+    <noscript><p>管理表单需要启用 JavaScript 后才能提交。</p></noscript>
     {authenticated ? (
       <>
         <dialog class="admin-confirm" data-admin-confirm aria-labelledby="admin-confirm-title" aria-describedby="admin-confirm-message">
@@ -75,7 +76,15 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: 
                 <div class="admin-message-card__note"><p>{message.content}</p></div>
                 {message.replies && message.replies.length > 0 && (
                   <div class="admin-message-card__replies">
-                    {message.replies.map((reply) => <p><b>我的回复</b><span>{reply.content}</span></p>)}
+                    {message.replies.map((reply) => <div class="admin-message-reply" data-admin-message data-id={reply.id} data-parent-id={message.id} data-status={reply.status}>
+                      <p><b>{reply.nickname}</b><span>{reply.content}</span></p>
+                      <span class="admin-message-card__status" data-admin-status-label>{statusLabels[reply.status]}</span>
+                      <div class="admin-actions" aria-label={`${reply.nickname}的回复操作`}>
+                        {statuses.map((status) => <button type="button" data-status={status} aria-pressed={reply.status === status}>{statusLabels[status]}</button>)}
+                        <button class="admin-delete" type="button" data-delete>删除回复</button>
+                      </div>
+                      <div class="form-status" role="status" data-admin-feedback></div>
+                    </div>)}
                   </div>
                 )}
                 <footer>
@@ -89,9 +98,9 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: 
                     <span>删除</span>
                   </button>
                 </footer>
-                <form class="admin-reply" data-reply-form>
-                  <input name="content" minlength="2" maxlength="500" aria-label={`回复 ${message.nickname} 的留言`} placeholder="以 Sam 的身份回一张纸条…" required />
-                  <button type="submit">
+                <form method="post" class="admin-reply" data-reply-form>
+                  <input name="content" minlength="2" maxlength="1000" aria-label={`回复 ${message.nickname} 的留言`} placeholder="以 Sam 的身份回一张纸条…" required />
+                  <button type="submit" disabled>
                     <span>回复</span>
                     <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m8 5 7 7-7 7" /></svg>
                   </button>
@@ -105,19 +114,19 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: 
 
         <section class="admin-panel" id="friends">
           <header class="admin-panel__heading"><div><span>02 / NEIGHBORS</span><h2>友链管理</h2></div><p>导入外部站点，只接受完整的网址与网络图标地址。</p></header>
-          <form class="admin-friend-import" data-friend-import>
+          <form method="post" class="admin-friend-import" data-friend-import>
             <label><span>名称</span><input name="name" minlength="1" maxlength="60" placeholder="站点名称" required /></label>
             <label><span>地址</span><textarea name="url" rows="2" inputmode="url" autocapitalize="off" spellcheck="false" placeholder="https://example.com" required></textarea></label>
             <label><span>简介</span><textarea name="description" rows="2" minlength="1" maxlength="240" placeholder="一句话介绍这个站点" required></textarea></label>
             <label><span>图标网址</span><textarea name="iconUrl" rows="2" inputmode="url" autocapitalize="off" spellcheck="false" placeholder="https://example.com/favicon.ico" required></textarea></label>
             <label><span>背景图片网址 · 可选</span><textarea name="backgroundUrl" rows="2" inputmode="url" autocapitalize="off" spellcheck="false" placeholder="留空时使用头像虚化背景"></textarea></label>
             <label><span>RSS 地址 · 可选</span><textarea name="rssUrl" rows="2" inputmode="url" autocapitalize="off" spellcheck="false" placeholder="https://example.com/rss.xml"></textarea></label>
-            <button class="admin-create" type="submit">＋ 导入友链</button>
+            <button class="admin-create" type="submit" disabled>＋ 导入友链</button>
             <small class="form-status" role="status" aria-live="polite" data-admin-feedback>图标和背景仅保存网址；背景留空时使用头像虚化效果。</small>
           </form>
           <div class="admin-friend-list">
             {friends.map((friend) => (
-              <form class="admin-friend-card" data-friend-id={friend.id}>
+              <form method="post" class="admin-friend-card" data-friend-id={friend.id}>
                 <span class="admin-friend-card__icon"><b>{friend.name.slice(0, 1)}</b><img src={friend.iconUrl} alt="" loading="lazy" referrerpolicy="no-referrer" /></span>
                 <div class="admin-friend-card__fields">
                   <label><span>名称</span><input name="name" value={friend.name} minlength="1" maxlength="60" aria-label="友链名称" required /></label>
@@ -128,7 +137,7 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: 
                   <label><span>RSS 地址 · 可选</span><textarea name="rssUrl" rows="2" inputmode="url" autocapitalize="off" spellcheck="false" aria-label="友链 RSS 地址" placeholder="留空时不显示 RSS 入口">{friend.rssUrl}</textarea></label>
                 </div>
                 <label class="admin-friend-card__visible"><input name="visible" type="checkbox" checked={friend.visible} />公开</label>
-                <footer><button type="submit">保存</button><button type="button" data-delete-friend>删除</button></footer>
+                <footer><button type="submit" disabled>保存</button><button type="button" data-delete-friend>删除</button></footer>
                 <p class="form-status" role="status" data-admin-feedback></p>
               </form>
             ))}
@@ -142,7 +151,7 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: 
         <div class="admin-login__decor" aria-hidden="true">
           <i></i><i></i><i></i>
         </div>
-        <form class="admin-login" data-admin-login>
+        <form method="post" class="admin-login" data-admin-login>
           <div class="admin-login__brand">
             <img src="/media/brand/logo.jpg" alt="" width="40" height="40" />
             <span>SamsBlog</span>
@@ -159,7 +168,7 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: 
             </span>
           </label>
           <div class="admin-login__actions">
-            <button class="button button--primary admin-login__submit" type="submit">
+            <button class="button button--primary admin-login__submit" type="submit" disabled>
               <span>进入管理</span>
               <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m8 5 7 7-7 7" /></svg>
             </button>
@@ -182,49 +191,58 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: 
       body: payload === undefined ? undefined : JSON.stringify(payload),
     });
     if (!response.headers.get('content-type')?.includes('application/json')) throw new Error('管理服务暂时不可用，请稍后重试。');
-    const result = await response.json() as { error?: string; message?: string };
+    const result = await response.json() as { error?: string; message?: string; id?: number };
     if (!response.ok) throw new Error(result.error || result.message || '操作失败，请稍后重试。');
     return result;
   }
 
-  async function runAdminAction(container: HTMLElement, action: () => Promise<string | void>) {
-    if (container.getAttribute('aria-busy') === 'true') return;
-    const status = container.querySelector<HTMLElement>('[data-admin-feedback]') || document.querySelector<HTMLElement>('[data-admin-feedback]');
-    const buttons = [...container.querySelectorAll<HTMLButtonElement>('button')].filter((button) => !button.disabled);
+  async function runAdminAction(container: HTMLElement, action: () => Promise<string | void>, reloadOnSuccess = false) {
+    if (container.closest('[aria-busy="true"]') || container.querySelector('[aria-busy="true"]')) return;
+    const owner = container.closest('[data-admin-message]');
+    const status = [...container.querySelectorAll<HTMLElement>('[data-admin-feedback]')].find((field) => field.closest('[data-admin-message]') === owner)
+      || document.querySelector<HTMLElement>('[data-admin-feedback]');
+    const controls = [...container.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | HTMLButtonElement>('input,textarea,select,button')];
+    const disabledStates = controls.map((control) => control.disabled);
+    let reloading = false;
     container.setAttribute('aria-busy', 'true');
-    buttons.forEach((button) => { button.disabled = true; });
+    controls.forEach((control) => { control.disabled = true; });
     const feedback = (message: string, state: string) => { if (status) animateContentHeight(status, () => { status.textContent = message; status.dataset.state = state; }); };
     feedback('正在处理…', 'loading');
     try {
       const message = await action();
       feedback(message || '操作成功。', 'success');
+      reloading = reloadOnSuccess;
+      if (reloading) window.location.reload();
     } catch (error) {
+      reloading = false;
       feedback(error instanceof TypeError ? '网络连接失败，请检查连接后重试。' : error instanceof Error ? error.message : '操作失败，请稍后重试。', 'error');
       console.warn('Admin action failed', error);
     } finally {
-      container.removeAttribute('aria-busy');
-      buttons.forEach((button) => { button.disabled = false; });
+      if (!reloading) {
+        container.removeAttribute('aria-busy');
+        controls.forEach((control, index) => { control.disabled = disabledStates[index]; });
+      }
     }
   }
 
   const login = document.querySelector<HTMLFormElement>('[data-admin-login]');
   login?.addEventListener('submit', (event) => {
     event.preventDefault();
+    const payload = { password: new FormData(login).get('password') };
     void runAdminAction(login, async () => {
-      await sendAdminRequest('/api/admin/login.json', 'POST', { password: new FormData(login).get('password') });
-      window.location.reload();
+      await sendAdminRequest('/api/admin/login.json', 'POST', payload);
       return '登录成功。';
-    });
+    }, true);
   });
+  login?.querySelector<HTMLButtonElement>('button[type="submit"]')?.removeAttribute('disabled');
 
   document.querySelector<HTMLElement>('[data-admin-logout]')?.addEventListener('click', () => {
     const shell = document.querySelector<HTMLElement>('.admin-shell');
     if (!shell) return;
     void runAdminAction(shell, async () => {
       await sendAdminRequest('/api/admin/logout.json', 'POST');
-      window.location.reload();
       return '已退出。';
-    });
+    }, true);
   });
 
   const messageLabels: Record<string, string> = { pending: '待审核', published: '已公开', hidden: '已隐藏' };
@@ -235,54 +253,87 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: 
       if (count) count.textContent = String(messages.filter((message) => message.dataset.status === status).length);
     });
     const total = document.querySelector<HTMLElement>('.admin-tabs a[href="#messages"] b');
-    if (total) total.textContent = String(messages.length);
+    if (total) total.textContent = String(messages.filter((message) => !message.hasAttribute('data-parent-id')).length);
   };
-  document.querySelectorAll<HTMLElement>('[data-admin-message]').forEach((message) => {
+  const bindMessageActions = (message: HTMLElement) => {
+    const owned = <T extends HTMLElement>(selector: string) => [...message.querySelectorAll<T>(selector)].filter((element) => element.closest('[data-admin-message]') === message);
     const id = Number(message.dataset.id);
-    message.querySelectorAll<HTMLButtonElement>('[data-status]').forEach((button) => button.addEventListener('click', () => {
+    owned<HTMLButtonElement>('[data-status]').forEach((button) => button.addEventListener('click', () => {
       void runAdminAction(message, async () => {
         await sendAdminRequest('/api/admin/messages.json', 'PATCH', { id, status: button.dataset.status });
         const nextStatus = button.dataset.status || '';
         message.dataset.status = nextStatus;
-        const label = message.querySelector<HTMLElement>('[data-admin-status-label]');
+        const label = owned<HTMLElement>('[data-admin-status-label]')[0];
         if (label) label.textContent = messageLabels[nextStatus] || nextStatus;
-        message.querySelectorAll<HTMLButtonElement>('[data-status]').forEach((item) => item.setAttribute('aria-pressed', String(item === button)));
+        owned<HTMLButtonElement>('[data-status]').forEach((item) => item.setAttribute('aria-pressed', String(item === button)));
         refreshMessageCounts();
         return '留言状态已更新。';
       });
     }));
-    message.querySelector<HTMLButtonElement>('[data-delete]')?.addEventListener('click', async () => {
-      if (!await confirmAdminAction('确定删除这条留言吗？回复也会一起删除。', '删除留言')) return;
+    owned<HTMLButtonElement>('[data-delete]')[0]?.addEventListener('click', async () => {
+      const reply = message.hasAttribute('data-parent-id');
+      if (!await confirmAdminAction(reply ? '确定删除这条回复吗？' : '确定删除这条留言吗？回复也会一起删除。', reply ? '删除回复' : '删除留言')) return;
       void runAdminAction(message, async () => {
         await sendAdminRequest('/api/admin/messages.json', 'DELETE', { id });
         message.remove();
         refreshMessageCounts();
       });
     });
-    message.querySelector<HTMLFormElement>('[data-reply-form]')?.addEventListener('submit', (event) => {
+    const replyForm = owned<HTMLFormElement>('[data-reply-form]')[0];
+    const replyInput = replyForm?.querySelector<HTMLInputElement>('input[name="content"]');
+    replyInput?.addEventListener('input', () => replyInput.removeAttribute('aria-invalid'));
+    replyForm?.addEventListener('submit', (event) => {
       event.preventDefault();
       const replyForm = event.currentTarget as HTMLFormElement;
       const content = String(new FormData(replyForm).get('content') || '').trim();
+      const characterCount = Array.from(content).length;
+      if (characterCount < 2 || characterCount > 500 || content.includes('\u0000')) {
+        const feedback = owned<HTMLElement>('[data-admin-feedback]')[0];
+        if (feedback) animateContentHeight(feedback, () => {
+          feedback.textContent = content.includes('\u0000') ? '回复不能包含空字符。' : '回复需要 2–500 个字符。';
+          feedback.dataset.state = 'error';
+        });
+        replyInput?.setAttribute('aria-invalid', 'true');
+        replyInput?.focus();
+        return;
+      }
       void runAdminAction(message, async () => {
-        await sendAdminRequest('/api/admin/messages.json', 'POST', { parentId: id, content });
+        const result = await sendAdminRequest('/api/admin/messages.json', 'POST', { parentId: id, content });
+        if (!Number.isSafeInteger(result.id) || Number(result.id) <= 0) throw new Error('回复已送出，请刷新页面查看结果。');
         let replies = message.querySelector<HTMLElement>('.admin-message-card__replies');
         if (!replies) {
           replies = document.createElement('div');
           replies.className = 'admin-message-card__replies';
           message.querySelector('.admin-message-card__note')?.after(replies);
         }
-        const reply = document.createElement('p');
-        const author = document.createElement('b');
-        author.textContent = '我的回复';
-        const text = document.createElement('span');
-        text.textContent = content;
-        reply.append(author, text);
+        const reply = document.createElement('div');
+        reply.className = 'admin-message-reply';
+        reply.dataset.adminMessage = '';
+        reply.dataset.id = String(result.id);
+        reply.dataset.parentId = String(id);
+        reply.dataset.status = 'published';
+        reply.innerHTML = '<p><b>Sam</b><span data-reply-content></span></p><span class="admin-message-card__status" data-admin-status-label>已公开</span><div class="admin-actions" aria-label="Sam的回复操作"></div><div class="form-status" role="status" data-admin-feedback></div>';
+        reply.querySelector<HTMLElement>('[data-reply-content]')!.textContent = content;
+        const actions = reply.querySelector<HTMLElement>('.admin-actions')!;
+        Object.entries(messageLabels).forEach(([status, label]) => {
+          const button = document.createElement('button');
+          button.type = 'button'; button.dataset.status = status; button.textContent = label;
+          button.setAttribute('aria-pressed', String(status === 'published'));
+          actions.append(button);
+        });
+        const remove = document.createElement('button');
+        remove.type = 'button'; remove.className = 'admin-delete'; remove.dataset.delete = ''; remove.textContent = '删除回复';
+        actions.append(remove);
         replies.append(reply);
+        bindMessageActions(reply);
         replyForm.reset();
+        refreshMessageCounts();
         return '回复已公开。';
       });
     });
-  });
+    replyForm?.querySelector<HTMLButtonElement>('button[type="submit"]')?.removeAttribute('disabled');
+  };
+  document.querySelectorAll<HTMLElement>('[data-admin-message]').forEach(bindMessageActions);
 
   const friendPayload = (form: HTMLFormElement, id?: number) => {
     const data = new FormData(form);
@@ -300,24 +351,27 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: 
   const friendImport = document.querySelector<HTMLFormElement>('[data-friend-import]');
   friendImport?.addEventListener('submit', (event) => {
     event.preventDefault();
+    const payload = friendPayload(friendImport);
     void runAdminAction(friendImport, async () => {
-      await sendAdminRequest('/api/admin/friends.json', 'POST', friendPayload(friendImport));
+      await sendAdminRequest('/api/admin/friends.json', 'POST', payload);
       window.location.hash = 'friends';
-      window.location.reload();
       return '友链已导入。';
-    });
+    }, true);
   });
+  friendImport?.querySelector<HTMLButtonElement>('button[type="submit"]')?.removeAttribute('disabled');
   document.querySelectorAll<HTMLFormElement>('[data-friend-id]').forEach((form) => {
     const id = Number(form.dataset.friendId);
     form.addEventListener('submit', (event) => {
       event.preventDefault();
+      const payload = friendPayload(form, id);
       void runAdminAction(form, async () => {
         form.classList.remove('is-saved');
-        await sendAdminRequest('/api/admin/friends.json', 'PATCH', friendPayload(form, id));
+        await sendAdminRequest('/api/admin/friends.json', 'PATCH', payload);
         form.classList.add('is-saved');
         return '友链已保存。';
       });
     });
+    form.querySelector<HTMLButtonElement>('button[type="submit"]')?.removeAttribute('disabled');
     form.querySelector('[data-delete-friend]')?.addEventListener('click', async () => {
       if (!await confirmAdminAction('确定删除这条友链吗？', '删除友链')) return;
       void runAdminAction(form, async () => {

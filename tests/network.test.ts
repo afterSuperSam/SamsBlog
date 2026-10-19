@@ -19,6 +19,11 @@ describe('visitor network privacy', () => {
     expect(maskIp('203.0.113.18')).toBe('203.0.*.*');
     expect(maskIp('2001:db8:85a3::8a2e:370:7334')).toBe('2001:db8:85a3:*:*');
     expect(maskIp('::ffff:203.0.113.18')).toBe('203.0.*.*');
+    expect(maskIp('2001:4860::8888')).toBe('2001:4860:0:*:*');
+    expect(maskIp('2001:4860:0:0:0:0:0:8888')).toBe('2001:4860:0:*:*');
+    expect(maskIp('::ffff:cb00:7112')).toBe('0:0:0:*:*');
+    expect(maskIp('::1')).toBe('0:0:0:*:*');
+    expect(maskIp('not:an:address')).toBe('未知');
   });
 
   it('builds only a coarse location from proxy headers', () => {

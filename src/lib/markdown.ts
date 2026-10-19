@@ -19,7 +19,7 @@ function safeDestination(value: string, image: boolean): string | null {
   if (/^https?:\/\//i.test(decoded)) {
     try {
       const address = new URL(destination);
-      return ['https:', 'http:'].includes(address.protocol) && !!address.hostname ? destination : null;
+      return ['https:', 'http:'].includes(address.protocol) && !!address.hostname && !address.username && !address.password ? destination : null;
     } catch {
       return null;
     }
@@ -30,14 +30,21 @@ function safeDestination(value: string, image: boolean): string | null {
   return destination;
 }
 
-function closingBracket(text: string, start: number, opening: string, closing: string): number {
-  let depth = 1;
-  for (let index = start + 1; index < text.length; index += 1) {
+// 单次索引括号，畸形链接不再逐个扫描剩余正文。
+function closingBrackets(text: string): Map<number, number> {
+  const pairs = new Map<number, number>();
+  const square: number[] = [];
+  const round: number[] = [];
+  for (let index = 0; index < text.length; index += 1) {
     if (text[index] === '\\') { index += 1; continue; }
-    if (text[index] === opening) depth += 1;
-    if (text[index] === closing && --depth === 0) return index;
+    if (text[index] === '[') square.push(index);
+    else if (text[index] === '(') round.push(index);
+    else if (text[index] === ']' || text[index] === ')') {
+      const opening = (text[index] === ']' ? square : round).pop();
+      if (opening !== undefined) pairs.set(opening, index);
+    }
   }
-  return -1;
+  return pairs;
 }
 
 function parseDestination(value: string): { address: string; title: string } | null {
@@ -48,6 +55,11 @@ function parseDestination(value: string): { address: string; title: string } | n
 // 行内格式在输出时统一转义，不执行 Markdown 中的 HTML。
 function inlineMarkdown(text: string, baseUrl?: string, depth = 0, allowLinks = true): string {
   if (depth > 10) return escapeHtml(text);
+  const brackets = closingBrackets(text);
+  const codeRuns = Array.from(text.matchAll(/`+/g), (match) => ({ start: match.index, length: match[0].length }));
+  const maximumCodeRun = new Array<number>(codeRuns.length + 1).fill(0);
+  for (let index = codeRuns.length - 1; index >= 0; index--) maximumCodeRun[index] = Math.max(codeRuns[index]!.length, maximumCodeRun[index + 1]!);
+  let codeRunIndex = 0;
   let result = '';
   let plain = '';
   const flush = () => { result += escapeHtml(plain); plain = ''; };
@@ -56,21 +68,29 @@ function inlineMarkdown(text: string, baseUrl?: string, depth = 0, allowLinks = 
       plain += text[index + 1]; index += 2; continue;
     }
     if (text[index] === '`') {
-      const delimiter = text.slice(index).match(/^`+/)![0];
-      const end = text.indexOf(delimiter, index + delimiter.length);
-      if (end >= 0) {
-        flush();
-        result += `<code>${escapeHtml(text.slice(index + delimiter.length, end))}</code>`;
-        index = end + delimiter.length; continue;
-      }
+      while (codeRuns[codeRunIndex]!.start + codeRuns[codeRunIndex]!.length <= index) codeRunIndex++;
+      const run = codeRuns[codeRunIndex]!;
+      const remaining = run.start + run.length - index;
+      const delimiterLength = Math.min(remaining, maximumCodeRun[codeRunIndex + 1]!);
+      plain += text.slice(index, index + remaining - delimiterLength);
+      index += remaining - delimiterLength;
+      if (!delimiterLength) continue;
+      let closingRunIndex = codeRunIndex + 1;
+      while (codeRuns[closingRunIndex]!.length < delimiterLength) closingRunIndex++;
+      const end = codeRuns[closingRunIndex]!.start;
+      flush();
+      result += `<code>${escapeHtml(text.slice(index + delimiterLength, end))}</code>`;
+      index = end + delimiterLength;
+      codeRunIndex = closingRunIndex;
+      continue;
     }
     const isImage = text.startsWith('![', index);
     if ((isImage || text[index] === '[') && (allowLinks || isImage)) {
       const start = index + (isImage ? 1 : 0);
-      const labelEnd = closingBracket(text, start, '[', ']');
+      const labelEnd = brackets.get(start) ?? -1;
       if (labelEnd < 0) { plain += text.slice(index); break; }
       if (labelEnd > start && text[labelEnd + 1] === '(') {
-        const destinationEnd = closingBracket(text, labelEnd + 1, '(', ')');
+        const destinationEnd = brackets.get(labelEnd + 1) ?? -1;
         const destination = destinationEnd >= 0 ? parseDestination(text.slice(labelEnd + 2, destinationEnd)) : null;
         const address = destination && safeDestination(destination.address, isImage);
         if (address && destination) {

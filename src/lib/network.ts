@@ -15,13 +15,19 @@ function isTrustedProxy(address: string) {
 }
 
 export function maskIp(ip: string): string {
-  if (isIP(ip) === 6 && ip.includes('.')) return maskIp(ip.slice(ip.lastIndexOf(':') + 1));
-  if (ip.includes(':')) {
-    const groups = ip.split(':').filter(Boolean);
+  const family = isIP(ip);
+  if (family === 6 && ip.includes('.')) return maskIp(ip.slice(ip.lastIndexOf(':') + 1));
+  if (family === 6) {
+    const [prefix = '', suffix] = ip.split('%', 1)[0]!.split('::');
+    const leading = prefix ? prefix.split(':') : [];
+    const trailing = suffix ? suffix.split(':') : [];
+    const groups = suffix === undefined ? leading : [...leading, ...Array<string>(8 - leading.length - trailing.length).fill('0'), ...trailing];
     return `${groups.slice(0, 3).join(':')}:*:*`;
   }
-  const parts = ip.split('.');
-  if (parts.length === 4) return `${parts[0]}.${parts[1]}.*.*`;
+  if (family === 4) {
+    const parts = ip.split('.');
+    return `${parts[0]}.${parts[1]}.*.*`;
+  }
   return '未知';
 }
 

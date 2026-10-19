@@ -2,6 +2,7 @@
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
 import { siteConfig } from '../config/site';
+import { version } from '../../package.json';
 import '../styles/global.css';
 import '../styles/legacy-layout.css';
 import AmbientScene from '../components/AmbientScene.astro';
@@ -51,35 +52,7 @@ const canonical = new URL(Astro.url.pathname, siteConfig.siteUrl);
     <meta property="og:url" content={canonical} />
     <meta property="og:image" content={new URL(image, siteConfig.siteUrl)} />
     <title>{pageTitle}</title>
-    <script is:inline>
-      // 原生跨文档转场保留多页结构；早于首帧关联同一篇文章的封面。
-      const prepareArticleCovers = (destination = location.href) => {
-        document.documentElement.dataset.coverDirection = /^\/articles\/\d+\/?$/.test(new URL(destination, location.href).pathname) ? 'enter' : 'return';
-        document.querySelectorAll('[data-article-cover]').forEach((cover) => {
-          cover.style.viewTransitionName = `article-cover-${cover.dataset.articleCover}`;
-        });
-      };
-      document.addEventListener('DOMContentLoaded', () => prepareArticleCovers(), { once: true });
-      window.addEventListener('pagereveal', (event) => {
-        prepareArticleCovers();
-        if (matchMedia('(prefers-reduced-motion: reduce)').matches || document.documentElement.classList.contains('motion-paused')) event.viewTransition?.skipTransition();
-      });
-      window.addEventListener('pageswap', (event) => {
-        prepareArticleCovers(event.activation?.entry?.url || location.href);
-        if (matchMedia('(prefers-reduced-motion: reduce)').matches || document.documentElement.classList.contains('motion-paused')) event.viewTransition?.skipTransition();
-      });
-    </script>
-    <script is:inline>
-      const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      let initialTheme = systemDark ? 'dark' : 'light';
-      try {
-        const savedTheme = localStorage.getItem('samsblog-theme');
-        if (savedTheme === 'dark' || savedTheme === 'light') initialTheme = savedTheme;
-        document.documentElement.classList.toggle('motion-paused', localStorage.getItem('samsblog-motion') === 'paused');
-      } catch (error) { console.warn('Theme preference unavailable', error); }
-      document.documentElement.dataset.theme = initialTheme;
-      document.querySelector('meta[data-theme-color]')?.setAttribute('content', initialTheme === 'dark' ? '#202123' : '#f4fbfc');
-    </script>
+    <script is:inline src={`/scripts/page-presentation.js?v=${version}`} {...{ blocking: 'render' }}></script>
   </head>
   <body class={bodyClass} data-reveal-config={!bodyClass.includes('admin-page') ? JSON.stringify(siteConfig.reveal) : undefined}>
     <a class="skip-link" href="#main-content">跳到主要内容</a>

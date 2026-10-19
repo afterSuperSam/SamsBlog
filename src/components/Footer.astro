@@ -1,6 +1,7 @@
 ---
 import { siteConfig } from '../config/site';
 import RssSubscription from './RssSubscription.astro';
+import NetworkStatus from './NetworkStatus.astro';
 import { version } from '../../package.json';
 
 interface Props { showSignature?: boolean }
@@ -73,6 +74,7 @@ const signatureLetters = [
       <a class="footer-brand" href="/">
         <span><span class="footer-copyright">© </span>SamsBlog</span>
       </a>
+      <NetworkStatus />
     </div>
     <div class="footer-notes">
     {showSignature && <div class="footer-signature" data-footer-signature data-duration={siteConfig.signature.durationMilliseconds} data-stroke-pause={siteConfig.signature.strokePauseMilliseconds} data-visibility-threshold={siteConfig.signature.visibilityThreshold} data-easing={siteConfig.signature.easing} data-settle-duration={siteConfig.signature.settleDurationMilliseconds} data-character-duration={siteConfig.signature.versionCharacterDurationMilliseconds} data-character-stagger={siteConfig.signature.versionCharacterStaggerMilliseconds}>

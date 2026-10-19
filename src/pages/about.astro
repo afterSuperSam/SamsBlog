@@ -8,6 +8,7 @@ import { buildTokenUsageCalendar, getGithubContributions, type TokenUsage } from
 import '../styles/simple-pages.css';
 
 const githubContributions = await getGithubContributions();
+const sponsors = [...siteConfig.sponsors].sort((first, second) => second.amount - first.amount);
 const latestContribution = githubContributions.available ? githubContributions.days.findLast((day) => day.count > 0)?.date : undefined;
 const gptTokenUsage = buildTokenUsageCalendar(new Map<string, TokenUsage>([
   ['2026-07-23', { cacheHit: 60218880, cacheMiss: 1425016, output: 251793 }],
@@ -121,17 +122,45 @@ const deepseekTokenUsage = buildTokenUsageCalendar(new Map<string, TokenUsage>([
 
   <section class="about-sponsor" id="sponsor">
     <div class="shell sponsor-layout">
+      <button type="button" class="sponsor-toggle" aria-label="展开赞助清单" aria-expanded="false" aria-controls="sponsor-list" data-sponsor-toggle></button>
       <div class="sponsor-copy" data-reveal>
         <span>SUPPORT</span>
         <h2>赞赏支持</h2>
         <p>谢谢你在这里停留，愿你今天也有一点小小的快乐。</p>
+        <p>你可以通过添加我的个人联系方式来支持我哦~</p>
+        <p>建站不易，若有整改建议等，可留言或投稿邮箱 <a href="mailto:3092243018@qq.com">3092243018@qq.com</a></p>
       </div>
-      <div class="sponsor-smile" role="img" aria-label="向你挥手比心">(｡･ω･｡)ﾉ♡</div>
+      <div class="sponsor-display" data-sponsor-display>
+        <div class="sponsor-list" id="sponsor-list" hidden>
+          <h3>赞助我的小游戏服务器：</h3>
+          <ol>{sponsors.map(({ name, amount }) => <li><span>{name}</span><strong>¥{amount}</strong></li>)}</ol>
+        </div>
+        <span class="sponsor-smile" aria-hidden="true" data-sponsor-smile>(｡･ω･｡)ﾉ♡</span>
+      </div>
     </div>
   </section>
 </BaseLayout>
 
 <script>
+  import { animateContentHeight, animateMotion } from '../lib/motion';
+  import { siteConfig } from '../config/site';
+  const sponsorToggle = document.querySelector<HTMLButtonElement>('[data-sponsor-toggle]');
+  const sponsorDisplay = document.querySelector<HTMLElement>('[data-sponsor-display]');
+  const sponsorList = document.querySelector<HTMLElement>('#sponsor-list');
+  const sponsorSmile = document.querySelector<HTMLElement>('[data-sponsor-smile]');
+  let sponsorAnimation: Animation | undefined;
+  sponsorToggle?.addEventListener('click', () => {
+    if (!sponsorDisplay || !sponsorList || !sponsorSmile) return;
+    const open = sponsorToggle.getAttribute('aria-expanded') !== 'true';
+    sponsorToggle.setAttribute('aria-expanded', String(open));
+    sponsorToggle.setAttribute('aria-label', open ? '收起赞助清单' : '展开赞助清单');
+    animateContentHeight(sponsorDisplay, () => { sponsorList.hidden = !open; sponsorSmile.hidden = open; });
+    const target = open ? sponsorList : sponsorSmile;
+    sponsorAnimation?.cancel();
+    sponsorAnimation = animateMotion(target, [{ opacity: 0, translate: 'calc(-1 * var(--sponsor-reveal-distance)) 0' }, { opacity: 1, translate: '0 0' }], {
+      duration: siteConfig.reveal.durationMilliseconds, easing: getComputedStyle(document.documentElement).getPropertyValue('--ease-out').trim(),
+    });
+  });
   const dateFormatter = new Intl.DateTimeFormat(navigator.language, { year: 'numeric', month: 'short', day: 'numeric' });
   document.querySelectorAll<HTMLTimeElement>('[data-local-date]').forEach((date) => {
     date.textContent = dateFormatter.format(new Date(`${date.dateTime}T12:00:00`));

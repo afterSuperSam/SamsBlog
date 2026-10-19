@@ -80,7 +80,7 @@ describe('article persistence and authenticated management', () => {
     for (const invalid of [null, [], { ...input, title: ' ' }, { ...input, content: '' }, { ...input, title: 'a'.repeat(serverConfig.articleTitleMaxLength + 1) }, { ...input, content: 'a'.repeat(serverConfig.articleContentMaxLength + 1) }, { ...input, source: 'unknown' }, { ...input, category: 'unknown' }, { ...input, id: '1' }, { ...input, id: 0 }]) {
       expect(() => saveArticle(invalid)).toThrow();
     }
-    for (const coverUrl of [123, 'javascript:alert(1)', 'https://user:secret@example.com/a', 'https://localhost/a', 'http://127.1/a', 'http://192.168.1.1/a', 'http://[::1]/a', 'https://private.local/a']) {
+    for (const coverUrl of [123, 'javascript:alert(1)', 'https:images.example.com/a', 'https://user:secret@example.com/a', 'https://localhost/a', 'http://127.1/a', 'http://192.168.1.1/a', 'http://[::1]/a', 'https://private.local/a']) {
       expect(() => saveArticle({ ...input, coverUrl })).toThrow();
     }
     const id = saveArticle({ ...input, coverUrl: undefined });

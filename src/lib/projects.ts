@@ -43,8 +43,10 @@ export function saveProjectSettings(input: Record<string, unknown>) {
     const repository = text('repository', siteConfig.projectFields.repositoryMaximumLength, '仓库', true);
     if (keyword && !description.includes(keyword)) throw new HttpError(400, '项目关键词需要出现在简介中');
     if (repository && !/^[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(repository)) throw new HttpError(400, 'GitHub 仓库请填写 owner/repo，或留空');
+    const address = text('url', siteConfig.projectFields.urlMaximumLength, '跳转地址');
+    if (!/^https?:\/\//i.test(address)) throw new HttpError(400, '项目跳转地址需要完整的 http 或 https 网址');
     let url: URL;
-    try { url = new URL(text('url', siteConfig.projectFields.urlMaximumLength, '跳转地址')); }
+    try { url = new URL(address); }
     catch { throw new HttpError(400, '项目跳转地址需要完整的 http 或 https 网址'); }
     if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new HttpError(400, '项目跳转地址仅支持不含账号密码的 http 或 https 网址');
     return { id: project.id as number | undefined, repository, name, description, keyword, url: url.href, status: project.status, visible: Number(project.visible), position };
