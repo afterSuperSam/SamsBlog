@@ -3,6 +3,7 @@ export const siteConfig = {
   description: '二次元与日常，收藏想象，也认真生活',
   siteUrl: import.meta.env.PUBLIC_SITE_URL || 'http://localhost:4321',
   locale: 'zh-CN',
+  rss: { description: '只是一只大黄狗', siteUrl: 'https://blog.yingwutown.top/' },
   registration: { label: '萌ICP备20269090号', href: 'https://icp.gov.moe/?keyword=20269090' },
   nav: [
     { href: '/', label: '首页' },
@@ -41,6 +42,11 @@ export const siteConfig = {
 } as const;
 
 const registrationUrl = new URL(siteConfig.registration.href);
+const rssUrl = new URL(siteConfig.rss.siteUrl);
+if (!siteConfig.rss.description.trim() || rssUrl.protocol !== 'https:' || rssUrl.username || rssUrl.password
+  || rssUrl.pathname !== '/' || rssUrl.search || rssUrl.hash) {
+  throw new Error('Invalid RSS configuration');
+}
 if (!Number.isSafeInteger(siteConfig.network.sampleCount) || siteConfig.network.sampleCount < 1 || siteConfig.network.sampleCount % 2 !== 1
   || !Number.isSafeInteger(siteConfig.network.timeoutMilliseconds) || siteConfig.network.timeoutMilliseconds <= 0
   || siteConfig.sponsors.some(({ name, amount }) => !name.trim() || !Number.isFinite(amount) || amount <= 0)

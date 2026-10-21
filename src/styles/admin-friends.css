@@ -25,7 +25,7 @@
   transition:background .25s ease,box-shadow .25s ease;
 }
 .admin-friend-import textarea,.admin-friend-card__fields textarea { field-sizing:content; min-height:70px; padding:10px 13px; resize:vertical; overflow-wrap:anywhere; }
-.admin-friend-import :is(input,textarea):focus,.admin-friend-card__fields :is(input,textarea):focus { background:var(--bg); box-shadow:0 0 0 2px color-mix(in oklab,var(--summer-blue) 36%,transparent); }
+.admin-friend-import :is(input,textarea):focus,.admin-friend-card__fields :is(input,textarea):focus { background:var(--bg); box-shadow:0 0 0 2px color-mix(in oklab,var(--glow-blue) 36%,transparent); }
 .admin-friend-import .admin-create { justify-self:start; }
 .admin-friend-import>small { grid-column:1/-1; color:var(--muted); font-size:.875rem; line-height:1.6; overflow-wrap:anywhere; }
 .admin-friend-list { display:grid; gap:13px; }

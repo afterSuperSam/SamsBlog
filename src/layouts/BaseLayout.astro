@@ -40,6 +40,8 @@ const canonical = new URL(Astro.url.pathname, siteConfig.siteUrl);
     <link rel="icon" href="/media/brand/logo.jpg" type="image/jpeg" />
     <link rel="canonical" href={canonical} />
     <link rel="alternate" type="application/rss+xml" title="SamsBlog RSS" href="/rss.xml" />
+    <link rel="expect" href="#page-content-ready" blocking="render" />
+    {articleMetadata && image && <link rel="preload" as="image" href={image} referrerpolicy="no-referrer" fetchpriority="high" />}
     <meta property="og:title" content={pageTitle} />
     <meta property="og:description" content={description} />
     <meta property="og:type" content={articleMetadata ? 'article' : 'website'} />
@@ -64,6 +66,7 @@ const canonical = new URL(Astro.url.pathname, siteConfig.siteUrl);
         {quickNavigation.map((item) => <a href={item.href} aria-label={item.description || item.label}><span>{item.label}</span><i></i></a>)}
       </nav>}
       <slot />
+      <span id="page-content-ready" hidden></span>
     </main>
     <Footer showSignature={!bodyClass.includes('admin-page')} />
     {!bodyClass.includes('admin-page') && <div id="site-tooltip" class="site-tooltip" popover="manual" role="tooltip"></div>}

@@ -1,5 +1,17 @@
 /* 全站主题、基础元素与动效偏好 */
 
+/* RSS 浏览器源码视图 */
+.rss-source { max-width: 1200px; margin: auto; padding: clamp(18px, 4vw, 48px); }
+.rss-source header { margin-bottom: 28px; }
+.rss-source h1 { font-size: clamp(26px, 4vw, 36px); margin-bottom: 8px; }
+.rss-source h1 span, .rss-source__tag { color: var(--summer-blue); }
+.rss-source header p { color: var(--muted); }
+.rss-source header a { display: inline-flex; align-items: center; min-height: 44px; color: var(--summer-blue); }
+.rss-source header a:focus-visible { outline: 2px solid var(--summer-blue); outline-offset: 4px; }
+.rss-source pre { margin: 0; padding: clamp(12px, 3vw, 28px); background: var(--surface); border-radius: 18px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.rss-source code { font: 15px/1.85 ui-monospace, Consolas, monospace; color: var(--text); }
+.rss-source__attribute { color: var(--summer-pink); }
+
 :root {
   --motion-feedback-duration: 180ms;
   --motion-reorder-duration: 420ms;
@@ -9,6 +21,7 @@
   --article-reading-line-height: 2.15;
   --article-reading-ambient-opacity: .12;
   --article-reading-background-opacity: .015;
+  --article-cover-ratio: 16 / 9;
   --cover-enter-duration: 620ms;
   --cover-return-duration: 400ms;
   --rss-dialog-width: 460px;
@@ -23,7 +36,7 @@
   --message-wall-fade: 120px;
   --message-wall-blur: 6px;
   --paper-label-duration: 650ms;
-  --jump-backlight: color-mix(in srgb, var(--summer-blue) 16%, transparent);
+  --jump-backlight: color-mix(in srgb, var(--glow-blue) 16%, transparent);
   --project-ink-easing: cubic-bezier(.65,0,.35,1);
   --project-archived-color: #e28a94;
   --cover-transition-duration: 580ms;
@@ -36,14 +49,14 @@
   --article-image-blur: 18px;
   --article-image-glow-opacity: .22;
   --article-hover-surface: color-mix(in srgb, var(--surface) 96%, var(--summer-blue) 4%);
-  --article-hover-glow: color-mix(in oklab, var(--summer-blue) 20%, transparent);
+  --article-hover-glow: color-mix(in oklab, var(--glow-blue) 20%, transparent);
   --home-projects-heading: var(--summer-orange);
   --home-articles-heading: var(--summer-blue);
   --home-guestbook-heading: var(--summer-pink);
   --home-friends-heading: var(--success);
   --contribution-detail-width: 300px;
-  --project-title-glow-close: color-mix(in oklab, var(--summer-blue) 65%, transparent);
-  --project-title-glow-wide: color-mix(in oklab, var(--summer-blue) 38%, transparent);
+  --project-title-glow-close: color-mix(in oklab, var(--glow-blue) 65%, transparent);
+  --project-title-glow-wide: color-mix(in oklab, var(--glow-blue) 38%, transparent);
   --project-number-gap: 24px;
   --friend-rss-duration: 560ms;
   --friend-hover-light-strength: 12%;
@@ -62,7 +75,7 @@
   --signature-version-gap: 10px;
   --signature-version-size: var(--font-size-small);
   --signature-version-color: color-mix(in oklab, var(--muted) 82%, transparent);
-  --signature-hover-glow: color-mix(in oklab, var(--summer-blue) 24%, transparent);
+  --signature-hover-glow: color-mix(in oklab, var(--glow-blue) 24%, transparent);
   --text: #f1e9dc;
   --text-strong: #fff3e3;
   --text-soft: #d7cbb9;
@@ -72,6 +85,13 @@
   --summer-blue: #79b7c2;
   --summer-pink: #cb8195;
   --summer-orange: #d49a58;
+  --glow-blue: var(--summer-blue);
+  --glow-pink: var(--summer-pink);
+  --glow-orange: var(--summer-orange);
+  --glow-white-mix: 0%;
+  --login-shadow: rgba(10,19,20,.16);
+  --avatar-shadow: rgba(0,0,0,.18);
+  --brand-shadow: rgba(24,57,67,.2);
   --success: #8fab82;
   --danger: #c98f7a;
   --line: rgba(219, 204, 179, 0.14);
@@ -97,6 +117,10 @@
   --font-size-small: clamp(.9375rem,.9rem + .15vw,1rem);
   --font-size-label: clamp(1rem,.96rem + .15vw,1.0625rem);
   --font-size-control: clamp(1rem,.98rem + .15vw,1.125rem);
+  --quick-nav-idle: var(--muted);
+  --quick-nav-active: var(--summer-blue);
+  --quick-nav-glow: var(--glow-blue);
+  --project-title-hover: var(--summer-blue);
   --quick-nav-font-size: calc(var(--font-size-small) + 2px);
   --quick-nav-spread: 8px;
   --quick-nav-compression: .8;
@@ -127,6 +151,8 @@
   --ambient-halo-duration: 22s;
   --ambient-pink-halo-duration: 29s;
   --ambient-halo-travel: clamp(30px,7vw,100px);
+  --hero-wordmark-halo: color-mix(in srgb,#79b7c2 48%,transparent);
+  --hero-wordmark-fill: color-mix(in srgb,var(--on-media) 24%,transparent);
   --hero-wordmark-depth: #325c70;
   --hero-wordmark-shadow: #153039;
   --reading-line-height: 2px;
@@ -162,6 +188,21 @@
   --summer-blue: #247583;
   --summer-pink: #a94062;
   --summer-orange: #995325;
+  --glow-blue: #81d4e3;
+  --glow-pink: #f3abc8;
+  --glow-orange: #f1c194;
+  --glow-white-mix: 58%;
+  --quick-nav-idle: #b9dce3;
+  --quick-nav-active: #8bd4e3;
+  --quick-nav-glow: #b1e8f3;
+  --project-title-hover: #368b9b;
+  --project-title-glow-close: #b6eaf580;
+  --project-title-glow-wide: #c9f0f780;
+  --login-shadow: rgba(104,175,192,.13);
+  --avatar-shadow: rgba(104,175,192,.14);
+  --brand-shadow: rgba(104,175,192,.18);
+  --article-image-glow-opacity: .12;
+  --ambient-halo-opacity: .24;
   --success: #366850;
   --danger: #ae5956;
   --project-archived-color: #b94b5e;
@@ -170,15 +211,15 @@
   --hover: rgba(72, 179, 190, 0.07);
   --header-bg: rgba(244, 251, 252, 0.92);
   --flow-bg:
-    radial-gradient(ellipse at 9% 12%, color-mix(in srgb,var(--summer-blue) 18%,transparent), transparent 38rem),
-    radial-gradient(ellipse at 88% 26%, color-mix(in srgb,var(--summer-pink) 11%,transparent), transparent 42rem),
-    radial-gradient(ellipse at 76% 88%, color-mix(in srgb,var(--summer-orange) 10%,transparent), transparent 44rem),
+    radial-gradient(ellipse at 9% 12%, color-mix(in srgb,var(--glow-blue) 18%,transparent), transparent 38rem),
+    radial-gradient(ellipse at 88% 26%, color-mix(in srgb,var(--glow-pink) 11%,transparent), transparent 42rem),
+    radial-gradient(ellipse at 76% 88%, color-mix(in srgb,var(--glow-orange) 10%,transparent), transparent 44rem),
     linear-gradient(180deg, #f9fdfe 0%, #effafb 48%, #f8fcfc 100%);
   --gradient-surface:
-    radial-gradient(circle at 82% 14%, color-mix(in srgb,var(--summer-blue) 12%,transparent), transparent 40%),
-    radial-gradient(circle at 12% 88%, color-mix(in srgb,var(--summer-pink) 7%,transparent), transparent 35%),
+    radial-gradient(circle at 82% 14%, color-mix(in srgb,var(--glow-blue) 12%,transparent), transparent 40%),
+    radial-gradient(circle at 12% 88%, color-mix(in srgb,var(--glow-pink) 7%,transparent), transparent 35%),
     linear-gradient(155deg, #fffefd, #eefafa);
-  --shadow: 0 24px 70px rgba(46, 121, 131, 0.11);
+  --shadow: 0 24px 70px rgba(104, 175, 192, 0.14);
 }
 
 *,
@@ -244,7 +285,7 @@ button {
   color: inherit;
 }
 
-.reading-progress { position:fixed; inset:0 0 auto; z-index:160; height:var(--reading-line-height); pointer-events:none; background:linear-gradient(90deg,var(--summer-blue),var(--summer-pink),var(--summer-orange)); transform:scaleX(var(--reading-progress,0)); transform-origin:left; }
+.reading-progress { position:fixed; inset:0 0 auto; z-index:160; height:var(--reading-line-height); pointer-events:none; background:linear-gradient(90deg,var(--glow-blue),var(--glow-pink),var(--glow-orange)); transform:scaleX(var(--reading-progress,0)); transform-origin:left; }
 @media(prefers-reduced-motion:reduce){.reading-progress{transform:none;opacity:.35}}
 
 img {
@@ -299,15 +340,15 @@ main { position:relative; z-index:1; }
 .home-quick-nav{position:fixed;z-index:36;right:10px;top:50%;display:grid;opacity:0;visibility:hidden;transform:translateY(-50%);transition:opacity .3s}
 .home-quick-nav.visible{opacity:1;visibility:visible}
 .home-quick-nav a{--nav-distance:0;--nav-direction:0;--nav-shift:calc(var(--nav-direction) * (1 - (var(--nav-distance) - 1) * var(--quick-nav-compression)));position:relative;display:grid;place-items:center;width:44px;height:44px}
-.home-quick-nav i{position:relative;width:4px;height:12px;border-radius:9px;background:var(--muted);translate:0 calc(var(--nav-shift) * var(--quick-nav-spread));transition:height .4s var(--quick-nav-ease),background .3s,opacity .3s,box-shadow .4s,translate .45s var(--quick-nav-ease)}
-.home-quick-nav i::after{position:absolute;inset:-4px -3px;border-radius:inherit;background:var(--summer-blue);filter:blur(4px);opacity:0;content:"";pointer-events:none}
+.home-quick-nav i{position:relative;width:4px;height:12px;border-radius:9px;background:var(--quick-nav-idle);translate:0 calc(var(--nav-shift) * var(--quick-nav-spread));transition:height .4s var(--quick-nav-ease),background .3s,opacity .3s,box-shadow .4s,translate .45s var(--quick-nav-ease)}
+.home-quick-nav i::after{position:absolute;inset:-4px -3px;border-radius:inherit;background:var(--quick-nav-glow);filter:blur(4px);opacity:0;content:"";pointer-events:none}
 .home-quick-nav a[data-proximity="near"] i{height:15px}
 .home-quick-nav a[data-proximity="far"] i{height:8px;opacity:.55}
-.home-quick-nav a[aria-current="location"] i{height:28px;opacity:1;background:var(--summer-blue);box-shadow:0 0 12px color-mix(in srgb,var(--summer-blue) 55%,transparent)}
+.home-quick-nav a[aria-current="location"] i{height:28px;opacity:1;background:var(--quick-nav-active);box-shadow:0 0 12px color-mix(in srgb,var(--quick-nav-glow) 55%,transparent)}
 .home-quick-nav a[aria-current="location"] i::after{animation:quick-nav-ripple var(--quick-nav-pulse-duration) ease-out infinite}
 .home-quick-nav span{position:absolute;right:44px;white-space:nowrap;padding:6px 0;border:0;background:none;box-shadow:none;color:var(--text);font:700 var(--quick-nav-font-size)/1.5 var(--playful);opacity:0;translate:0 calc(var(--nav-shift) * var(--quick-nav-spread));transform:translateX(7px);transition:opacity .2s,transform .4s var(--ease-out),translate .45s var(--quick-nav-ease)}
 .home-quick-nav a:is(:hover,:focus-visible) span{opacity:1;transform:translateX(0)}
-.home-quick-nav a:is(:hover,:focus-visible) i{height:28px;opacity:1;background:var(--summer-blue)}
+.home-quick-nav a:is(:hover,:focus-visible) i{height:28px;opacity:1;background:var(--quick-nav-active)}
 @keyframes quick-nav-ripple{0%{transform:scale(.8,.8);opacity:.5}100%{transform:scale(3.5,1.55);opacity:0}}
 @media(prefers-reduced-motion:reduce){.home-quick-nav :is(i,span){transition:none}.home-quick-nav a[aria-current="location"] i::after{animation:none;opacity:.15}}
 @media(max-width:760px){.home-quick-nav{display:none}}
@@ -320,6 +361,7 @@ main { position:relative; z-index:1; }
 :root[data-cover-direction="return"]{--cover-transition-duration:var(--cover-return-duration)}
 ::view-transition-old(root),::view-transition-new(root){animation:none}
 ::view-transition-group(*){animation-duration:var(--cover-transition-duration);animation-timing-function:var(--ease-out)}
+::view-transition-group(root){animation:none}
 :root.motion-paused::view-transition-group(*),:root.motion-paused::view-transition-old(*),:root.motion-paused::view-transition-new(*){animation:none!important}
 @media(prefers-reduced-motion:reduce){::view-transition-group(*),::view-transition-old(*),::view-transition-new(*){animation:none!important}}
 
@@ -348,7 +390,7 @@ html[data-theme-transition]::view-transition-new(root){z-index:2}
 
 /* 代码和订阅地址共用复制成功的粉色反馈。 */
 .copy-feedback{position:relative;isolation:isolate;transition:color var(--motion-feedback-duration) var(--ease-out)}
-.copy-feedback::before{position:absolute;inset:5px -14px;z-index:-1;content:"";border-radius:50%;background:radial-gradient(ellipse,color-mix(in srgb,var(--summer-pink) 24%,transparent),transparent 72%);opacity:0;pointer-events:none;transition:opacity var(--motion-decoration-duration) var(--ease-out)}
+.copy-feedback::before{position:absolute;inset:5px -14px;z-index:-1;content:"";border-radius:50%;background:radial-gradient(ellipse,color-mix(in srgb,var(--glow-pink) 24%,transparent),transparent 72%);opacity:0;pointer-events:none;transition:opacity var(--motion-decoration-duration) var(--ease-out)}
 .copy-feedback[data-copy-state="success"]{color:var(--summer-pink)}
 .copy-feedback[data-copy-state="success"]::before{opacity:1}
 .copy-feedback[data-copy-state="success"] span{background:linear-gradient(110deg,var(--summer-pink),color-mix(in srgb,var(--summer-pink) 70%,var(--text)));background-clip:text;-webkit-background-clip:text;color:transparent;animation:copy-confirm var(--motion-decoration-duration) var(--ease-out)}

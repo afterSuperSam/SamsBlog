@@ -33,13 +33,13 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
 {article ? <BaseLayout title={article.title} description={articleExcerpt(article.content)} image={article.coverUrl || undefined} articleMetadata={articleMetadata} bodyClass="article-page">
   <article class="article-reading shell" data-article-reading data-article-id={article.id} data-article-version={article.updatedAt}>
     <a class="articles-more article-reading__back" href="/about#articles"><span aria-hidden="true">←</span> 回到文章</a>
-    <header class="article-reading__heading" data-reveal>
+    <header class="article-reading__heading">
       <div class="article-tags"><span>{article.source === 'original' ? '原创' : '搬运'}</span><span>{article.category === 'discussion' ? '杂谈' : '日志'}</span></div>
       <h1>{article.title}</h1>
       <div class="article-reading__dates"><span>写于 <time datetime={article.createdAt}>{dateLabel(article.createdAt)}</time></span><span>编辑于 <time datetime={article.updatedAt}>{dateLabel(article.updatedAt)}</time></span></div>
       {article.source === 'repost' && (article.originalAuthor || article.originalUrl) && <p class="article-reading__source">{article.originalAuthor && <span>原作者：{article.originalAuthor}</span>}{article.originalUrl && <a href={article.originalUrl} target="_blank" rel="noopener noreferrer">阅读原文 ↗</a>}</p>}
     </header>
-    {article.coverUrl && <img class="article-reading__cover" data-article-cover={article.id} src={article.coverUrl} alt="文章首图" referrerpolicy="no-referrer" />}
+    {article.coverUrl && <img class="article-reading__cover" data-article-cover={article.id} src={article.coverUrl} alt="文章首图" referrerpolicy="no-referrer" fetchpriority="high" />}
     <div class="article-reading__tools" data-reading-tools hidden>
       <button type="button" data-reading-mode aria-pressed="false">舒适阅读</button>
       <button type="button" data-reading-resume hidden>回到上次读到的位置</button>

@@ -75,7 +75,7 @@
 .article-reading__heading .article-tags{margin-top:20px}
 .article-reading h1{margin:20px 0;font:700 clamp(2rem,5vw,4rem)/1.35 var(--playful);letter-spacing:-.03em;overflow-wrap:anywhere}
 .article-reading__dates{display:flex;flex-wrap:wrap;gap:8px 28px;color:var(--muted);font-size:var(--font-size-small);line-height:1.8}
-.article-reading__cover{display:block;width:100%;max-height:580px;object-fit:cover;border-radius:28px 20px 30px 22px;margin:36px 0 0;background:var(--surface)}
+.article-reading__cover{display:block;width:100%;height:auto;aspect-ratio:var(--article-cover-ratio);max-height:580px;object-fit:cover;border-radius:28px 20px 30px 22px;margin:36px 0 0;background:var(--surface)}
 .article-prose{padding:36px 0;color:var(--text-soft);font:400 var(--font-size-body)/2 var(--playful);overflow-wrap:anywhere}
 .article-prose>:first-child{margin-top:0}
 .article-prose :is(h1,h2,h3,h4,h5,h6){margin:1.7em 0 .65em;color:var(--text);font-family:var(--playful);line-height:1.5}

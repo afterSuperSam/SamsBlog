@@ -92,7 +92,7 @@ describe('article persistence and authenticated management', () => {
     const first = saveArticle(input);
     const second = saveArticle(input);
     getDatabase().prepare("UPDATE blog_articles SET created_at = '2026-10-20T00:00:00.000Z' WHERE id IN (?, ?)").run(first, second);
-    expect(listArticles().slice(0, 2).map((item) => item.id)).toEqual([second, first]);
+    expect(listArticles().filter((item) => item.id === first || item.id === second).map((item) => item.id)).toEqual([second, first]);
   });
 
   it('guards every management method and supports create, edit, delete, restore', async () => {
@@ -175,6 +175,22 @@ describe('project settings and automatically refreshed feeds', () => {
     expect(await feed().text()).not.toContain('修改后 RSS 标题');
   });
 
+  it('colors browser source without changing reader responses or executing content', async () => {
+    const headers = { accept: 'text/html,application/xhtml+xml', 'sec-fetch-dest': 'document' };
+    const response = getRss({ request: new Request('https://blog.example/rss.xml', { headers }) } as APIContext) as Response;
+    const html = await response.text();
+    expect(response.headers.get('content-type')).toContain('text/html');
+    expect(response.headers.get('vary')).toBe('Accept, Sec-Fetch-Dest');
+    expect(html).toContain('class="rss-source__tag"');
+    expect(html).toContain('class="rss-source__attribute"');
+    expect(html).not.toContain('<script');
+    for (const request of [new Request('https://blog.example/rss.xml?raw', { headers }), new Request('https://blog.example/rss.xml', { headers: { accept: 'text/html' } })]) {
+      const raw = getRss({ request } as APIContext) as Response;
+      expect(raw.headers.get('content-type')).toContain('application/rss+xml');
+      expect(await raw.text()).toMatch(/^<\?xml/);
+    }
+  });
+
   it('publishes complete formatted RSS content without expanding cross-site summaries', async () => {
     const content = `# 完整正文\n\n${'正文内容'.repeat(80)}\n\n**这是文章最后一段**\n\n[站内](/about?a=1&b=2)\n\n![正文图片](/images/body.webp)\n\n<script>alert(1)</script>`;
     const id = saveArticle({ ...input, content });
@@ -182,9 +198,17 @@ describe('project settings and automatically refreshed feeds', () => {
     expect(feed).toContain('&lt;h1&gt;完整正文&lt;/h1&gt;');
     expect(feed).toContain('&lt;strong&gt;这是文章最后一段&lt;/strong&gt;');
     expect(feed).toContain('https://images.example.com/cover.webp');
-    expect(feed).toContain(`${siteConfig.siteUrl}/images/body.webp`);
-    expect(feed).toContain(`${siteConfig.siteUrl}/about?a=1&amp;amp;b=2`);
+    expect(feed).toContain(new URL('/images/body.webp', siteConfig.rss.siteUrl).href);
+    expect(feed).toContain(`${new URL('/about', siteConfig.rss.siteUrl).href}?a=1&amp;amp;b=2`);
     expect(feed).toContain('&amp;lt;script&amp;gt;alert(1)&amp;lt;/script&amp;gt;');
+    expect(feed).toContain('xmlns:content="http://purl.org/rss/1.0/modules/content/"');
+    expect(feed).toContain('<description>只是一只大黄狗</description>');
+    expect(feed).toContain('<link>https://blog.yingwutown.top/</link>');
+    expect(feed).not.toContain('localhost');
+    const item = feed.split('<item>').find((item) => item.includes(`/articles/${id}</link>`))!;
+    expect(item.match(/<description>(.*?)<\/description>/s)?.[1]).toMatch(/…$/);
+    expect(item.match(/<description>(.*?)<\/description>/s)?.[1]).not.toContain('这是文章最后一段');
+    expect(item.match(/<content:encoded>(.*?)<\/content:encoded>/s)?.[1]).toContain('这是文章最后一段');
     const response = await getSiteCard({ request: new Request('https://blog.example/api/public/site-card.json') } as APIContext) as Response;
     const article = (await response.json()).latest.find((entry: { id: number }) => entry.id === id);
     expect(article.description).toMatch(/…$/);

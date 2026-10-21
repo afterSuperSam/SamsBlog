@@ -90,7 +90,7 @@ const commitFormatter = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shang
 <style>
   .project-list article[hidden]{display:none}
   .project-expand{position:relative;isolation:isolate;display:flex;align-items:center;gap:14px;margin:36px auto 0;padding:12px 26px;border:0;border-radius:0;background:none;color:var(--text-soft);font:400 var(--font-size-body)/1.5 var(--playful);cursor:pointer;box-shadow:none;transition:color .45s var(--ease-out)}
-  .project-expand::before{content:"";position:absolute;inset:-6px -16px;z-index:-1;background:radial-gradient(ellipse,color-mix(in srgb,var(--summer-blue) 20%,transparent),transparent 72%);filter:blur(10px);opacity:0;pointer-events:none;transition:opacity .55s var(--ease-out)}
+  .project-expand::before{content:"";position:absolute;inset:-6px -16px;z-index:-1;background:radial-gradient(ellipse,color-mix(in srgb,var(--glow-blue) 20%,transparent),transparent 72%);filter:blur(10px);opacity:0;pointer-events:none;transition:opacity .55s var(--ease-out)}
   .project-expand span{font-family:var(--display)}
   .project-expand:focus-visible{color:var(--text);background:none;transform:none;box-shadow:none}
   .project-expand:focus-visible::before{opacity:1}

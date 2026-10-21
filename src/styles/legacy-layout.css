@@ -48,7 +48,7 @@ body::before {
 
 .button:focus-visible {
   color:var(--summer-blue);
-  text-shadow:0 0 22px color-mix(in srgb,var(--summer-blue) 28%,transparent);
+  text-shadow:0 0 22px color-mix(in srgb,var(--glow-blue) 28%,transparent);
   transform:translateY(-2px);
 }
 
@@ -85,7 +85,7 @@ body::before {
   content: "";
   opacity: var(--header-reveal);
   background:
-    radial-gradient(circle at 84% 0%, color-mix(in oklab, var(--accent) 13%, transparent), transparent 34%),
+    radial-gradient(circle at 84% 0%, color-mix(in oklab, var(--glow-orange) 13%, transparent), transparent 34%),
     linear-gradient(180deg,
       var(--header-bg) 0%,
       color-mix(in srgb, var(--header-bg) 88%, transparent) 48%,
@@ -113,7 +113,7 @@ body::before {
   object-fit: cover;
   border: 1px solid color-mix(in srgb, var(--on-media) 26%, transparent);
   border-radius: 50%;
-  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 5px 20px var(--avatar-shadow);
 }
 
 .site-brand__wordmark {
@@ -122,12 +122,12 @@ body::before {
   height: 36px;
   max-width: 98px;
   object-fit: contain;
-  filter: drop-shadow(0 2px 7px rgba(24, 57, 67, 0.2));
+  filter: drop-shadow(0 2px 7px var(--brand-shadow));
   transition: filter 280ms ease, transform 320ms var(--ease);
 }
 
 .site-brand:focus-visible .site-brand__wordmark {
-  filter: drop-shadow(0 5px 13px color-mix(in oklab, var(--summer-pink) 24%, transparent));
+  filter: drop-shadow(0 5px 13px color-mix(in oklab, var(--glow-pink) 24%, transparent));
   transform: translateY(-1px) rotate(-0.8deg) scale(1.025);
 }
 
@@ -158,14 +158,14 @@ body::before {
 .desktop-nav a:focus-visible {
   color:var(--summer-blue);
   opacity: 1;
-  text-shadow:0 0 20px color-mix(in srgb,var(--summer-blue) 32%,transparent);
+  text-shadow:0 0 20px color-mix(in srgb,var(--glow-blue) 32%,transparent);
   transform:translateY(-2px);
 }
 
 .desktop-nav a[aria-current="page"] {
   color:var(--summer-orange);
   opacity:1;
-  text-shadow:0 0 18px color-mix(in srgb,var(--summer-orange) 28%,transparent);
+  text-shadow:0 0 18px color-mix(in srgb,var(--glow-orange) 28%,transparent);
 }
 
 .header-actions {
@@ -471,17 +471,17 @@ body::before {
 .motion-toggle[aria-pressed="true"] { color:var(--summer-blue); }
 .motion-toggle:disabled { cursor:default; }
 .header-action { position:relative; display:inline-flex; align-items:center; justify-content:center; width:44px; min-width:44px; flex-shrink:0; }
-.header-action__label { position:absolute; right:calc(100% + 6px); top:50%; display:block; width:max-content; opacity:0; translate:8px -50%; clip-path:inset(0 0 0 100%); white-space:nowrap; pointer-events:none; font:400 var(--font-size-small)/1.5 var(--playful); text-shadow:0 1px 12px var(--bg); transition:translate .34s var(--ease-out),clip-path .34s var(--ease-out),opacity .24s ease; }
-.header-action:focus-visible .header-action__label { opacity:1; translate:0 -50%; clip-path:inset(0); }
+.header-action__label { position:absolute; right:calc(100% + 6px); top:50%; display:block; width:max-content; max-width:0; overflow:hidden; opacity:0; translate:0 -50%; white-space:nowrap; pointer-events:none; font:400 var(--font-size-small)/1.5 var(--playful); transition:max-width .34s var(--ease),opacity .24s ease; }
+.header-action:focus-visible .header-action__label { max-width:130px; opacity:1; }
 .motion-toggle:is(:hover,:focus-visible) { transform:none; }
 
 /* 悬浮装饰只响应精确鼠标，键盘效果由各控件的 focus-visible 保留。 */
 @media(hover:hover) and (pointer:fine){
-  .button:hover{color:var(--summer-blue);text-shadow:0 0 22px color-mix(in srgb,var(--summer-blue) 28%,transparent);transform:translateY(-2px)}
+  .button:hover{color:var(--summer-blue);text-shadow:0 0 22px color-mix(in srgb,var(--glow-blue) 28%,transparent);transform:translateY(-2px)}
   .button--primary:hover{background:transparent;color:var(--summer-orange)}
-  .site-brand:hover .site-brand__wordmark{filter:drop-shadow(0 5px 13px color-mix(in oklab,var(--summer-pink) 24%,transparent));transform:translateY(-1px) rotate(-.8deg) scale(1.025)}
+  .site-brand:hover .site-brand__wordmark{filter:drop-shadow(0 5px 13px color-mix(in oklab,var(--glow-pink) 24%,transparent));transform:translateY(-1px) rotate(-.8deg) scale(1.025)}
   .desktop-nav a:hover{opacity:1;transform:translateY(-2px)}
-  .desktop-nav a:not([aria-current="page"]):hover{color:var(--summer-blue);text-shadow:0 0 20px color-mix(in srgb,var(--summer-blue) 32%,transparent)}
+  .desktop-nav a:not([aria-current="page"]):hover{color:var(--summer-blue);text-shadow:0 0 20px color-mix(in srgb,var(--glow-blue) 32%,transparent)}
   .mobile-menu a:not([aria-current="page"]):hover{color:var(--summer-blue);background:var(--hover)}
   .header-socials :is(a,button):hover{opacity:1;transform:translateY(-2px)}
   .header-social--bilibili:hover{color:var(--summer-blue)}
@@ -494,5 +494,5 @@ body::before {
   .footer-signature:hover{color:var(--summer-blue)}
   .footer-signature:hover::before{opacity:1;transform:scale(1.12)}
   .footer-signature:hover .signature-version{color:color-mix(in oklab,var(--summer-blue) 72%,var(--muted))}
-  .header-action:hover .header-action__label{opacity:1;translate:0 -50%;clip-path:inset(0)}
+  .header-action:hover .header-action__label{max-width:130px;opacity:1}
 }
