@@ -182,26 +182,45 @@ export function getDatabase() {
         )`);
         connection.prepare('INSERT INTO schema_migrations (id, applied_at) VALUES (?, ?)').run('20261018-friend-feed-cache-v1', new Date().toISOString());
       }
+      // 旧域名只作为迁移源保留，包含隐藏内容，恢复后仍使用新地址
+      if (!appliedMigrations.has('20261022-moesam-domain')) {
+        const domainColumns: Record<string, string[]> = {
+          friends: ['url', 'icon_url', 'background_url', 'rss_url', 'description'],
+          blog_articles: ['cover_url', 'content', 'original_url'],
+          blog_projects: ['url', 'description'],
+          project_settings: ['url', 'description'],
+          site_settings: ['value'],
+          messages: ['content'],
+          friend_feed_cache: ['rss_url', 'entry_url'],
+        };
+        for (const [table, columns] of Object.entries(domainColumns)) {
+          for (const column of columns) {
+            connection.prepare(`UPDATE ${table} SET ${column} = replace(${column}, ?, ?) WHERE instr(${column}, ?) > 0`)
+              .run('yingwutown.top', 'moesam.com', 'yingwutown.top');
+          }
+        }
+        connection.prepare('INSERT INTO schema_migrations (id, applied_at) VALUES (?, ?)').run('20261022-moesam-domain', new Date().toISOString());
+      }
       connection.exec('CREATE UNIQUE INDEX IF NOT EXISTS friends_active_url_idx ON friends(url) WHERE deleted_at IS NULL');
       connection.exec('CREATE INDEX IF NOT EXISTS friends_public_idx ON friends(visible, created_at ASC)');
       if (!friendsInitialized) {
         const now = new Date().toISOString();
         connection.prepare(`INSERT INTO friends (name, url, description, icon_url, visible, created_at, updated_at)
           VALUES (?, ?, ?, ?, 1, ?, ?)`).run(
-          '楹雾镇', 'https://yingwutown.top/', '我的世界玩家社区',
-          'https://yingwutown.top/images/optimized/group/1.jpg', now, now,
+          '楹雾镇', 'https://moesam.com/', '我的世界玩家社区',
+          'https://moesam.com/images/optimized/group/1.jpg', now, now,
         );
       }
       connection.prepare(`UPDATE friends SET description = ?, updated_at = ?
-        WHERE deleted_at IS NULL AND name = '楹雾镇' AND url IN ('https://yingwutown.top', 'https://yingwutown.top/')
+        WHERE deleted_at IS NULL AND name = '楹雾镇' AND url IN ('https://moesam.com', 'https://moesam.com/')
           AND description = '与这个博客彼此照看的另一座小镇。'`).run('我的世界玩家社区', new Date().toISOString());
-      connection.prepare(`UPDATE friends SET url = 'https://yingwutown.top/', updated_at = ?
-        WHERE deleted_at IS NULL AND url = 'https://yingwutown.top'
-          AND NOT EXISTS (SELECT 1 FROM friends AS existing WHERE existing.url = 'https://yingwutown.top/')`).run(new Date().toISOString());
+      connection.prepare(`UPDATE friends SET url = 'https://moesam.com/', updated_at = ?
+        WHERE deleted_at IS NULL AND url = 'https://moesam.com'
+          AND NOT EXISTS (SELECT 1 FROM friends AS existing WHERE existing.url = 'https://moesam.com/')`).run(new Date().toISOString());
       connection.prepare(`UPDATE friends SET icon_url = ?, updated_at = ?
-        WHERE deleted_at IS NULL AND url IN ('https://yingwutown.top', 'https://yingwutown.top/')
-          AND icon_url = 'https://yingwutown.top/favicon.ico'`).run(
-        'https://yingwutown.top/images/optimized/group/1.jpg', new Date().toISOString(),
+        WHERE deleted_at IS NULL AND url IN ('https://moesam.com', 'https://moesam.com/')
+          AND icon_url = 'https://moesam.com/favicon.ico'`).run(
+        'https://moesam.com/images/optimized/group/1.jpg', new Date().toISOString(),
       );
     })();
   } catch (error) {

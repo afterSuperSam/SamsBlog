@@ -9,7 +9,7 @@ export const GET: APIRoute = async ({ request }) => {
     'Cache-Control': 'public, max-age=300, stale-while-revalidate=600',
     'Vary': 'Origin',
   });
-  if (origin === 'https://yingwutown.top') headers.set('Access-Control-Allow-Origin', origin);
+  if (origin === 'https://moesam.com') headers.set('Access-Control-Allow-Origin', origin);
   const latest = getArticleUpdates(siteConfig.articles.cardCount);
   return new Response(JSON.stringify({
     name: siteConfig.name,

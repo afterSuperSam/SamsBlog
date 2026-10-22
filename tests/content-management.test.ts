@@ -60,7 +60,7 @@ describe('SQLite content management', () => {
       .toEqual({ deleted_at: '2026-09-01', background_url: 'https://deleted.example.com/background.jpg' });
     expect(listFriends({ includeHidden: true }).some((friend) => friend.url === 'https://deleted.example.com/')).toBe(false);
     expect(getDatabase().prepare("SELECT name FROM sqlite_master WHERE name = 'friends_public_idx'").get()).toBeTruthy();
-    expect(listFriends().find((friend) => friend.url === 'https://yingwutown.top/')?.description).toBe('我的世界玩家社区');
+    expect(listFriends().find((friend) => friend.url === 'https://moesam.com/')?.description).toBe('我的世界玩家社区');
     const first = hashVisitorToken('first');
     recordPageView(first); recordPageView(first); recordPageView(hashVisitorToken('second'));
     expect(getSiteStats()).toMatchObject({ visitors: 2, pageViews: 3, friends: listFriends().length });
@@ -92,7 +92,7 @@ describe('SQLite content management', () => {
   });
 
   it('preserves existing friends during background migration and allows clearing a background', () => {
-    const friend = listFriends().find((item) => item.url === 'https://yingwutown.top/')!;
+    const friend = listFriends().find((item) => item.url === 'https://moesam.com/')!;
     expect(friend.backgroundUrl).toBe('');
     expect(getDatabase().prepare("SELECT id FROM schema_migrations WHERE id = '20261015-friend-background-v1'").get()).toBeTruthy();
     const input = parseFriendInput({ ...friend, backgroundUrl: 'https://example.com/art.webp' });
@@ -104,7 +104,7 @@ describe('SQLite content management', () => {
   });
 
   it('migrates optional friend RSS addresses and supports create, edit and clearing', () => {
-    const existing = listFriends().find((friend) => friend.url === 'https://yingwutown.top/')!;
+    const existing = listFriends().find((friend) => friend.url === 'https://moesam.com/')!;
     expect(existing.rssUrl).toBe('');
     expect(getDatabase().prepare("SELECT id FROM schema_migrations WHERE id = '20261018-friend-rss-v1'").get()).toBeTruthy();
     const input = parseFriendInput({ name: '订阅友链', url: 'https://rss.example.com', description: '可订阅的友链', iconUrl: 'https://rss.example.com/icon.png', rssUrl: ' https://rss.example.com/feed.xml?a=1&b=2#ignored ' });

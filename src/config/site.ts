@@ -3,8 +3,7 @@ export const siteConfig = {
   description: '二次元与日常，收藏想象，也认真生活',
   siteUrl: import.meta.env.PUBLIC_SITE_URL || 'http://localhost:4321',
   locale: 'zh-CN',
-  rss: { description: '只是一只大黄狗', siteUrl: 'https://blog.yingwutown.top/' },
-  registration: { label: '萌ICP备20269090号', href: 'https://icp.gov.moe/?keyword=20269090' },
+  rss: { description: '只是一只大黄狗', siteUrl: 'https://blog.moesam.com/' },
   nav: [
     { href: '/', label: '首页' },
     { href: '/about', label: '关于' },
@@ -41,7 +40,6 @@ export const siteConfig = {
   },
 } as const;
 
-const registrationUrl = new URL(siteConfig.registration.href);
 const rssUrl = new URL(siteConfig.rss.siteUrl);
 if (!siteConfig.rss.description.trim() || rssUrl.protocol !== 'https:' || rssUrl.username || rssUrl.password
   || rssUrl.pathname !== '/' || rssUrl.search || rssUrl.hash) {
@@ -52,9 +50,6 @@ if (!Number.isSafeInteger(siteConfig.network.sampleCount) || siteConfig.network.
   || siteConfig.sponsors.some(({ name, amount }) => !name.trim() || !Number.isFinite(amount) || amount <= 0)
   || new Set(siteConfig.sponsors.map(({ name }) => name)).size !== siteConfig.sponsors.length) {
   throw new Error('Invalid network or sponsor configuration');
-}
-if (!siteConfig.registration.label.trim() || registrationUrl.protocol !== 'https:' || registrationUrl.username || registrationUrl.password) {
-  throw new Error('Invalid registration configuration');
 }
 
 if (!Object.values(siteConfig.interactions).every((value) => Number.isSafeInteger(value) && value > 0)

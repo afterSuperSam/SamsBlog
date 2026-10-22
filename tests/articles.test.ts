@@ -168,9 +168,9 @@ describe('project settings and automatically refreshed feeds', () => {
     expect(feed().headers.get('Cache-Control')).toBe('no-cache');
     saveArticle({ ...input, id, title: '修改后 RSS 标题' });
     expect(await feed().text()).toContain('修改后 RSS 标题');
-    const response = await getSiteCard({ request: new Request('https://blog.example/api/public/site-card.json', { headers: { Origin: 'https://yingwutown.top' } }) } as APIContext) as Response;
+    const response = await getSiteCard({ request: new Request('https://blog.example/api/public/site-card.json', { headers: { Origin: 'https://moesam.com' } }) } as APIContext) as Response;
     expect((await response.json()).latest.some((article: { id: number }) => article.id === id)).toBe(true);
-    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://yingwutown.top');
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://moesam.com');
     deleteArticle(id);
     expect(await feed().text()).not.toContain('修改后 RSS 标题');
   });
@@ -203,7 +203,7 @@ describe('project settings and automatically refreshed feeds', () => {
     expect(feed).toContain('&amp;lt;script&amp;gt;alert(1)&amp;lt;/script&amp;gt;');
     expect(feed).toContain('xmlns:content="http://purl.org/rss/1.0/modules/content/"');
     expect(feed).toContain('<description>只是一只大黄狗</description>');
-    expect(feed).toContain('<link>https://blog.yingwutown.top/</link>');
+    expect(feed).toContain('<link>https://blog.moesam.com/</link>');
     expect(feed).not.toContain('localhost');
     const item = feed.split('<item>').find((item) => item.includes(`/articles/${id}</link>`))!;
     expect(item.match(/<description>(.*?)<\/description>/s)?.[1]).toMatch(/…$/);
