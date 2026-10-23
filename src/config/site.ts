@@ -20,7 +20,7 @@ export const siteConfig = {
   ],
   articles: { homepageCount: 2, feedCount: 20, cardCount: 3, reorderMilliseconds: 420 },
   articleReading: { positionStorageKey: 'sams-blog-reading-positions', preferenceStorageKey: 'sams-blog-reading-mode', positionLimit: 50, positionSaveMilliseconds: 1000, positionMinimumPixels: 240, imageZoomScale: 2, copyFeedbackMilliseconds: 1800 },
-  interactions: { feedbackResizeMilliseconds: 260, themeRevealMilliseconds: 760, monthScrollMilliseconds: 360, keyboardInsetPixels: 18 },
+  interactions: { feedbackResizeMilliseconds: 260, themeRevealMilliseconds: 760, monthScrollMilliseconds: 360, keyboardInsetPixels: 18, requestTimeoutMilliseconds: 15000, tooltipDismissMilliseconds: 160 },
   projectPresentation: { initialVisibleCount: 4 },
   projects: [
     { repository: 'afterSuperSam/SamsTownWeb', name: 'SamsTownWeb', description: '楹雾镇 Minecraft 社区网站', keyword: '楹雾', status: 'active' },

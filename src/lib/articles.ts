@@ -5,6 +5,7 @@ import { isPublicFriendAddress } from './friend-status';
 import { HttpError, readPositiveId } from './http';
 import { siteConfig } from '../config/site';
 import { articleExcerpt } from './markdown';
+import { getMedia } from './media';
 
 export interface ArticleRecord {
   id: number;
@@ -34,6 +35,11 @@ function parseCoverUrl(value: unknown) {
   if (value === undefined || value === '') return '';
   if (typeof value !== 'string') throw new HttpError(400, '首图地址必须是文本');
   if (!value.trim()) return '';
+  if (value.trim().startsWith('/uploads/')) {
+    const media = getMedia(value.trim().slice('/uploads/'.length));
+    if (!media) throw new HttpError(400, '上传的首图不存在或已删除');
+    return media.url;
+  }
   if (!/^https?:\/\//i.test(value.trim())) throw new HttpError(400, '首图地址必须是完整的网址');
   let url: URL;
   try { url = new URL(value.trim()); }
@@ -49,9 +55,27 @@ function parseCoverUrl(value: unknown) {
   return url.toString();
 }
 
-export function listArticles(options: { includeDeleted?: boolean } = {}): ArticleRecord[] {
+export function listArticles(options: { includeDeleted?: boolean; limit?: number } = {}): ArticleRecord[] {
+  const limit = options.limit === undefined ? -1 : readPositiveId(options.limit);
   return (getDatabase().prepare(`SELECT * FROM blog_articles ${options.includeDeleted ? '' : 'WHERE deleted_at IS NULL'}
-    ORDER BY created_at DESC, id DESC`).all() as Record<string, unknown>[]).map(mapArticle);
+    ORDER BY created_at DESC, id DESC LIMIT ?`).all(limit) as Record<string, unknown>[]).map(mapArticle);
+}
+
+export function listArticleMetadata(): Array<Pick<ArticleRecord, 'id' | 'updatedAt'>> {
+  return (getDatabase().prepare(`SELECT id, updated_at FROM blog_articles WHERE deleted_at IS NULL
+    ORDER BY created_at DESC, id DESC`).all() as Array<{ id: number; updated_at: string }>)
+    .map((article) => ({ id: article.id, updatedAt: article.updated_at }));
+}
+
+export function getAdjacentArticles(article: Pick<ArticleRecord, 'id' | 'createdAt'>) {
+  const database = getDatabase();
+  const previous = database.prepare(`SELECT id, title FROM blog_articles
+    WHERE deleted_at IS NULL AND (created_at, id) < (?, ?)
+    ORDER BY created_at DESC, id DESC LIMIT 1`).get(article.createdAt, article.id) as Pick<ArticleRecord, 'id' | 'title'> | undefined;
+  const next = database.prepare(`SELECT id, title FROM blog_articles
+    WHERE deleted_at IS NULL AND (created_at, id) > (?, ?)
+    ORDER BY created_at ASC, id ASC LIMIT 1`).get(article.createdAt, article.id) as Pick<ArticleRecord, 'id' | 'title'> | undefined;
+  return { previous, next };
 }
 
 function parseOriginalUrl(value: unknown): string {
@@ -75,9 +99,9 @@ export function getArticle(id: number, options: { includeDeleted?: boolean } = {
 
 // 跨站卡片使用公开文章摘要，不暴露软删除内容。
 export function getArticleUpdates(limit: number) {
-  return listArticles().slice(0, limit).map((article) => ({
+  return listArticles({ limit }).map((article) => ({
     id: article.id, title: article.title, url: new URL(`/articles/${article.id}`, siteConfig.siteUrl).href,
-    coverUrl: article.coverUrl, description: articleExcerpt(article.content),
+    coverUrl: article.coverUrl ? new URL(article.coverUrl, siteConfig.siteUrl).href : '', description: articleExcerpt(article.content),
     source: article.source, category: article.category, createdAt: article.createdAt, updatedAt: article.updatedAt,
   }));
 }
@@ -94,6 +118,9 @@ export function saveArticle(input: unknown): number {
   }
   if (!content.trim() || content.length > serverConfig.articleContentMaxLength) {
     throw new HttpError(400, `正文需要 1 至 ${serverConfig.articleContentMaxLength} 个字符`);
+  }
+  for (const match of content.matchAll(/\]\(\/uploads\/([a-f0-9]{64}\.(?:jpg|png|webp|gif))/g)) {
+    if (!getMedia(match[1])) throw new HttpError(400, '正文中有已删除或不存在的图片，请先在媒体库恢复');
   }
   if (body.source !== 'original' && body.source !== 'repost') throw new HttpError(400, '来源请选择原创或搬运');
   if (body.category !== 'discussion' && body.category !== 'journal') throw new HttpError(400, '分类请选择杂谈或日志');

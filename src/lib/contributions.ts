@@ -64,8 +64,8 @@ export function parseGithubContributions(html: string): ContributionCalendar {
     const date = match[1].match(/\bdata-date\s*=\s*["'](\d{4}-\d{2}-\d{2})["']/i)?.[1];
     const level = match[1].match(/\bdata-level\s*=\s*["']([0-4])["']/i)?.[1];
     if (!date || level === undefined) continue;
-    const countMatch = match[2].match(/(\d+) contributions?/i);
-    days.push({ date, level: Number(level), count: countMatch ? Number(countMatch[1]) : 0 });
+    const countMatch = match[2].match(/(\d[\d,]*) contributions?/i);
+    days.push({ date, level: Number(level), count: countMatch ? Number(countMatch[1].replaceAll(',', '')) : 0 });
   }
   days.sort((a, b) => a.date.localeCompare(b.date));
   if (days.length < 300) throw new Error('GitHub contribution response was incomplete');

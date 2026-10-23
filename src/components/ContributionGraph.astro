@@ -76,6 +76,7 @@ const monthLabel = (month: string) => `${month.slice(0, 4)} 年 ${Number(month.s
 <script>
   import { animateMotion, motionDisabled } from '../lib/motion';
   import { siteConfig } from '../config/site';
+  import { createTooltip } from '../lib/tooltip';
   document.querySelectorAll<HTMLElement>('.contribution-scroll').forEach((scroll) => {
     let previousMaximum = 0;
     new ResizeObserver(() => {
@@ -144,9 +145,6 @@ const monthLabel = (month: string) => `${month.slice(0, 4)} 年 ${Number(month.s
   document.querySelectorAll<HTMLElement>('.contribution-panel').forEach((panel) => {
     const popover = panel.querySelector<HTMLElement>('.contribution-detail-popover');
     if (!popover) return;
-    const hideDetails = () => {
-      if (popover.matches(':popover-open')) popover.hidePopover();
-    };
     const writeDetail = (selector: string, value: string) => {
       const field = popover.querySelector<HTMLElement>(selector);
       if (field) field.textContent = value;
@@ -165,36 +163,21 @@ const monthLabel = (month: string) => `${month.slice(0, 4)} 年 ${Number(month.s
       event.preventDefault();
       cells[nextIndex]?.focus();
     });
-    cells.forEach((cell) => {
-      const showDetails = () => {
+    const tooltipController = createTooltip(popover, {
+      show(cell) {
         const recorded = cell.dataset.recorded === 'true';
         writeDetail('[data-usage-date]', cell.dataset.date || '');
         writeDetail('[data-usage-total]', recorded ? `${formatUsageNumber(cell.dataset.count)} ${panel.dataset.unit}` : '暂无记录');
         writeDetail('[data-usage-hit]', recorded ? formatUsageNumber(cell.dataset.cacheHit) : '—');
         writeDetail('[data-usage-miss]', recorded ? formatUsageNumber(cell.dataset.cacheMiss) : '—');
         writeDetail('[data-usage-output]', recorded ? formatUsageNumber(cell.dataset.output) : '—');
-        if (!popover.matches(':popover-open')) popover.showPopover();
-        const rect = cell.getBoundingClientRect();
-        const detail = popover.getBoundingClientRect();
-        const top = rect.top >= detail.height + 20 ? rect.top - detail.height - 10 : rect.bottom + 10;
-        popover.style.left = `${Math.max(12, Math.min(rect.left + rect.width / 2 - detail.width / 2, window.innerWidth - detail.width - 12))}px`;
-        popover.style.top = `${Math.max(12, Math.min(top, window.innerHeight - detail.height - 12))}px`;
-      };
-      cell.addEventListener('pointerenter', (event) => {
-        if (event.pointerType !== 'mouse') return;
-        if (!cells.includes(document.activeElement as HTMLButtonElement) || document.activeElement === cell) showDetails();
-      });
+      },
+    });
+    cells.forEach((cell) => {
+      tooltipController.bind(cell);
       cell.addEventListener('focus', () => {
         cells.forEach((item) => { item.tabIndex = item === cell ? 0 : -1; });
-        requestAnimationFrame(() => { if (document.activeElement === cell) showDetails(); });
       });
-      cell.addEventListener('click', showDetails);
-      cell.addEventListener('pointerleave', () => { if (!cells.includes(document.activeElement as HTMLButtonElement)) hideDetails(); });
-      cell.addEventListener('blur', hideDetails);
     });
-    panel.querySelector('.contribution-scroll')?.addEventListener('scroll', hideDetails);
-    window.addEventListener('scroll', hideDetails, { passive:true });
-    window.addEventListener('resize', hideDetails);
-    panel.addEventListener('keydown', (event) => { if (event.key === 'Escape') hideDetails(); });
   });
 </script>

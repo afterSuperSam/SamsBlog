@@ -20,7 +20,7 @@
 
 - 首页顺序：Hero → 项目 → 最新两篇文章 → 留言纸条 → 网站友链 → 统计。无文章时省略文章区块，不填充示例内容。Hero 使用同图的响应式 WebP，原始 PNG 保留供已有文章引用。
 - 关于页包含联系、全部文章、痕迹和赞赏；顶部导航仅首页、关于。`/links` 永久重定向到 `/#friends`。
-- 项目由后台新增、编辑、隐藏和排序，首页先显示前4个可见项目，再通过“更多项目”展开。可编辑名称、地址、简介、关键词、状态、可选 GitHub 仓库及“最近在做”。仓库仅用于提交日期，失败保留已有缓存；没有日期时省略。
+- 项目由后台新增、编辑、隐藏和排序，首页先显示前4个可见项目，再通过“更多项目”展开。可编辑名称、地址、简介、关键词、状态、可选 GitHub 仓库及“最近在做”。仓库仅用于提交日期，有限并发读取并复用缓存；返回前复核公开状态，失败保留已有日期，没有日期时省略。
 - 文章保存即公开；编辑保留创建日期，更新编辑日期。删除为软删除，退出公开列表、RSS、站点地图，详情返回404；后台可恢复。来源为原创／搬运，分类为杂谈／日志，分别保存。
 - 留言提交后待审核，公开端展示最新60个已公开根线程及其公开回复；后台读取全部未删除线程，不按200条截断。回复显示实际昵称，可在后台独立审核、隐藏或删除；删除根线程同时隐藏其回复。昵称和正文按 Unicode 码点限制为2–24与2–500字符，空字符被拒绝。后台写入期间锁定对应表单，失败保留输入并恢复操作。
 - 友链支持隐藏、软删除及可选背景、RSS 地址。背景留空或失败时回退头像。连通性表示服务器访问友链的结果；名称后先日期、再 RSS，日期仅作文字展示，RSS 独立打开订阅地址，不展开文章、不显示箭头。卡片使用紧凑间距，缺失日期时只显示 RSS。
@@ -31,9 +31,13 @@
 
 ### 文章与阅读
 
-后台采用 Markdown 编辑和实时预览，公开页与后台共用 `src/lib/markdown.ts`。支持标题、列表、引用、代码、粗斜体、删除线、链接和图片；原始 HTML 转义为文字，不执行嵌入脚本。首图可选，图片仅填写公开网址，不上传文件。搬运文章可独立填写原作者和原文链接。
+后台采用 Markdown 编辑和实时预览，公开页与后台共用 `src/lib/markdown.ts`。支持标题、列表、引用、代码、粗斜体、删除线、链接和图片；原始 HTML 转义为文字，不执行嵌入脚本。首图可选，支持公开图片网址或本地上传。搬运文章可独立填写原作者和原文链接。
 
-未保存修改在站内跳转或切换文章前确认。写入期间锁定编辑及切换控件，成功后保持锁定至刷新完成；失败恢复控件并保留输入。刷新或关闭浏览器前请先保存，当前没有自动草稿。
+编辑器的“上传首图／上传图片”直接选择本地文件；后台“媒体库”支持预览、按名称搜索、插入正文、设为首图、复制地址和回收站恢复，不刷新文章草稿。支持 JPG、PNG、WebP、GIF，默认单张10MiB，保留原图；文件按内容哈希去重，存到 `$BLOG_DATA_DIR/uploads/`，元数据存 SQLite。上传即获得公开图片地址，文章仍需保存才公开；不会随构建覆盖。已被文章引用的图片（包括已删除文章）不能删除，当前编辑草稿也会在界面阻止误删。软删除停止公开访问但保留文件，可恢复；不提供永久清理按钮。
+
+文章和项目的未保存修改在站内跳转、退出及其他分区触发刷新前统一确认；切换文章单独确认当前文章。页面准备离开后锁定编辑，其他分区仍在写入时暂不离开，避免等待期间的新输入被刷新。后台文档禁止缓存。刷新或关闭浏览器前请先保存，当前没有自动草稿。
+
+后台与留言共用 JSON 请求截止处理，默认15秒，覆盖连接及响应体读取。失败或超时保留输入并恢复操作；超时提示结果尚未确认，不自动重试写入。留言与后台日期统一按北京时间显示。
 
 阅读页提供舒适阅读、唯一标题锚点、自动目录、相邻文章、图片查看器、代码复制与换行。无链接图片和指向自身的单图链接可放大；图片指向其他网页时保留作者的导航，不覆盖链接名称。查看器支持 Escape、焦点返回和手机系统缩放。复制保留原始缩进，成功显示粉色“复制成功”。
 
@@ -79,7 +83,8 @@ Astro 构建配置按 `.env` → `.env.local` → `.env.<mode>` → `.env.<mode>
 | 登录限速 | `ADMIN_LOGIN_WINDOW_SECONDS=60`、`ADMIN_LOGIN_ATTEMPTS=5`、`ADMIN_LOGIN_GLOBAL_ATTEMPTS=30`、`ADMIN_LOGIN_TRACKED_ADDRESSES=1000` |
 | 留言 | `MESSAGE_COOLDOWN_SECONDS=60` |
 | 文章 | `ARTICLE_TITLE_MAX_LENGTH=160`、`ARTICLE_CONTENT_MAX_LENGTH=100000`、`ARTICLE_REQUEST_MAX_BYTES=1048576` |
-| GitHub | `GITHUB_USERNAME=afterSuperSam`、`GITHUB_CACHE_SECONDS=21600`、`GITHUB_RETRY_SECONDS=60`、`GITHUB_TIMEOUT_MILLISECONDS=5000` |
+| 媒体 | `MEDIA_MAX_BYTES=10485760`（单张图片上限，可调低，最大10MiB） |
+| GitHub | `GITHUB_USERNAME=afterSuperSam`、`GITHUB_CACHE_SECONDS=21600`、`GITHUB_RETRY_SECONDS=60`、`GITHUB_TIMEOUT_MILLISECONDS=5000`、`GITHUB_CONCURRENCY=3`（最多6） |
 | 友链探测 | `FRIEND_STATUS_CACHE_SECONDS=300`、`FRIEND_STATUS_TIMEOUT_MILLISECONDS=5000`、`FRIEND_STATUS_SLOW_MILLISECONDS=1800`、`FRIEND_STATUS_CONCURRENCY=3`、`FRIEND_STATUS_MAX_REDIRECTS=3` |
 | 友链订阅 | `FRIEND_FEED_CACHE_SECONDS=1800`、`FRIEND_FEED_MAXIMUM_BYTES=1048576`、`FRIEND_FEED_MAXIMUM_ENTRIES=100`、`FRIEND_FEED_MAXIMUM_DEPTH=32` |
 
@@ -107,7 +112,7 @@ Astro 构建配置按 `.env` → `.env.local` → `.env.<mode>` → `.env.<mode>
 | `/api/network.json`、`/api/ping.json` | GET／公开 | 脱敏地址与粗略位置／连通状态 |
 | `/rss.xml`、`/sitemap.xml`、`/robots.txt`、`/health.json` | GET／公开 | 全文订阅／公开地址／抓取规则／健康状态 |
 
-来源枚举为 `original/repost`，分类为 `discussion/journal`，项目状态为 `active/maintenance/archived`，留言状态为 `pending/published/hidden`。隐藏留言仅后台可见；友链隐藏不删除。网址只允许无账号密码的完整 HTTP(S) 地址，Markdown 正文另允许安全站内路径。
+媒体接口：`/api/admin/media.json` 由管理员 GET 列表、POST 单文件 multipart 上传、DELETE 移入回收站、PATCH 恢复。`/uploads/<内容哈希>.<格式>` 提供有效图片，删除或未知文件返回404；回收站预览仍需管理员身份。来源枚举为 `original/repost`，分类为 `discussion/journal`，项目状态为 `active/maintenance/archived`，留言状态为 `pending/published/hidden`。隐藏留言仅后台可见；友链隐藏不删除。网址只允许无账号密码的完整 HTTP(S) 地址；首图另允许媒体库中有效的 `/uploads/` 地址，Markdown 正文支持安全站内路径。
 
 ## 验证
 
@@ -135,13 +140,15 @@ pnpm audit
 
 数据库为 `$BLOG_DATA_DIR/blog.sqlite`，使用 WAL、外键和 CHECK 约束。迁移在启动时按记录增量应用；新文章使用 `blog_articles`，不读取或自动发布退役的历史文章／相册表，也不在启动时删除历史表。保留数据库及备份目录。
 
+域名迁移遇到友链地址冲突时，优先保留已使用新域名的记录，其余记录软删除并保留原编号、内容和缓存后迁移；不会覆盖新记录的编辑内容。冲突记录不能直接恢复为重复地址。首页、RSS 和跨站卡片按所需数量查询；站点地图与相邻文章不读取全部正文。
+
 Linux 部署流程：
 
 1. 安装 Node.js 22.12+、pnpm、Nginx 和 SQLite CLI；创建 `samsblog` 用户及 `/opt/samsblog/shared/data`，仅授予必要的数据目录写权限。
 2. 源码放到 `/opt/samsblog/current`，配置 `/etc/samsblog.env`，使用绝对 `BLOG_DATA_DIR`。不复制 Windows 的 `node_modules`、本机 `.env` 或旧构建产物。
 3. 加载生产环境后执行 `pnpm install --frozen-lockfile` 与 `pnpm build`。`PUBLIC_SITE_URL` 必须匹配实际 HTTPS 域名；将构建输出和 `public/` 静态资源作为同一版本发布，包含首帧脚本。
 4. 安装 `deploy/samsblog.service`。核对 `command -v node` 与 `ExecStart`；修改数据目录时同步修改 `ReadWritePaths`。服务以生产模式、专用用户运行。
-5. 配置 `deploy/nginx.conf` 的域名、HTTPS 与 HTTP 跳转。模板按单层代理重写来源及 Host/Proto/Port 头，清除伪造地理头；请求上限1MiB。多层代理需重新确认可信链。
+5. 配置 `deploy/nginx.conf` 的域名、HTTPS 与 HTTP 跳转。模板按单层代理重写来源及 Host/Proto/Port 头，清除伪造地理头；Nginx 与 Node 请求上限11MiB以容纳图片和表单，JSON 接口仍按实际字节限制默认1MiB。已有服务器需同步调高 `client_max_body_size`，否则较大图片会收到413。多层代理需重新确认可信链。
 6. 安装 `deploy/backup.service`、`deploy/backup.timer` 为 `samsblog-backup.service`、`samsblog-backup.timer`。先手动备份并验证恢复，再启用计时器。
 7. 验证健康、站点地图、真实 Cookie/CSP、后台写入与恢复、文章进入／返回封面动画，并核对日志和文件权限。仅重启博客服务。
 
@@ -149,9 +156,12 @@ Linux 部署流程：
 
 恢复前停止博客，保留当前数据库及 `-wal`／`-shm` 旁文件。用已校验备份恢复 `blog.sqlite`，启动前移走旧旁文件并恢复所有者权限，再验收业务数据。不得在运行中直接覆盖数据库。
 
+`backup.sh` 只备份数据库。使用媒体库后还需备份整个 `uploads/` 目录（包含回收站文件）；迁移或恢复时同时恢复数据库和图片目录，不能只复制 `.db`。文件使用稳定内容地址，增量同步即可，不写入 Git。
+
 ## 安全边界
 
 - 管理会话为签名、到期校验的 HttpOnly Cookie，SameSite=Strict，生产 Secure。每个管理接口独立鉴权。Astro 来源检查、JSON 类型约束与 Strict Cookie 共同限制跨站写入，不开放管理 CORS。
+- 图片上传还要求同源 Origin，按实际字节限额并识别文件签名，仅服务四种栅格图片，拒绝 SVG/HTML；原始文件名只作后台展示，不用于存储路径。图片响应带 nosniff 与重新校验缓存，回收站预览禁止缓存。原图不转码、不移除照片元数据。
 - 写入表单显式使用 POST，提交按钮在各自脚本初始化后才启用；禁用脚本时显示说明，密码与正文不会通过原生 GET 提交进入网址。
 - 密码使用异步 scrypt；来源及全站登录限速。限流为单进程内存状态，重启会重置，不宣称抵御分布式流量攻击。
 - 统计仅持久化匿名 Cookie 哈希，留言来源仅存哈希指纹，不存完整 IP/UA。只有成功的公开 HTML 浏览计数；统计写入失败保留原页面响应并记录错误分类，Cookie 清除或机器人识别误差会影响统计。

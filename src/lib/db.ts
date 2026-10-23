@@ -184,6 +184,20 @@ export function getDatabase() {
       }
       // 旧域名只作为迁移源保留，包含隐藏内容，恢复后仍使用新地址
       if (!appliedMigrations.has('20261022-moesam-domain')) {
+        // 冲突时优先保留新域名记录，其余记录软删除后迁移地址，保留身份和内容。
+        const conflicts = connection.prepare(`WITH ranked AS (
+          SELECT id, first_value(id) OVER (
+            PARTITION BY replace(url, 'yingwutown.top', 'moesam.com')
+            ORDER BY (instr(url, 'yingwutown.top') > 0), id
+          ) AS retained_id FROM friends WHERE deleted_at IS NULL
+        ) SELECT id FROM ranked WHERE id != retained_id ORDER BY id`).all() as Array<{ id: number }>;
+        if (conflicts.length) {
+          const retire = connection.prepare('UPDATE friends SET deleted_at = ? WHERE id = ?');
+          const timestamp = new Date().toISOString();
+          for (const conflict of conflicts) {
+            retire.run(timestamp, conflict.id);
+          }
+        }
         const domainColumns: Record<string, string[]> = {
           friends: ['url', 'icon_url', 'background_url', 'rss_url', 'description'],
           blog_articles: ['cover_url', 'content', 'original_url'],
@@ -200,6 +214,18 @@ export function getDatabase() {
           }
         }
         connection.prepare('INSERT INTO schema_migrations (id, applied_at) VALUES (?, ?)').run('20261022-moesam-domain', new Date().toISOString());
+      }
+      if (!appliedMigrations.has('20261023-media-library')) {
+        connection.exec(`CREATE TABLE blog_media (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          filename TEXT NOT NULL UNIQUE,
+          original_name TEXT NOT NULL,
+          mime_type TEXT NOT NULL CHECK(mime_type IN ('image/jpeg','image/png','image/webp','image/gif')),
+          byte_size INTEGER NOT NULL CHECK(byte_size > 0),
+          created_at TEXT NOT NULL,
+          deleted_at TEXT
+        )`);
+        connection.prepare('INSERT INTO schema_migrations (id, applied_at) VALUES (?, ?)').run('20261023-media-library', new Date().toISOString());
       }
       connection.exec('CREATE UNIQUE INDEX IF NOT EXISTS friends_active_url_idx ON friends(url) WHERE deleted_at IS NULL');
       connection.exec('CREATE INDEX IF NOT EXISTS friends_public_idx ON friends(visible, created_at ASC)');

@@ -12,6 +12,7 @@
 .article-editor :is(input:not([type="hidden"]),select,textarea) { min-width:0; width:100%; padding:12px; border:0; border-radius:12px; color:var(--text); background:var(--bg); font:inherit; line-height:1.65; }
 .article-editor :is(input,select,textarea):focus-visible { outline:2px solid var(--summer-blue); outline-offset:3px; }
 .article-editor__cover { grid-column:1/-1; }
+.article-editor__media{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:center;gap:12px}
 .article-editor__workspace { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:24px; align-items:start; }
 .article-editor__toolbar { display:flex; flex-wrap:wrap; gap:2px; }
 .article-editor__toolbar button { padding:6px 9px; color:var(--muted); }

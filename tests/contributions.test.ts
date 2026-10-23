@@ -28,6 +28,14 @@ afterEach(() => {
 });
 
 describe('GitHub contribution cache', () => {
+  it('preserves thousands separators in daily counts', async () => {
+    const { parseGithubContributions } = await import('../src/lib/contributions');
+    const html = (await contributionResponse(1234).text()).replaceAll('1234 contributions', '1,234 contributions');
+    const result = parseGithubContributions(html);
+    expect(result.days[0].count).toBe(1234);
+    expect(result.total).toBe(370200);
+  });
+
   it('shares the first request while no snapshot exists', async () => {
     let complete!: (response: Response) => void;
     vi.mocked(fetch).mockReturnValueOnce(new Promise((resolve) => { complete = resolve; }));

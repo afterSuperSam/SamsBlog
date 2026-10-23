@@ -19,13 +19,14 @@ interface Props {
 const {
   title,
   description = siteConfig.description,
-  image = '/media/anime/hero/1719656915755.webp',
+  image,
   bodyClass = '',
   quickNavigation = [],
   articleMetadata,
 } = Astro.props;
 const pageTitle = title ? `${title} — ${siteConfig.name}` : siteConfig.name;
 const canonical = new URL(Astro.url.pathname, siteConfig.siteUrl);
+const sharingImage = image || '/media/anime/hero/1719656915755.webp';
 
 ---
 
@@ -52,7 +53,7 @@ const canonical = new URL(Astro.url.pathname, siteConfig.siteUrl);
       <script type="application/ld+json" is:inline set:html={JSON.stringify(articleMetadata.structuredData).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029')} />
     </>}
     <meta property="og:url" content={canonical} />
-    <meta property="og:image" content={new URL(image, siteConfig.siteUrl)} />
+    <meta property="og:image" content={new URL(sharingImage, siteConfig.siteUrl)} />
     <title>{pageTitle}</title>
     <script is:inline src={`/scripts/page-presentation.js?v=${version}`} {...{ blocking: 'render' }}></script>
   </head>
@@ -72,6 +73,7 @@ const canonical = new URL(Astro.url.pathname, siteConfig.siteUrl);
     {!bodyClass.includes('admin-page') && <div id="site-tooltip" class="site-tooltip" popover="manual" role="tooltip"></div>}
     <script>
       import { animateMotion as animate, createCharacters, animateCharacters } from '../lib/motion';
+      import { createTooltip } from '../lib/tooltip';
       // 返回链接走原历史记录，使封面落回原筛选结果及滚动位置。
       const pageNavigation = (window as Window & { navigation?: { currentEntry?: { key: string }; entries(): { key: string }[]; traverseTo(key: string): unknown } }).navigation;
       try {
@@ -165,41 +167,22 @@ const canonical = new URL(Astro.url.pathname, siteConfig.siteUrl);
       });
       // 公开页的即时悬停与键盘提示，统一使用主题面板。
       const tooltip = document.querySelector<HTMLElement>('#site-tooltip');
-      let tooltipTrigger: HTMLElement | null = null;
-      const hideTooltip = () => {
-        if (tooltipTrigger) {
-          const descriptions = (tooltipTrigger.getAttribute('aria-describedby') || '').split(' ').filter((id) => id && id !== 'site-tooltip');
-          if (descriptions.length) tooltipTrigger.setAttribute('aria-describedby', descriptions.join(' '));
-          else tooltipTrigger.removeAttribute('aria-describedby');
-          tooltipTrigger = null;
-        }
-        if (tooltip?.matches(':popover-open')) tooltip.hidePopover();
-      };
-      const showTooltip = (trigger: HTMLElement) => {
-        if (!tooltip || !trigger.dataset.tooltip) return;
-        if (tooltipTrigger !== trigger) hideTooltip();
-        tooltipTrigger = trigger;
-        tooltip.textContent = trigger.dataset.tooltip;
-        const descriptions = new Set((trigger.getAttribute('aria-describedby') || '').split(' ').filter(Boolean));
-        descriptions.add('site-tooltip');
-        trigger.setAttribute('aria-describedby', [...descriptions].join(' '));
-        if (!tooltip.matches(':popover-open')) tooltip.showPopover();
-        const anchor = trigger.getBoundingClientRect();
-        const detail = tooltip.getBoundingClientRect();
-        const top = anchor.top >= detail.height + 20 ? anchor.top - detail.height - 10 : anchor.bottom + 10;
-        tooltip.style.left = `${Math.max(12, Math.min(anchor.left + anchor.width / 2 - detail.width / 2, window.innerWidth - detail.width - 12))}px`;
-        tooltip.style.top = `${Math.max(12, Math.min(top, window.innerHeight - detail.height - 12))}px`;
-      };
-      document.querySelectorAll<HTMLElement>('[data-tooltip]').forEach((trigger) => {
-        trigger.addEventListener('pointerenter', () => showTooltip(trigger));
-        trigger.addEventListener('focusin', () => showTooltip(trigger));
-        trigger.addEventListener('click', () => showTooltip(trigger));
-        trigger.addEventListener('pointerleave', () => { if (!trigger.contains(document.activeElement)) hideTooltip(); });
-        trigger.addEventListener('focusout', (event) => { if (!(event.relatedTarget instanceof Node) || !trigger.contains(event.relatedTarget)) hideTooltip(); });
-      });
-      window.addEventListener('scroll', hideTooltip, { capture: true, passive: true });
-      window.addEventListener('resize', hideTooltip);
-      document.addEventListener('keydown', (event) => { if (event.key === 'Escape') hideTooltip(); });
+      if (tooltip) {
+        const tooltipController = createTooltip(tooltip, {
+          show(trigger) {
+            tooltip.textContent = trigger.dataset.tooltip || '';
+            const descriptions = new Set((trigger.getAttribute('aria-describedby') || '').split(' ').filter(Boolean));
+            descriptions.add('site-tooltip');
+            trigger.setAttribute('aria-describedby', [...descriptions].join(' '));
+          },
+          hide(trigger) {
+            const descriptions = (trigger.getAttribute('aria-describedby') || '').split(' ').filter((id) => id && id !== 'site-tooltip');
+            if (descriptions.length) trigger.setAttribute('aria-describedby', descriptions.join(' '));
+            else trigger.removeAttribute('aria-describedby');
+          },
+        });
+        document.querySelectorAll<HTMLElement>('[data-tooltip]').forEach((trigger) => tooltipController.bind(trigger));
+      }
 
       const progress = document.querySelector<HTMLElement>('[data-reading-progress]');
       if (progress) {

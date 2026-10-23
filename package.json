@@ -1,7 +1,7 @@
 {
   "name": "samsblog",
   "type": "module",
-  "version": "1.7.14",
+  "version": "1.8.1",
   "engines": {
     "node": ">=22.12.0"
   },
@@ -19,14 +19,14 @@
   },
   "dependencies": {
     "@astrojs/node": "^11.1.7",
-    "astro": "^7.2.8",
+    "astro": "^7.3.3",
     "better-sqlite3": "^13.0.3"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.10",
     "@types/better-sqlite3": "^9.6.0",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.12"
   },
   "allowScripts": {
     "better-sqlite3@13.0.3": true,

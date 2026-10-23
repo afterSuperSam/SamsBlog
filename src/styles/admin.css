@@ -3,6 +3,19 @@
 @media(max-width:620px){.admin-tabs{gap:7px}.admin-tabs a{min-height:68px;justify-content:center;padding:10px}.admin-tabs span{font-size:.8rem}.admin-panel__heading{align-items:flex-start;flex-direction:column}.admin-panel__heading p{text-align:left}.admin-summary{display:none}}
 .admin-create:focus-visible,.admin-logout:focus-visible{outline:2px solid var(--accent-2);outline-offset:3px}
 
+/* 上传与媒体操作共用无底色文字按钮，悬停只显示柔和背光。 */
+.admin-page .media-button{position:relative;isolation:isolate;display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:8px 10px;border:0;border-radius:6px;background:transparent;color:var(--text-soft);font:inherit;text-decoration:none;cursor:pointer;transition:color .25s var(--ease-out)}
+.media-button::before{content:"";position:absolute;z-index:-1;inset:4px -4px;pointer-events:none;background:radial-gradient(ellipse,color-mix(in srgb,var(--media-action-glow,var(--glow-blue)) 25%,transparent),transparent 72%);filter:blur(7px);opacity:0;transform:scale(.85);transition:opacity .3s var(--ease-out),transform .4s var(--ease-out)}
+.media-button svg{width:18px;height:18px;flex-shrink:0;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.admin-page .media-button:is([data-upload-media],[aria-pressed="true"]){color:var(--summer-blue)}
+.media-button[aria-pressed="true"]{font-weight:700}
+.media-button[data-media-action="delete"]{--media-action-color:var(--danger);--media-action-glow:var(--glow-pink)}
+.media-button[data-copy-state="success"]{--media-action-color:var(--summer-pink);--media-action-glow:var(--glow-pink)}
+.admin-page .media-button:is([data-media-action="delete"],[data-copy-state="success"],:focus-visible){color:var(--media-action-color,var(--summer-blue))}
+.media-button:focus-visible{outline:2px solid var(--summer-blue);outline-offset:3px}
+.media-button:focus-visible::before{opacity:1;transform:scale(1)}
+@media(hover:hover) and (pointer:fine){.admin-page .media-button:enabled:hover,.admin-page a.media-button:hover{color:var(--media-action-color,var(--summer-blue))}.media-button:enabled:hover::before,a.media-button:hover::before{opacity:1;transform:scale(1)}}
+
 /* 后台确认浮层沿用纸页形状、艺术字体和主题色。 */
 .admin-confirm{width:min(440px,calc(100vw - 36px));max-height:calc(100dvh - 40px);padding:30px;border:1px solid var(--line);border-radius:28px 19px 31px 21px;background:var(--surface);color:var(--text);box-shadow:var(--shadow);font-family:var(--playful);overflow:auto}
 .admin-confirm::backdrop{background:color-mix(in oklab,var(--bg-deep) 65%,transparent);backdrop-filter:blur(7px)}

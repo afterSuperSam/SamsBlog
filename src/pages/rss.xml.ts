@@ -19,10 +19,10 @@ function highlightSource(source: string): string {
 }
 
 export const GET: APIRoute = ({ request }) => {
-  const articles = listArticles().slice(0, siteConfig.articles.feedCount);
+  const articles = listArticles({ limit: siteConfig.articles.feedCount });
   const items = articles.map((article) => {
     const url = new URL(`/articles/${article.id}`, siteConfig.rss.siteUrl).href;
-    const content = `${article.coverUrl ? `<p><img src="${xml(article.coverUrl)}" alt="" /></p>` : ''}${renderMarkdown(article.content, url)}`;
+    const content = `${article.coverUrl ? `<p><img src="${xml(new URL(article.coverUrl, siteConfig.rss.siteUrl).href)}" alt="" /></p>` : ''}${renderMarkdown(article.content, url)}`;
     return `<item>
 <title>${xml(article.title)}</title>
 <link>${xml(url)}</link>

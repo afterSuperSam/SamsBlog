@@ -12,7 +12,8 @@ import ProjectsSection from '../components/ProjectsSection.astro';
 import '../styles/home.css';
 
 const siteStats = getSiteStats();
-const hasArticles = listArticles().length > 0;
+const latestArticles = listArticles({ limit: siteConfig.articles.homepageCount });
+const hasArticles = latestArticles.length > 0;
 const friends = listFriends().map((friend) => ({
   ...friend,
   latest: friend.rssUrl ? getCachedFriendFeed(friend.id, friend.rssUrl) : null,
@@ -45,7 +46,7 @@ const friendStatusTimeout = Math.ceil(friends.length / serverConfig.friendStatus
 
   <ProjectsSection />
 
-  <ArticleList featured />
+  <ArticleList featured articles={latestArticles} />
 
   <GuestbookSection />
 

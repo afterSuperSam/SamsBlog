@@ -4,6 +4,7 @@ import path from 'node:path';
 import Database from 'better-sqlite3';
 import type { APIContext } from 'astro';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { serverConfig } from '../src/config/server';
 import { getDatabase } from '../src/lib/db';
 import { getProjectCommit, getProjectSettings, saveProjectSettings } from '../src/lib/projects';
 import { GET as publicDates } from '../src/pages/api/public/project-commits.json';
@@ -97,6 +98,54 @@ describe('dynamic project management', () => {
     } finally {
       vi.unstubAllGlobals();
       saveProjectSettings({ ...saved, projects: before.projects });
+    }
+  });
+
+  it('bounds concurrent requests, coalesces callers and reuses cached dates', async () => {
+    const before = getProjectSettings();
+    const count = serverConfig.githubConcurrency + 2;
+    const fixtures = Array.from({ length: count }, (_, index) => ({
+      repository: `concurrency/project-${index}`, name: `并发项目${index}`, description: '并发测试', keyword: '',
+      url: 'https://example.com/', status: 'active', visible: true,
+    }));
+    const saved = saveProjectSettings({ ...before, projects: [...before.projects.map((project) => ({ ...project, visible: false })), ...fixtures, fixtures[0]] });
+    const releases: Array<() => void> = [];
+    let active = 0;
+    let maximumActive = 0;
+    const request = vi.fn().mockImplementation(() => new Promise<Response>((resolve) => {
+      active++;
+      maximumActive = Math.max(maximumActive, active);
+      releases.push(() => {
+        active--;
+        resolve(new Response(JSON.stringify([{ commit: { committer: { date: '2026-10-22T00:00:00Z' } } }])));
+      });
+    }));
+    vi.stubGlobal('fetch', request);
+    try {
+      const first = publicDates({} as APIContext);
+      const second = publicDates({} as APIContext);
+      expect(request).toHaveBeenCalledTimes(serverConfig.githubConcurrency);
+      while (request.mock.calls.length < count) {
+        const beforeCount = request.mock.calls.length;
+        releases.splice(0).forEach((release) => release());
+        await vi.waitFor(() => expect(request.mock.calls.length).toBeGreaterThan(beforeCount));
+      }
+      releases.splice(0).forEach((release) => release());
+      const responses = await Promise.all([first, second]) as Response[];
+      const expected = Object.fromEntries(fixtures.map((project) => [project.repository, '2026-10-22T00:00:00.000Z']));
+      expect(await responses[0].json()).toEqual(expected);
+      expect(await responses[1].json()).toEqual(expected);
+      expect(maximumActive).toBe(serverConfig.githubConcurrency);
+      expect(request).toHaveBeenCalledTimes(count);
+      expect(await (await publicDates({} as APIContext) as Response).json()).toEqual(expected);
+      expect(request).toHaveBeenCalledTimes(count);
+    } finally {
+      releases.splice(0).forEach((release) => release());
+      vi.unstubAllGlobals();
+      for (const project of saved.projects.filter((project) => !before.projects.some((original) => original.id === project.id))) {
+        getDatabase().prepare('UPDATE blog_projects SET deleted_at=? WHERE id=?').run(new Date().toISOString(), project.id);
+      }
+      saveProjectSettings(before);
     }
   });
 });

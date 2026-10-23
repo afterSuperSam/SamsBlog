@@ -1,16 +1,16 @@
 ---
-import { listArticles } from '../lib/articles';
+import { listArticles, type ArticleRecord } from '../lib/articles';
 import { articleExcerpt } from '../lib/markdown';
 import { siteConfig } from '../config/site';
 import '../styles/articles.css';
 
-interface Props { featured?: boolean }
-const { featured = false } = Astro.props;
+interface Props { featured?: boolean; articles?: ArticleRecord[] }
+const { featured = false, articles: suppliedArticles } = Astro.props;
 const parameters = Astro.url.searchParams;
 const selectedSource = ['original', 'repost'].includes(parameters.get('source') || '') ? parameters.get('source')! : '';
 const selectedCategory = ['discussion', 'journal'].includes(parameters.get('category') || '') ? parameters.get('category')! : '';
 const selectedSort = ['created-desc', 'created-asc', 'updated-desc', 'updated-asc'].includes(parameters.get('sort') || '') ? parameters.get('sort')! : 'created-desc';
-const articles = listArticles();
+const articles = suppliedArticles ?? listArticles(featured ? { limit: siteConfig.articles.homepageCount } : {});
 if (!featured) articles.sort((first, second) => {
   const key = selectedSort.startsWith('updated') ? 'updatedAt' : 'createdAt';
   const comparison = Date.parse(first[key]) - Date.parse(second[key]) || first.id - second.id;

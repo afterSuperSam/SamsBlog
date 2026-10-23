@@ -27,10 +27,12 @@ export const serverConfig = {
   articleTitleMaxLength: positiveInteger('ARTICLE_TITLE_MAX_LENGTH', 160),
   articleContentMaxLength: positiveInteger('ARTICLE_CONTENT_MAX_LENGTH', 100000),
   articleRequestMaxBytes: positiveInteger('ARTICLE_REQUEST_MAX_BYTES', 1024 * 1024),
+  mediaMaxBytes: positiveInteger('MEDIA_MAX_BYTES', 10 * 1024 * 1024),
   githubUsername: process.env.GITHUB_USERNAME || 'afterSuperSam',
   githubCacheSeconds: positiveInteger('GITHUB_CACHE_SECONDS', 6 * 60 * 60),
   githubRetrySeconds: positiveInteger('GITHUB_RETRY_SECONDS', 60),
   githubTimeoutMilliseconds: positiveInteger('GITHUB_TIMEOUT_MILLISECONDS', 5000),
+  githubConcurrency: positiveInteger('GITHUB_CONCURRENCY', 3),
   friendStatusCacheSeconds: positiveInteger('FRIEND_STATUS_CACHE_SECONDS', 300),
   friendStatusTimeoutMilliseconds: positiveInteger('FRIEND_STATUS_TIMEOUT_MILLISECONDS', 5000),
   friendStatusSlowMilliseconds: positiveInteger('FRIEND_STATUS_SLOW_MILLISECONDS', 1800),
@@ -41,6 +43,9 @@ export const serverConfig = {
   friendFeedMaximumEntries: positiveInteger('FRIEND_FEED_MAXIMUM_ENTRIES', 100),
   friendFeedMaximumDepth: positiveInteger('FRIEND_FEED_MAXIMUM_DEPTH', 32),
 };
+
+if (serverConfig.mediaMaxBytes > 10 * 1024 * 1024) throw new Error('Invalid server configuration: MEDIA_MAX_BYTES (maximum 10 MiB)');
+if (serverConfig.githubConcurrency > 6) throw new Error('Invalid server configuration: GITHUB_CONCURRENCY (maximum 6)');
 
 if (serverConfig.friendStatusTimeoutMilliseconds > 15000
   || serverConfig.friendStatusSlowMilliseconds >= serverConfig.friendStatusTimeoutMilliseconds

@@ -40,6 +40,8 @@ const settings = getProjectSettings();
 <script>
   import type { ProjectRecord } from '../lib/projects';
   import { animateContentHeight } from '../lib/motion';
+  import { beginAdminAction, registerAdminDraft } from '../lib/admin-dialog';
+  import { requestJson } from '../lib/client-request';
 
   // 列表顺序即展示顺序；保存后回填稳定编号，避免重复新增。
   const form = document.querySelector<HTMLFormElement>('[data-admin-projects]');
@@ -49,6 +51,8 @@ const settings = getProjectSettings();
     const feedback = form.querySelector<HTMLElement>('[data-project-feedback]')!;
     const showFeedback = (message: string, state = '') => animateContentHeight(feedback, () => { feedback.textContent = message; feedback.dataset.state = state; });
     const entries = () => [...items.querySelectorAll<HTMLFieldSetElement>('[data-project-entry]')];
+    const markSaved = registerAdminDraft(form, () => JSON.stringify([...form.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input,textarea')]
+      .map((field) => [field.value, field instanceof HTMLInputElement && field.checked])));
     let draftSequence = 0;
     const updateOrder = () => {
       const fields = entries();
@@ -120,19 +124,19 @@ const settings = getProjectSettings();
           status: field.querySelector<HTMLInputElement>('[data-project-field="status"]:checked')!.value };
       });
       const payload = { currentWork: (form.elements.namedItem('currentWork') as HTMLInputElement).value, projects };
+      const release = beginAdminAction(form);
+      if (!release) return;
       const controls = [...form.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLButtonElement>('input,textarea,button')].filter((control) => !control.disabled);
       form.setAttribute('aria-busy', 'true');
       controls.forEach((control) => { control.disabled = true; });
       showFeedback('正在保存…', 'loading');
       try {
-        const response = await fetch('/api/admin/projects.json', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-        if (!response.headers.get('content-type')?.includes('application/json')) throw new Error('项目服务暂时不可用，请稍后重试。');
-        const result = await response.json() as { error?: string; projects: ProjectRecord[] };
-        if (!response.ok) throw new Error(result.error || '项目保存失败，请稍后重试。');
+        const result = await requestJson<{ error?: string; projects: ProjectRecord[] }>('/api/admin/projects.json', 'PUT', payload, '项目服务暂时不可用，请稍后重试。');
         result.projects.forEach((project, index) => {
           projectFields[index].dataset.projectId = String(project.id);
           projectFields[index].querySelector('[data-project-discard]')?.remove();
         });
+        markSaved();
         showFeedback('项目设置已保存。', 'success');
       } catch (error) {
         showFeedback(error instanceof TypeError ? '网络连接失败，请检查连接后重试。' : error instanceof Error ? error.message : '项目保存失败。', 'error');
@@ -141,6 +145,7 @@ const settings = getProjectSettings();
         form.removeAttribute('aria-busy');
         controls.forEach((control) => { control.disabled = false; });
         updateOrder();
+        release();
       }
     });
     updateOrder();

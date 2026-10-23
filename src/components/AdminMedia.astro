@@ -1,0 +1,46 @@
+---
+import { listMedia } from '../lib/media';
+import { serverConfig } from '../config/server';
+const media = listMedia();
+---
+
+<section class="admin-panel admin-media" id="media" data-admin-media data-records={JSON.stringify(media)} data-maximum-bytes={serverConfig.mediaMaxBytes}>
+  <header class="admin-panel__heading"><div><span>MEDIA</span><h2>媒体库</h2></div><p>图片上传后即可用于文章。已引用的图片会保留，删除的图片可以恢复。</p></header>
+  <div class="media-tools">
+    <button type="button" class="media-button" data-upload-media="library"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m-5 5 5-5 5 5M5 16v4h14v-4" /></svg>上传图片到媒体库</button>
+    <label><span class="sr-only">搜索图片名称</span><input type="search" placeholder="搜索图片名称" data-media-search autocomplete="off" /></label>
+    <div class="media-filters" role="group" aria-label="媒体筛选"><button type="button" class="media-button" aria-pressed="true" data-media-filter="active">图片</button><button type="button" class="media-button" aria-pressed="false" data-media-filter="deleted">回收站</button></div>
+  </div>
+  <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" data-media-file hidden />
+  <p class="media-help">JPG、PNG、WebP、GIF · 每张不超过 {serverConfig.mediaMaxBytes / 1024 / 1024} MB · 保留原图，相同图片不重复存储</p>
+  <p class="form-status" role="status" aria-live="polite" data-media-feedback></p>
+  <div class="media-grid" data-media-grid></div>
+  <p class="admin-empty" data-media-empty>还没有图片，上传第一张吧。</p>
+  <template data-media-template>
+    <article class="media-card">
+      <a class="media-preview" target="_blank" rel="noopener noreferrer"><img loading="lazy" decoding="async" /></a>
+      <div class="media-card__copy"><h3></h3><small></small></div>
+      <div class="media-actions"><button type="button" class="media-button" data-media-action="body">插入正文</button><button type="button" class="media-button" data-media-action="cover">设为首图</button><button type="button" class="media-button" data-media-action="copy">复制地址</button><button type="button" class="media-button" data-media-action="delete">删除</button><button type="button" class="media-button" data-media-action="restore">恢复</button></div>
+    </article>
+  </template>
+</section>
+
+<script>
+  import '../lib/admin-media';
+</script>
+
+<style>
+  .admin-media{font-family:var(--playful)}
+  .admin-media .admin-panel__heading p{font-size:var(--font-size-small)}
+  .media-tools,.media-filters,.media-actions{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+  .media-tools{gap:16px}.media-tools label{flex:1;min-width:160px}.media-tools input{width:100%;min-height:44px;padding:10px 14px;border:0;border-radius:14px;background:var(--surface);color:var(--text);font:inherit}
+  .media-help{color:var(--muted);font-size:var(--font-size-small);line-height:1.7}
+  .media-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,250px),1fr));gap:24px}
+  .media-card{min-width:0;overflow:hidden;border-radius:23px 15px 25px 18px;background:color-mix(in srgb,var(--surface) 75%,transparent)}
+  .media-preview{display:grid;place-items:center;aspect-ratio:16/10;padding:12px;background:color-mix(in srgb,var(--surface-paper) 65%,transparent);overflow:hidden}
+  .media-preview img{width:100%;height:100%;min-height:0;object-fit:contain;border-radius:9px}
+  .media-card__copy{padding:15px 18px 4px}.media-card h3{margin:0 0 7px;font:inherit;overflow-wrap:anywhere}.media-card small{color:var(--muted);font-size:var(--font-size-small)}
+  .media-actions{padding:4px 8px 12px;gap:2px}
+  .admin-media :is(button,a,input):focus-visible{outline:2px solid var(--summer-blue);outline-offset:3px}.admin-media button:disabled{opacity:.55;cursor:wait}
+  .media-actions button[hidden]{display:none}
+</style>

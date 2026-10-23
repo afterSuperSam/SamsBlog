@@ -21,6 +21,7 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
       <ThemeSelect name="source" label="来源" options={[{value:'original',label:'原创'},{value:'repost',label:'搬运'}]} />
       <ThemeSelect name="category" label="分类" options={[{value:'discussion',label:'杂谈'},{value:'journal',label:'日志'}]} />
       <label class="article-editor__cover"><span>首图链接 · 可选</span><input name="coverUrl" type="url" inputmode="url" autocomplete="off" placeholder="https://…" /></label>
+      <div class="article-editor__media"><button type="button" class="media-button" data-upload-media="cover"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m-5 5 5-5 5 5M5 16v4h14v-4" /></svg>上传首图</button><a class="media-button" href="#media">从媒体库选择</a></div>
       <label data-repost-field hidden><span>原作者 · 可选</span><input name="originalAuthor" maxlength={serverConfig.articleTitleMaxLength} autocomplete="off" /></label>
       <label class="article-editor__cover" data-repost-field hidden><span>原文链接 · 可选</span><input name="originalUrl" type="url" inputmode="url" autocomplete="off" placeholder="https://…" /></label>
     </div>
@@ -35,10 +36,11 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
           <button type="button" data-markdown="quote">引用</button>
           <button type="button" data-markdown="link">链接</button>
           <button type="button" data-markdown="image">图片</button>
+          <button type="button" class="media-button" data-upload-media="body"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m-5 5 5-5 5 5M5 16v4h14v-4" /></svg>上传图片</button>
           <button type="button" data-markdown="code">代码</button>
         </div>
         <textarea id="article-markdown" name="content" rows="18" maxlength={serverConfig.articleContentMaxLength} required spellcheck="false" autocomplete="off" aria-describedby="article-editor-help"></textarea>
-        <small id="article-editor-help">支持标题、列表、引用、代码、链接和图片。图片仅填写网址。</small>
+        <small id="article-editor-help">支持 Markdown；图片可填写网址、上传本地文件，或从媒体库插入。</small>
       </div>
       <section class="article-editor__preview" aria-label="文章实时预览">
         <span>实时预览</span>
@@ -68,7 +70,8 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
 <script>
   import { renderMarkdown } from '../lib/markdown';
   import type { ArticleRecord } from '../lib/articles';
-  import { confirmAdminAction } from '../lib/admin-dialog';
+  import { confirmAdminAction, confirmAdminDiscard, prepareAdminNavigation, registerAdminDraft } from '../lib/admin-dialog';
+  import { requestJson } from '../lib/client-request';
   import { animateContentHeight } from '../lib/motion';
 
   // 编辑器与阅读页共用安全渲染，后台只维护当前一篇文章。
@@ -90,14 +93,19 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
     const heading = editor.querySelector<HTMLElement>('[data-editor-heading]')!;
     const dates = editor.querySelector<HTMLElement>('[data-editor-dates]')!;
     const listFeedback = root.querySelector<HTMLElement>('[data-article-list-feedback]')!;
-    let dirty = false;
+    const markSaved = registerAdminDraft(root, () => JSON.stringify([id.value, title.value, content.value, cover.value, originalAuthor.value, originalUrl.value, source.value, category.value]));
+    let renderedContent: string | undefined;
     const updatePreview = () => {
       editor.querySelectorAll<HTMLElement>('[data-repost-field]').forEach((field) => { field.hidden = source.value !== 'repost'; });
       previewTitle.textContent = title.value;
       previewTitle.hidden = !title.value;
-      preview.innerHTML = content.value.trim() ? renderMarkdown(content.value) : '<p class="article-editor__empty">写下正文后，预览会出现在这里。</p>';
+      if (renderedContent !== content.value) {
+        preview.innerHTML = content.value.trim() ? renderMarkdown(content.value) : '<p class="article-editor__empty">写下正文后，预览会出现在这里。</p>';
+        renderedContent = content.value;
+      }
       try {
-        const url = new URL(cover.value);
+        if (!cover.value.trim()) throw new Error('Empty cover URL');
+        const url = new URL(cover.value, location.origin);
         if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new Error('Unsupported cover URL');
         if (previewCover.getAttribute('src') !== url.href) previewCover.src = url.href;
         previewCover.hidden = false;
@@ -107,9 +115,20 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
       }
     };
     previewCover.addEventListener('error', () => { previewCover.hidden = true; });
-    editor.addEventListener('input', () => { dirty = true; updatePreview(); });
-    editor.addEventListener('change', () => { dirty = true; updatePreview(); });
-    const mayDiscard = async () => !dirty || await confirmAdminAction('当前修改尚未保存，是否放弃这些修改？', '放弃修改');
+    editor.addEventListener('input', updatePreview);
+    editor.addEventListener('change', updatePreview);
+    editor.addEventListener('media-select', (event) => {
+      if (root.getAttribute('aria-busy') === 'true') return;
+      const { url, name, target } = (event as CustomEvent<{ url: string; name: string; target: string }>).detail;
+      if (target === 'cover') { cover.value = url; cover.focus(); }
+      else {
+        const alternative = name.replace(/\.[^.]+$/, '').replace(/[\[\]\\\r\n]/g, '');
+        content.setRangeText(`\n![${alternative}](${url})\n`, content.selectionStart, content.selectionEnd, 'end');
+        content.focus();
+      }
+      updatePreview();
+    });
+    const mayDiscard = () => confirmAdminDiscard(root);
     root.querySelector('[data-new-article]')?.addEventListener('click', async () => {
       if (!await mayDiscard() || root.getAttribute('aria-busy') === 'true') return;
       editor.reset();
@@ -117,7 +136,7 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
       heading.textContent = '写一篇文章';
       dates.textContent = '保存后记录创建与编辑时间';
       animateContentHeight(feedback, () => { feedback.textContent = ''; });
-      dirty = false;
+      markSaved();
       updatePreview();
       title.focus();
     });
@@ -135,9 +154,9 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
       source.dispatchEvent(new Event('change', { bubbles:true }));
       category.dispatchEvent(new Event('change', { bubbles:true }));
       heading.textContent = '编辑文章';
-      dates.textContent = `创建 ${new Date(article.createdAt).toLocaleString('zh-CN')} · 编辑 ${new Date(article.updatedAt).toLocaleString('zh-CN')}`;
+      dates.textContent = `创建 ${new Date(article.createdAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })} · 编辑 ${new Date(article.updatedAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`;
       animateContentHeight(feedback, () => { feedback.textContent = ''; });
-      dirty = false;
+      markSaved();
       updatePreview();
       title.focus();
     }));
@@ -152,32 +171,27 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
       content.setRangeText(prefix + selected + suffix, start, content.selectionEnd, 'end');
       content.focus();
       content.setSelectionRange(start + prefix.length, start + prefix.length + selected.length);
-      dirty = true;
       updatePreview();
     }));
     const request = async (method: string, payload: unknown) => {
-      const response = await fetch('/api/admin/articles.json', { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-      if (!response.headers.get('content-type')?.includes('application/json')) throw new Error('文章服务暂时不可用，请稍后重试。');
-      const result = await response.json() as { error?: string };
-      if (!response.ok) throw new Error(result.error || '文章操作失败，请稍后重试。');
+      await requestJson('/api/admin/articles.json', method, payload, '文章服务暂时不可用，请稍后重试。');
     };
-    const perform = async (status: HTMLElement, action: () => Promise<void>) => {
+    const perform = async (status: HTMLElement, action: () => Promise<void>, savesDraft = false) => {
       if (root.getAttribute('aria-busy') === 'true') return;
-      const controls = [...root.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | HTMLButtonElement>('input,textarea,select,button')];
-      const disabledStates = controls.map((control) => control.disabled);
+      const release = await prepareAdminNavigation(savesDraft ? root : undefined);
+      if (!release) return;
       root.setAttribute('aria-busy', 'true');
-      controls.forEach((control) => { control.disabled = true; });
       animateContentHeight(status, () => {
         status.textContent = '正在保存…';
         status.dataset.state = 'loading';
       });
       try {
         await action();
-        dirty = false;
+        markSaved();
         window.location.hash = 'articles';
         window.location.reload();
       } catch (error) {
-        controls.forEach((control, index) => { control.disabled = disabledStates[index]; });
+        release();
         root.removeAttribute('aria-busy');
         animateContentHeight(status, () => {
           status.textContent = error instanceof TypeError ? '网络连接失败，请检查连接后重试。' : error instanceof Error ? error.message : '文章操作失败。';
@@ -198,25 +212,15 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
         return;
       }
       const payload = { title: title.value, coverUrl: cover.value, originalAuthor: originalAuthor.value, originalUrl: originalUrl.value, source: source.value, category: category.value, content: content.value, ...(id.value ? { id: Number(id.value) } : {}) };
-      void perform(feedback, () => request(id.value ? 'PATCH' : 'POST', payload));
+      void perform(feedback, () => request(id.value ? 'PATCH' : 'POST', payload), true);
     });
     editor.querySelector<HTMLButtonElement>('button[type="submit"]')?.removeAttribute('disabled');
     root.querySelectorAll<HTMLButtonElement>('[data-remove-article],[data-restore-article]').forEach((button) => button.addEventListener('click', async () => {
-      if (!await mayDiscard() || root.getAttribute('aria-busy') === 'true') return;
+      if (root.getAttribute('aria-busy') === 'true') return;
       const restore = button.hasAttribute('data-restore-article');
       if (!restore && !await confirmAdminAction('删除后将停止公开展示，仍可在“已删除”中恢复。确定删除吗？', '删除文章')) return;
       const articleId = Number(restore ? button.dataset.restoreArticle : button.dataset.removeArticle);
       void perform(listFeedback, () => request(restore ? 'PATCH' : 'DELETE', { id: articleId, ...(restore ? { restore: true } : {}) }));
     }));
-    document.addEventListener('click', async (event) => {
-      const link = event.target instanceof Element ? event.target.closest<HTMLAnchorElement>('a[href]') : null;
-      if (!link || event.button !== 0 || link.target === '_blank' || link.hasAttribute('download') || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
-      const url = new URL(link.href);
-      if (url.pathname === location.pathname && url.search === location.search && url.hash) return;
-      if (root.getAttribute('aria-busy') === 'true') { event.preventDefault(); return; }
-      if (!dirty) return;
-      event.preventDefault();
-      if (await mayDiscard()) { dirty = false; window.location.assign(link.href); }
-    });
   }
 </script>

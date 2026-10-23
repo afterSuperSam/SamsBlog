@@ -5,16 +5,25 @@ import { readAdminSession } from '../lib/admin-auth';
 import { listAllMessages, type MessageStatus } from '../lib/db';
 import { listFriends } from '../lib/friends';
 import AdminProjects from '../components/AdminProjects.astro';
+import AdminMedia from '../components/AdminMedia.astro';
 import '../styles/guestbook.css';
 import '../styles/admin.css';
 import '../styles/admin-friends.css';
 
+Astro.response.headers.set('Cache-Control', 'private, no-store');
 const authenticated = readAdminSession(Astro.cookies);
 const messages = authenticated ? listAllMessages() : [];
 const friends = authenticated ? listFriends({ includeHidden: true }) : [];
+const repliesByParent = new Map<number, typeof messages>();
+for (const message of messages) {
+  if (message.parentId === null) continue;
+  const replies = repliesByParent.get(message.parentId) || [];
+  replies.push(message);
+  repliesByParent.set(message.parentId, replies);
+}
 const rootMessages = messages
   .filter((message) => message.parentId === null)
-  .map((message) => ({ ...message, replies: messages.filter((reply) => reply.parentId === message.id) }));
+  .map((message) => ({ ...message, replies: repliesByParent.get(message.id) || [] }));
 const statuses = ['pending', 'published', 'hidden'] as const;
 const statusLabels: Record<MessageStatus, string> = {
   pending: '待审核',
@@ -22,11 +31,12 @@ const statusLabels: Record<MessageStatus, string> = {
   hidden: '已隐藏',
 };
 const statusCounts = Object.fromEntries(statuses.map((status) => [status, messages.filter((message) => message.status === status).length]));
-const dateFormatter = new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
 ---
 
 <BaseLayout title="内容后台" description="SamsBlog 文章、友链与留言管理。" bodyClass="admin-page" quickNavigation={authenticated ? [
   { href: '#articles', label: '文章' },
+  { href: '#media', label: '媒体' },
   { href: '#messages', label: '留言' },
   { href: '#friends', label: '友链' },
   { href: '#projects', label: '项目' },
@@ -57,9 +67,11 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: 
         <nav class="admin-tabs" aria-label="后台分区">
           <a href="#messages"><b>{rootMessages.length}</b><span>留言</span></a>
           <a href="#friends"><b>{friends.length}</b><span>友链</span></a>
+          <a href="#media"><span>媒体库</span></a>
         </nav>
 
         <AdminArticles />
+        <AdminMedia />
 
         <section class="admin-panel" id="messages">
           <header class="admin-panel__heading"><div><span>01 / VOICES</span><h2>留言</h2></div><p>审核、回复或收起访客留下的纸条。</p></header>
@@ -181,23 +193,19 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: 
 </BaseLayout>
 
 <script>
-  import { confirmAdminAction } from '../lib/admin-dialog';
+  import { beginAdminAction, bindAdminNavigation, confirmAdminAction, prepareAdminNavigation } from '../lib/admin-dialog';
+  import { requestJson } from '../lib/client-request';
   import { animateContentHeight } from '../lib/motion';
+  bindAdminNavigation();
   // 后台写入统一呈现失败，并防止同一区域重复提交。
   async function sendAdminRequest(url: string, method: string, payload?: unknown) {
-    const response = await fetch(url, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: payload === undefined ? undefined : JSON.stringify(payload),
-    });
-    if (!response.headers.get('content-type')?.includes('application/json')) throw new Error('管理服务暂时不可用，请稍后重试。');
-    const result = await response.json() as { error?: string; message?: string; id?: number };
-    if (!response.ok) throw new Error(result.error || result.message || '操作失败，请稍后重试。');
-    return result;
+    return requestJson<{ error?: string; message?: string; id?: number }>(url, method, payload, '管理服务暂时不可用，请稍后重试。');
   }
 
   async function runAdminAction(container: HTMLElement, action: () => Promise<string | void>, reloadOnSuccess = false) {
     if (container.closest('[aria-busy="true"]') || container.querySelector('[aria-busy="true"]')) return;
+    const release = reloadOnSuccess ? await prepareAdminNavigation() : beginAdminAction(container);
+    if (!release) return;
     const owner = container.closest('[data-admin-message]');
     const status = [...container.querySelectorAll<HTMLElement>('[data-admin-feedback]')].find((field) => field.closest('[data-admin-message]') === owner)
       || document.querySelector<HTMLElement>('[data-admin-feedback]');
@@ -221,6 +229,7 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: 
       if (!reloading) {
         container.removeAttribute('aria-busy');
         controls.forEach((control, index) => { control.disabled = disabledStates[index]; });
+        release();
       }
     }
   }

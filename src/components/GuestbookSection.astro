@@ -3,7 +3,7 @@ import { listPublishedMessages } from '../lib/db';
 import '../styles/guestbook.css';
 
 const messages = listPublishedMessages();
-const dateFormatter = new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' });
+const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' });
 ---
 
 <section class="home-guestbook" id="guestbook">
@@ -75,6 +75,7 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month:
 <script>
   import { createCharacters, animateCharacters, animateContentHeight } from '../lib/motion';
   import { siteConfig } from '../config/site';
+  import { requestJson } from '../lib/client-request';
   const form = document.querySelector<HTMLFormElement>('[data-message-form]');
   const nickname = form?.querySelector<HTMLInputElement>('input[name="nickname"]');
   const textarea = form?.querySelector<HTMLTextAreaElement>('textarea[name="content"]');
@@ -253,14 +254,12 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month:
     submit?.setAttribute('disabled', 'true');
     showStatus('正在送出…', 'loading');
     try {
-      const response = await fetch('/api/guestbook/messages.json', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nickname: data.get('nickname'), content: data.get('content'), website: data.get('website') }),
-      });
-      if (!response.headers.get('content-type')?.includes('application/json')) throw new Error('留言服务暂时不可用，请稍后重试。');
-      const result = await response.json() as { ok?: boolean; message?: string; error?: string };
-      if (!response.ok || !result.ok) throw new Error(result.error || '提交失败，请稍后重试。');
+      const result = await requestJson<{ ok?: boolean; message?: string; error?: string }>(
+        '/api/guestbook/messages.json', 'POST',
+        { nickname: data.get('nickname'), content: data.get('content'), website: data.get('website') },
+        '留言服务暂时不可用，请稍后重试。',
+      );
+      if (!result.ok) throw new Error(result.error || '提交失败，请稍后重试。');
       // 只清空本次送出后未变化的字段，不打断等待期间的新输入或中文组词。
       [nickname, textarea].forEach((field) => {
         if (!field || field.dataset.composing === 'true' || field.value !== data.get(field.name)) return;

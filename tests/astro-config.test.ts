@@ -45,4 +45,8 @@ describe('production Astro configuration', () => {
   it('rejects production builds without a public origin', () => {
     expect(() => readBuildSite({})).toThrow('PUBLIC_SITE_URL is required for production builds');
   });
+
+  it('rejects an insecure production origin', () => {
+    expect(() => readBuildSite({}, 'http://blog.example.com')).toThrow('PUBLIC_SITE_URL must use HTTPS for production builds');
+  });
 });

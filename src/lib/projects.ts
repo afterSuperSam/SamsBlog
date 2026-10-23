@@ -74,9 +74,37 @@ export function saveProjectSettings(input: Record<string, unknown>) {
 // 只读取后台明确公开的仓库，合并并发请求；失败保留上次有效日期。
 const commits = new Map<string, { date?: string; expires: number; pending?: Promise<string | undefined> }>();
 export const getCachedProjectCommit = (repository: string) => commits.get(repository)?.date;
+function isVisibleRepository(repository: string) {
+  return Boolean(getDatabase().prepare('SELECT 1 FROM blog_projects WHERE repository=? AND visible=1 AND deleted_at IS NULL').get(repository));
+}
+
+function listVisibleRepositories(): string[] {
+  return (getDatabase().prepare(`SELECT repository FROM blog_projects
+    WHERE visible=1 AND deleted_at IS NULL AND repository != ''
+    GROUP BY repository ORDER BY min(position), min(id)`).all() as Array<{ repository: string }>)
+    .map((project) => project.repository);
+}
+
+// 有限并发读取公开仓库日期，排队和返回时都复核可见性。
+export async function getProjectCommitDates() {
+  const repositories = listVisibleRepositories();
+  const dates: Record<string, string | null> = Object.create(null);
+  let nextIndex = 0;
+  await Promise.all(Array.from({ length: Math.min(serverConfig.githubConcurrency, repositories.length) }, async () => {
+    while (nextIndex < repositories.length) {
+      const repository = repositories[nextIndex++];
+      if (!isVisibleRepository(repository)) continue;
+      dates[repository] = await getProjectCommit(repository) ?? null;
+    }
+  }));
+  const visible = new Set(listVisibleRepositories());
+  for (const repository of Object.keys(dates)) if (!visible.has(repository)) delete dates[repository];
+  return dates;
+}
+
 export function getProjectCommit(repository: string): Promise<string | undefined> {
   if (!/^[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(repository)
-    || !getDatabase().prepare('SELECT 1 FROM blog_projects WHERE repository=? AND visible=1 AND deleted_at IS NULL').get(repository)) throw new Error('Unknown project repository');
+    || !isVisibleRepository(repository)) throw new Error('Unknown project repository');
   const cached = commits.get(repository);
   if (cached?.pending) return cached.pending;
   if (cached && cached.expires > Date.now()) return Promise.resolve(cached.date);

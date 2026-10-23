@@ -7,7 +7,7 @@ import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { serverConfig } from '../src/config/server';
 import { siteConfig } from '../src/config/site';
 import { createAdminSession } from '../src/lib/admin-auth';
-import { deleteArticle, getArticle, listArticles, restoreArticle, saveArticle } from '../src/lib/articles';
+import { deleteArticle, getArticle, getAdjacentArticles, getArticleUpdates, listArticleMetadata, listArticles, restoreArticle, saveArticle } from '../src/lib/articles';
 import { getDatabase } from '../src/lib/db';
 import { DELETE, GET, PATCH, POST } from '../src/pages/api/admin/articles.json';
 import { getProjectSettings, getProjectCommit, saveProjectSettings } from '../src/lib/projects';
@@ -93,6 +93,38 @@ describe('article persistence and authenticated management', () => {
     const second = saveArticle(input);
     getDatabase().prepare("UPDATE blog_articles SET created_at = '2026-10-20T00:00:00.000Z' WHERE id IN (?, ?)").run(first, second);
     expect(listArticles().filter((item) => item.id === first || item.id === second).map((item) => item.id)).toEqual([second, first]);
+  });
+
+  it('limits public reads in SQL and resolves metadata and adjacent ties without loading bodies', () => {
+    const identifiers = Array.from({ length: 25 }, (_, index) => saveArticle({ ...input, title: `查询边界${index}`, content: '正文'.repeat(1000) }));
+    for (const identifier of identifiers) getDatabase().prepare("UPDATE blog_articles SET created_at='2099-01-01T00:00:00.000Z' WHERE id=?").run(identifier);
+    const hidden = identifiers.at(-1)!;
+    deleteArticle(hidden);
+    const expected = identifiers.slice(0, -1).reverse();
+    const statements = vi.spyOn(getDatabase(), 'prepare');
+    try {
+      expect(listArticles({ limit: 2 }).map((article) => article.id)).toEqual(expected.slice(0, 2));
+      expect(getArticleUpdates(3).map((article) => article.id)).toEqual(expected.slice(0, 3));
+      expect(listArticles({ limit: 20 })).toHaveLength(20);
+      expect(statements.mock.calls.slice(0, 3).every(([sql]) => /LIMIT \?/.test(sql))).toBe(true);
+      statements.mockClear();
+      const metadata = listArticleMetadata();
+      expect(statements.mock.calls[0][0]).toMatch(/SELECT id, updated_at FROM blog_articles/);
+      expect(metadata.find((article) => article.id === expected[0])).toEqual({ id: expected[0], updatedAt: getArticle(expected[0])!.updatedAt });
+      expect(metadata.some((article) => article.id === hidden)).toBe(false);
+      const middle = getArticle(identifiers[10])!;
+      statements.mockClear();
+      expect(getAdjacentArticles(middle)).toEqual({
+        previous: { id: identifiers[9], title: '查询边界9' }, next: { id: identifiers[11], title: '查询边界11' },
+      });
+      expect(statements.mock.calls.every(([sql]) => /SELECT id, title/.test(sql) && /LIMIT 1/.test(sql))).toBe(true);
+      expect(getAdjacentArticles(getArticle(expected[0])!).next).toBeUndefined();
+      expect(() => listArticles({ limit: 0 })).toThrow();
+      expect(() => listArticles({ limit: -1 })).toThrow();
+    } finally {
+      statements.mockRestore();
+      identifiers.forEach(deleteArticle);
+    }
   });
 
   it('guards every management method and supports create, edit, delete, restore', async () => {

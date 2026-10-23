@@ -1,7 +1,7 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import NotFound from '../404.astro';
-import { getArticle, listArticles } from '../../lib/articles';
+import { getArticle, getAdjacentArticles } from '../../lib/articles';
 import { articleExcerpt, renderArticleMarkdown } from '../../lib/markdown';
 import { siteConfig } from '../../config/site';
 import '../../styles/articles.css';
@@ -10,10 +10,7 @@ const identifier = Number(Astro.params.id);
 const article = Number.isSafeInteger(identifier) && identifier > 0 ? getArticle(identifier) : undefined;
 if (!article) Astro.response.status = 404;
 const rendered = article ? renderArticleMarkdown(article.content) : { html: '', headings: [] };
-const articles = article ? listArticles() : [];
-const articleIndex = articles.findIndex((item) => item.id === article?.id);
-const previous = articles[articleIndex + 1];
-const next = articleIndex > 0 ? articles[articleIndex - 1] : undefined;
+const { previous, next } = article ? getAdjacentArticles(article) : { previous: undefined, next: undefined };
 const author = article?.source === 'repost' ? article.originalAuthor : siteConfig.name;
 const articleMetadata = article ? {
   publishedTime: article.createdAt, modifiedTime: article.updatedAt, author: author || '',
@@ -21,7 +18,7 @@ const articleMetadata = article ? {
     '@context': 'https://schema.org', '@type': 'BlogPosting', headline: article.title,
     description: articleExcerpt(article.content), datePublished: article.createdAt, dateModified: article.updatedAt,
     mainEntityOfPage: new URL(`/articles/${article.id}`, siteConfig.siteUrl).href,
-    ...(article.coverUrl ? { image: article.coverUrl } : {}),
+    ...(article.coverUrl ? { image: new URL(article.coverUrl, siteConfig.siteUrl).href } : {}),
     ...(author ? { author: { '@type': article.source === 'repost' ? 'Person' : 'Organization', name: author } } : {}),
     publisher: { '@type': 'Organization', name: siteConfig.name },
     ...(article.originalUrl ? { isBasedOn: article.originalUrl } : {}),
