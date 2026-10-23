@@ -33,7 +33,7 @@ export default defineConfig({
     allowedDomains: [{
       protocol: siteUrl.protocol.slice(0, -1),
       hostname: siteUrl.hostname,
-      port: siteUrl.port || (siteUrl.protocol === 'https:' ? '443' : '80'),
+      port: siteUrl.port,
     }],
     csp: isBuildCommand,
   },

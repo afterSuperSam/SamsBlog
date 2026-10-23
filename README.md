@@ -149,6 +149,7 @@ Linux 部署流程：
 3. 加载生产环境后执行 `pnpm install --frozen-lockfile` 与 `pnpm build`。`PUBLIC_SITE_URL` 必须匹配实际 HTTPS 域名；将构建输出和 `public/` 静态资源作为同一版本发布，包含首帧脚本。
 4. 安装 `deploy/samsblog.service`。核对 `command -v node` 与 `ExecStart`；修改数据目录时同步修改 `ReadWritePaths`。服务以生产模式、专用用户运行。
 5. 配置 `deploy/nginx.conf` 的域名、HTTPS 与 HTTP 跳转。模板按单层代理重写来源及 Host/Proto/Port 头，清除伪造地理头；Nginx 与 Node 请求上限11MiB以容纳图片和表单，JSON 接口仍按实际字节限制默认1MiB。已有服务器需同步调高 `client_max_body_size`，否则较大图片会收到413。多层代理需重新确认可信链。
+   v1.8.2 按 URL 规范保留默认端口为空，避免 HTTPS 转发域名被误判为不可信、同源上传返回403；仍限制协议与域名并保留跨站检查。
 6. 安装 `deploy/backup.service`、`deploy/backup.timer` 为 `samsblog-backup.service`、`samsblog-backup.timer`。先手动备份并验证恢复，再启用计时器。
 7. 验证健康、站点地图、真实 Cookie/CSP、后台写入与恢复、文章进入／返回封面动画，并核对日志和文件权限。仅重启博客服务。
 

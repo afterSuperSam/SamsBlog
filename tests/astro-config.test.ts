@@ -28,6 +28,25 @@ function readBuildSite(files: Record<string, string>, publicSiteUrl?: string) {
 }
 
 describe('production Astro configuration', () => {
+  it('trusts the configured HTTPS origin after default-port normalization', () => {
+    const directory = mkdtempSync(path.join(tmpdir(), 'samsblog-proxy-config-'));
+    temporaryDirectories.push(directory);
+    const script = `process.argv.push('build');
+      const { default: configuration } = await import(${JSON.stringify(configurationUrl)});
+      const { createRequest } = await import(${JSON.stringify(import.meta.resolve('astro/app/node'))});
+      const request = createRequest({ method: 'GET', url: '/api/admin/media.json',
+        headers: { host: '127.0.0.1:4321', 'x-forwarded-host': 'blog.example.com',
+          'x-forwarded-proto': 'https', 'x-forwarded-port': '443' }, socket: {} },
+        { allowedDomains: configuration.security.allowedDomains });
+      console.log(new URL(request.url).origin);`;
+    expect(execFileSync(process.execPath, ['--input-type=module', '-e', script], {
+      cwd: directory,
+      env: { ...process.env, PUBLIC_SITE_URL: 'https://blog.example.com' },
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }).trim()).toBe('https://blog.example.com');
+  });
+
   it('loads the real configuration with production-local values taking precedence', () => {
     expect(readBuildSite({
       '.env': 'PUBLIC_SITE_URL=https://base.example.com',
