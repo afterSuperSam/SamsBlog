@@ -123,13 +123,23 @@ body::before {
   max-width: 98px;
   object-fit: contain;
   filter: drop-shadow(0 2px 7px var(--brand-shadow));
-  transition: filter 280ms ease, transform 320ms var(--ease);
+  transform-origin: 25% 75%;
+  transition: filter var(--motion-feedback-duration) ease, transform var(--motion-spring-duration) var(--ease-spring);
 }
 
 .site-brand:focus-visible .site-brand__wordmark {
-  filter: drop-shadow(0 5px 13px color-mix(in oklab, var(--glow-pink) 24%, transparent));
-  transform: translateY(-1px) rotate(-0.8deg) scale(1.025);
+  filter: drop-shadow(0 3px 9px color-mix(in oklab, var(--glow-pink) 12%, transparent));
 }
+
+/* 字标形状上的局部虹彩，不增加持续绘制或整块玻璃底板。 */
+.site-brand__sticker{position:relative;display:grid;max-width:98px;isolation:isolate;transform-origin:25% 75%;transition:transform var(--motion-spring-duration) var(--ease-spring),opacity .28s ease,max-width .35s var(--ease-out)}
+.site-brand__sticker::after{content:"";position:absolute;inset:0;pointer-events:none;opacity:0;background:var(--sticker-spectrum);background-size:200% 100%;background-position:var(--sticker-light,50%) center;mask:url('/media/branding/samsblog-wordmark-nav.webp') center/contain no-repeat;transition:opacity var(--motion-reorder-duration) var(--ease-out)}
+.site-brand:focus-visible .site-brand__sticker::after{opacity:var(--sticker-opacity)}
+@media(hover:hover) and (pointer:fine){.site-brand:hover .site-brand__sticker::after{opacity:var(--sticker-opacity)}}
+@media(hover:hover) and (pointer:fine) and (prefers-reduced-motion:no-preference){:root:not(.motion-paused) .site-brand:hover .site-brand__sticker{transform:perspective(400px) rotateX(var(--sticker-x,0deg)) rotateY(var(--sticker-y,0deg)) translateY(-1px) scale(1.035)}}
+
+.header-actions :is(.theme-toggle,.menu-button) svg{transition:scale var(--motion-spring-duration) var(--ease-spring)}
+.header-actions :is(.theme-toggle,.menu-button):active svg{scale:.88;transition-duration:var(--motion-feedback-duration)}
 
 .desktop-nav {
   position: absolute;
@@ -219,7 +229,7 @@ body::before {
   stroke-width: 1.6;
   stroke-linecap: round;
   transform-origin: 12px 8px;
-  transition: transform 240ms var(--ease);
+  transition: transform var(--motion-spring-duration) var(--ease-spring);
 }
 
 .menu-icon path:last-child { transform-origin: 12px 16px; }
@@ -237,7 +247,7 @@ body::before {
   font-family: var(--playful);
   background: var(--gradient-surface);
   box-shadow: var(--shadow);
-  animation: mobile-menu-arrive 240ms var(--ease) both;
+  animation: mobile-menu-arrive var(--motion-spring-duration) var(--ease-spring) both;
   transform-origin: top right;
 }
 
@@ -460,6 +470,7 @@ body::before {
 
 /* 首页插画上的导航与持续动效的可视性边界 */
 .media-header .site-header:not(.site-header--scrolled){color:var(--on-media);background:linear-gradient(rgba(9,25,30,.4),transparent)}
+.media-header .site-header:not(.site-header--scrolled) .desktop-nav a:is([aria-current="page"],:focus-visible){color:var(--on-media-accent)}
 .skip-link{position:fixed;z-index:160;top:-90px;left:20px;background:var(--surface);padding:12px 20px;color:var(--text)}.skip-link:focus{top:12px}
 :root.page-hidden *, :root.page-hidden *::before, :root.page-hidden *::after{animation-play-state:paused!important}
 
@@ -477,9 +488,10 @@ body::before {
 @media(hover:hover) and (pointer:fine){
   .button:hover{color:var(--summer-blue);text-shadow:0 0 22px color-mix(in srgb,var(--glow-blue) 28%,transparent);transform:translateY(-2px)}
   .button--primary:hover{background:transparent;color:var(--summer-orange)}
-  .site-brand:hover .site-brand__wordmark{filter:drop-shadow(0 5px 13px color-mix(in oklab,var(--glow-pink) 24%,transparent));transform:translateY(-1px) rotate(-.8deg) scale(1.025)}
+  .site-brand:hover .site-brand__wordmark{filter:drop-shadow(0 3px 9px color-mix(in oklab,var(--glow-pink) 12%,transparent))}
   .desktop-nav a:hover{opacity:1;transform:translateY(-2px)}
   .desktop-nav a:not([aria-current="page"]):hover{color:var(--summer-blue);text-shadow:0 0 20px color-mix(in srgb,var(--glow-blue) 32%,transparent)}
+  .media-header .site-header:not(.site-header--scrolled) .desktop-nav a:not([aria-current="page"]):hover{color:var(--on-media)}
   .mobile-menu a:not([aria-current="page"]):hover{color:var(--summer-blue);background:var(--hover)}
   .header-socials :is(a,button):hover{opacity:1;transform:translateY(-2px)}
   .header-social--bilibili:hover{color:var(--summer-blue)}

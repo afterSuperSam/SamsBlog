@@ -2,18 +2,21 @@ import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import Database from 'better-sqlite3';
+import { randomUUID } from 'node:crypto';
 import type { APIContext, APIRoute } from 'astro';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { serverConfig } from '../src/config/server';
 import { siteConfig } from '../src/config/site';
 import { createAdminSession } from '../src/lib/admin-auth';
-import { deleteArticle, getArticle, getAdjacentArticles, getArticleUpdates, listArticleMetadata, listArticles, restoreArticle, saveArticle } from '../src/lib/articles';
+import { deleteArticle, getArticle, getAdjacentArticles, getArticlePublicationCounts, getArticleUpdates, getNextFeaturedLink, listArticleMetadata, listArticles, listHomepageArticles, restoreArticle, saveArticle } from '../src/lib/articles';
 import { getDatabase } from '../src/lib/db';
 import { DELETE, GET, PATCH, POST } from '../src/pages/api/admin/articles.json';
 import { getProjectSettings, getProjectCommit, saveProjectSettings } from '../src/lib/projects';
 import { PUT as saveProjects } from '../src/pages/api/admin/projects.json';
 import { GET as getRss } from '../src/pages/rss.xml';
 import { GET as getSiteCard } from '../src/pages/api/public/site-card.json';
+import { listArticleDrafts, saveArticleDraft, publishArticleDraft, deleteArticleDraft, restoreArticleDraft } from '../src/lib/article-drafts';
+import { searchArticleIds, withdrawArticle } from '../src/lib/articles';
 
 const input = { title: '验证文章', coverUrl: 'https://images.example.com/cover.webp', source: 'original', category: 'discussion', content: '# 正文\n\n[链接](https://example.com)\n\n![图片](https://images.example.com/body.webp)' };
 
@@ -28,7 +31,7 @@ beforeAll(async () => {
 async function call(handler: APIRoute, method: string, body?: unknown, authorized = true, headers: Record<string, string> = {}) {
   return handler({
     request: new Request('https://blog.example.com/api/admin/articles.json', {
-      method, headers: { 'content-type': 'application/json', ...headers },
+      method, headers: { 'content-type': 'application/json', origin: 'https://blog.example.com', ...headers },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     }),
     cookies: { get: () => authorized ? { value: createAdminSession() } : undefined },
@@ -42,12 +45,165 @@ describe('article persistence and authenticated management', () => {
     expect(getDatabase().prepare("SELECT id FROM schema_migrations WHERE id = '20261017-blog-articles-v1'").get()).toBeTruthy();
   });
 
+  it('cycles through public links, skips deleted items and wraps to the newest link', () => {
+    const first = saveArticle({ ...input, contentType: 'link', externalUrl: 'https://example.com/first' });
+    const removed = saveArticle({ ...input, contentType: 'link', externalUrl: 'https://example.com/removed' });
+    const last = saveArticle({ ...input, contentType: 'link', externalUrl: 'https://example.com/last' });
+    deleteArticle(removed);
+    try {
+      expect(getNextFeaturedLink(last)?.id).toBe(first);
+      expect(getNextFeaturedLink(first)?.id).toBe(last);
+      deleteArticle(last);
+      expect(getNextFeaturedLink(first)?.id).toBe(first);
+    } finally { [first, removed, last].forEach(deleteArticle); }
+  });
+  it.each(['article', 'note', 'link', 'update'])('preserves the %s content type and destination through older clients, deletion and restoration', (contentType) => {
+    const externalUrl = contentType === 'link' ? 'https://example.com/read?chapter=1&part=2' : '';
+    const id = saveArticle({ ...input, contentType, externalUrl });
+    const createdAt = getArticle(id)!.createdAt;
+    saveArticle({ ...input, id, title: '保留内容形式' });
+    expect(getArticle(id)).toMatchObject({ contentType, externalUrl, createdAt });
+    deleteArticle(id);
+    expect(getArticle(id)).toBeUndefined();
+    restoreArticle(id);
+    expect(getArticle(id)).toMatchObject({ contentType, externalUrl, createdAt });
+    saveArticle({ ...input, id, contentType: 'article' });
+    expect(getArticle(id)).toMatchObject({ contentType: 'article', externalUrl: '' });
+    deleteArticle(id);
+  });
+
+  it('keeps bounded homepage groups independent and never fills them with deleted content', () => {
+    const identifiers: number[] = [];
+    try {
+      const types = ['article', 'note', 'update', 'link'] as const;
+      const count = Math.max(siteConfig.articles.homepageCount, siteConfig.articles.homepageNoteCount, siteConfig.articles.homepageLinkCount) + 1;
+      for (let index = 0; index < count; index += 1) {
+        for (const contentType of types) identifiers.push(saveArticle({ ...input, contentType, externalUrl: 'https://example.com/' }));
+      }
+      const deletedLink = identifiers.at(-1)!;
+      deleteArticle(deletedLink);
+      const homepage = listHomepageArticles();
+      expect(homepage.filter((article) => article.contentType === 'article')).toHaveLength(siteConfig.articles.homepageCount);
+      expect(homepage.filter((article) => article.contentType === 'note' || article.contentType === 'update')).toHaveLength(siteConfig.articles.homepageNoteCount);
+      expect(homepage.filter((article) => article.contentType === 'link')).toHaveLength(siteConfig.articles.homepageLinkCount);
+      expect(homepage.some((article) => article.id === deletedLink)).toBe(false);
+      const records = listArticles({ contentTypes: ['note', 'update'], limit: 2 });
+      expect(records.map((article) => article.id)).toEqual([identifiers.at(-2), identifiers.at(-3)]);
+      expect(listArticles({ contentTypes: [] })).toEqual([]);
+    } finally { identifiers.forEach(deleteArticle); }
+  });
+
+  it('rejects invalid content types and unsafe or missing destinations without changing saved data', async () => {
+    const id = saveArticle(input);
+    expect(getArticle(id)).toMatchObject({ contentType: 'article', externalUrl: '' });
+    for (const contentType of ['unknown', '', null, 1]) {
+      expect((await call(PATCH, 'PATCH', { ...input, id, contentType })).status).toBe(400);
+    }
+    for (const externalUrl of ['', 'javascript:alert(1)', 'data:text/html,hello', '//example.com', 'https://user:secret@example.com', 1]) {
+      expect((await call(PATCH, 'PATCH', { ...input, id, contentType: 'link', externalUrl })).status).toBe(400);
+    }
+    expect(getArticle(id)).toMatchObject({ contentType: 'article', externalUrl: '' });
+    expect(() => getDatabase().prepare('UPDATE blog_articles SET content_type = ? WHERE id = ?').run('unknown', id)).toThrow();
+    expect(() => getDatabase().prepare('UPDATE blog_articles SET content_type = ? WHERE id = ?').run('link', id)).toThrow();
+    deleteArticle(id);
+  });
+
+  it('includes the external destination and full explanation in RSS with XML escaping', async () => {
+    const id = saveArticle({ ...input, contentType: 'link', externalUrl: 'https://example.com/?first=1&second=2', content: '推荐的完整说明。' });
+    const feed = await (getRss({ request: new Request('https://blog.example.com/rss.xml') } as APIContext) as Response).text();
+    expect(feed).toContain('<category>外部链接</category>');
+    expect(feed).toContain('https://example.com/?first=1&amp;amp;second=2');
+    expect(feed).toContain('推荐的完整说明。');
+    deleteArticle(id);
+  });
+
+  it('does not count notes, external links or updates as long articles in the contribution graph', () => {
+    const before = getArticlePublicationCounts().reduce((total, day) => total + day.count, 0);
+    const identifiers = ['note', 'link', 'update'].map((contentType) => saveArticle({ ...input, contentType, externalUrl: 'https://example.com/' }));
+    expect(getArticlePublicationCounts().reduce((total, day) => total + day.count, 0)).toBe(before);
+    identifiers.forEach(deleteArticle);
+  });
+
+  it('counts public articles by Beijing publication date and follows deletion and restoration', () => {
+    expect(getArticlePublicationCounts()).toEqual([]);
+    const timestamps = ['2026-10-23T15:59:59.999Z', '2026-10-23T16:00:00.000Z', '2026-10-24T09:00:00.000Z'];
+    const identifiers = timestamps.map((createdAt) => {
+      const id = saveArticle(input);
+      getDatabase().prepare('UPDATE blog_articles SET created_at = ? WHERE id = ?').run(createdAt, id);
+      return id;
+    });
+    try {
+      const expected = [{ date: '2026-10-23', count: 1 }, { date: '2026-10-24', count: 2 }];
+      expect(getArticlePublicationCounts()).toEqual(expected);
+      saveArticle({ ...input, id: identifiers[0], title: '编辑不会改变发布日期' });
+      expect(getArticlePublicationCounts()).toEqual(expected);
+      deleteArticle(identifiers[2]);
+      expect(getArticlePublicationCounts()).toEqual([{ date: '2026-10-23', count: 1 }, { date: '2026-10-24', count: 1 }]);
+      restoreArticle(identifiers[2]);
+      expect(getArticlePublicationCounts()).toEqual(expected);
+    } finally {
+      identifiers.forEach(deleteArticle);
+    }
+  });
+
   it('stores repost attribution separately, clears it for originals and preserves source whitespace', () => {
     const content = '\n  保留原始空白\n\n```js\n\treturn 1;\n```\n';
     const id = saveArticle({ ...input, source: 'repost', originalAuthor: ' 原作者 ', originalUrl: 'https://example.com/original?a=1&b=2', content });
     expect(getArticle(id)).toMatchObject({ originalAuthor: '原作者', originalUrl: 'https://example.com/original?a=1&b=2', content });
     saveArticle({ ...input, id, originalAuthor: '应清空', originalUrl: 'javascript:ignored' });
     expect(getArticle(id)).toMatchObject({ originalAuthor: '', originalUrl: '' });
+  });
+
+  it('stores tags, preserves them for older editors, and restores them after soft deletion', () => {
+    const id = saveArticle({ ...input, tags: [' # TinyML ', 'tinyml', '日常'] });
+    const createdAt = getArticle(id)!.createdAt;
+    expect(getArticle(id)?.tags).toEqual(['TinyML', '日常']);
+    saveArticle({ ...input, id, title: '编辑后' });
+    expect(getArticle(id)?.tags).toEqual(['TinyML', '日常']);
+    expect(deleteArticle(id)).toBe(true);
+    expect(getArticle(id)).toBeUndefined();
+    expect(restoreArticle(id)).toBe(true);
+    expect(getArticle(id)).toMatchObject({ tags: ['TinyML', '日常'], createdAt });
+    saveArticle({ ...input, id, tags: [] });
+    expect(getArticle(id)?.tags).toEqual([]);
+    expect(() => getDatabase().prepare('UPDATE blog_articles SET tags = ? WHERE id = ?').run('{}', id)).toThrow();
+    expect(getArticle(id)?.tags).toEqual([]);
+    deleteArticle(id);
+  });
+
+  it('rejects malformed tag requests without adding articles', async () => {
+    const before = listArticles({ includeDeleted: true }).length;
+    const response = await call(POST, 'POST', { ...input, tags: ['a,b'] });
+    expect(response.status).toBe(400);
+    expect(listArticles({ includeDeleted: true })).toHaveLength(before);
+    const id = saveArticle(input);
+    expect(getArticle(id)?.tags).toEqual([]);
+    deleteArticle(id);
+  });
+
+  it('defaults to left covers and preserves selected layouts, covers and dates through edits and restoration', () => {
+    const id = saveArticle(input);
+    const createdAt = getArticle(id)!.createdAt;
+    expect(getArticle(id)?.cardLayout).toBe('left');
+    saveArticle({ ...input, id, cardLayout: 'right' });
+    saveArticle({ ...input, id, title: '旧编辑器保留布局' });
+    expect(getArticle(id)).toMatchObject({ cardLayout: 'right', createdAt });
+    saveArticle({ ...input, id, cardLayout: 'text' });
+    deleteArticle(id);
+    expect(getArticle(id)).toBeUndefined();
+    restoreArticle(id);
+    expect(getArticle(id)).toMatchObject({ cardLayout: 'text', coverUrl: input.coverUrl, createdAt });
+    expect(() => getDatabase().prepare('UPDATE blog_articles SET card_layout = ? WHERE id = ?').run('automatic', id)).toThrow();
+    deleteArticle(id);
+  });
+
+  it('rejects invalid card layouts without changing saved content', async () => {
+    const id = saveArticle({ ...input, cardLayout: 'right' });
+    for (const cardLayout of ['automatic', '', null, 1, {}]) {
+      expect((await call(PATCH, 'PATCH', { ...input, id, cardLayout })).status).toBe(400);
+    }
+    expect(getArticle(id)?.cardLayout).toBe('right');
+    deleteArticle(id);
   });
 
   it.each(['javascript:alert(1)', 'https://name:password@example.com', '//example.com', 'https:example.com', 'file:///tmp/article'])('rejects unsafe or incomplete repost URLs: %s', (originalUrl) => {
@@ -109,8 +265,8 @@ describe('article persistence and authenticated management', () => {
       expect(statements.mock.calls.slice(0, 3).every(([sql]) => /LIMIT \?/.test(sql))).toBe(true);
       statements.mockClear();
       const metadata = listArticleMetadata();
-      expect(statements.mock.calls[0][0]).toMatch(/SELECT id, updated_at FROM blog_articles/);
-      expect(metadata.find((article) => article.id === expected[0])).toEqual({ id: expected[0], updatedAt: getArticle(expected[0])!.updatedAt });
+      expect(statements.mock.calls[0][0]).toMatch(/SELECT id, title, updated_at FROM blog_articles/);
+      expect(metadata.find((article) => article.id === expected[0])).toEqual({ id: expected[0], title: '查询边界23', updatedAt: getArticle(expected[0])!.updatedAt });
       expect(metadata.some((article) => article.id === hidden)).toBe(false);
       const middle = getArticle(identifiers[10])!;
       statements.mockClear();
@@ -131,10 +287,12 @@ describe('article persistence and authenticated management', () => {
     for (const [handler, method] of [[GET, 'GET'], [POST, 'POST'], [PATCH, 'PATCH'], [DELETE, 'DELETE']] as const) {
       expect((await call(handler, method, method === 'GET' ? undefined : input, false)).status).toBe(401);
     }
-    const created = await call(POST, 'POST', input);
+    const draft = await (await call(POST, 'POST', { ...input, action: 'draft', draftId: randomUUID(), revision: 0 })).json();
+    const created = await call(POST, 'POST', { action: 'publish', ...draft.draft });
     expect(created.status).toBe(201);
     const { id } = await created.json();
-    expect((await call(PATCH, 'PATCH', { ...input, id, title: '后台修改' })).status).toBe(200);
+    const editedDraft = await (await call(POST, 'POST', { ...getArticle(id), title: '后台修改', action: 'draft', draftId: randomUUID(), revision: 0 })).json();
+    expect((await call(POST, 'POST', { action: 'publish', ...editedDraft.draft })).status).toBe(201);
     expect(getArticle(id)?.title).toBe('后台修改');
     expect((await call(DELETE, 'DELETE', { id })).status).toBe(200);
     expect(getArticle(id)).toBeUndefined();
@@ -142,7 +300,7 @@ describe('article persistence and authenticated management', () => {
     expect(all.articles.find((article: { id: number }) => article.id === id).deletedAt).toBeTruthy();
     expect((await call(PATCH, 'PATCH', { id, restore: true })).status).toBe(200);
     expect(getArticle(id)?.title).toBe('后台修改');
-    expect((await call(PATCH, 'PATCH', { ...input, id: 999999 })).status).toBe(404);
+    expect((await call(POST, 'POST', { ...input, id: 999999, action: 'draft', draftId: randomUUID(), revision: 0 })).status).toBe(404);
     expect((await call(POST, 'POST', { ...input, id })).status).toBe(400);
     expect((await call(POST, 'POST', input, true, { 'content-type': 'text/plain' })).status).toBe(415);
   });
@@ -152,6 +310,54 @@ describe('article persistence and authenticated management', () => {
     expect((await call(POST, 'POST', oversized)).status).toBe(413);
     expect((await call(POST, 'POST', oversized, true, { 'content-length': '1' })).status).toBe(413);
     expect((await call(POST, 'POST', input, true, { 'content-length': String(serverConfig.articleRequestMaxBytes + 1) })).status).toBe(413);
+  });
+});
+
+describe('private drafts and publication boundaries', () => {
+  it('saves incomplete work, rejects stale revisions and recovers soft-deleted drafts', () => {
+    const draft = saveArticleDraft({ draftId: randomUUID(), revision: 0, title: '', content: '还没写完', coverUrl: 'https://' });
+    expect(listArticleDrafts().find((item) => item.draftId === draft.draftId)?.payload.content).toBe('还没写完');
+    expect(() => publishArticleDraft(draft)).toThrow();
+    expect(() => saveArticleDraft({ ...draft.payload, draftId: draft.draftId, revision: 0 })).toThrow('其他窗口');
+    deleteArticleDraft(draft);
+    expect(listArticleDrafts().some((item) => item.draftId === draft.draftId)).toBe(false);
+    expect(() => publishArticleDraft(draft)).toThrow();
+    restoreArticleDraft(draft);
+    const restored = listArticleDrafts().find((item) => item.draftId === draft.draftId)!;
+    expect(restored.payload.content).toBe('还没写完');
+    expect(restored.revision).toBe(draft.revision + 1);
+    deleteArticleDraft(restored);
+  });
+  it('publishes explicitly once, keeps edits private and withdraws from every public source', async () => {
+    const draft = saveArticleDraft({ ...input, draftId: randomUUID(), revision: 0, title: '草稿边界唯一标记', summary: '手写摘要', content: '正文检索独有内容' });
+    expect(searchArticleIds('正文检索独有内容')).toEqual([]);
+    const id = publishArticleDraft(draft);
+    expect(getArticle(id)?.summary).toBe('手写摘要');
+    expect(searchArticleIds('正文检索独有内容')).toContain(id);
+    expect(() => publishArticleDraft(draft)).toThrow();
+    const edited = saveArticleDraft({ ...getArticle(id), title: '未发布的修改', draftId: randomUUID(), revision: 0 });
+    expect(getArticle(id)?.title).toBe('草稿边界唯一标记');
+    expect(withdrawArticle(id)).toBe(true);
+    expect(getArticle(id)).toBeUndefined();
+    expect(listArticles().some((item) => item.id === id)).toBe(false);
+    expect(listArticleMetadata().some((item) => item.id === id)).toBe(false);
+    expect(getArticleUpdates(100).some((item) => item.id === id)).toBe(false);
+    expect(searchArticleIds('正文检索独有内容')).toEqual([]);
+    expect(await (getRss({ request: new Request('https://blog.example.com/rss.xml') } as APIContext) as Response).text()).not.toContain('草稿边界唯一标记');
+    expect(() => publishArticleDraft(edited)).toThrow();
+    const resumed = listArticleDrafts().find((item) => item.articleId === id)!;
+    expect(publishArticleDraft(resumed)).toBe(id);
+    expect(getArticle(id)?.title).toBe('未发布的修改');
+    deleteArticle(id);
+  });
+  it('rejects cross-origin publication and catches changed published versions', async () => {
+    expect((await call(POST, 'POST', { ...input, action: 'draft', draftId: randomUUID(), revision: 0 }, true, { origin: 'https://other.example.com' })).status).toBe(403);
+    const id = saveArticle(input);
+    const draft = saveArticleDraft({ ...getArticle(id), draftId: randomUUID(), revision: 0 });
+    saveArticle({ ...input, id, title: '另一个窗口已发布' });
+    expect(() => publishArticleDraft(draft)).toThrow('其他窗口');
+    expect(getArticle(id)?.title).toBe('另一个窗口已发布');
+    deleteArticle(id);
   });
 });
 

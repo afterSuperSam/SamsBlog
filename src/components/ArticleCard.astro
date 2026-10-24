@@ -1,0 +1,61 @@
+---
+import type { ArticleRecord } from '../lib/articles';
+import { articleExcerpt, renderMarkdown } from '../lib/markdown';
+import { articleContentTypes, articleDateLabel, articleLinkHost } from '../lib/article-catalog';
+
+interface Props {
+  article: Pick<ArticleRecord, 'id' | 'title' | 'coverUrl' | 'cardLayout' | 'contentType' | 'externalUrl' | 'source' | 'category' | 'tags' | 'content' | 'createdAt' | 'updatedAt'> & { summary?: string };
+  hidden?: boolean;
+  headingLevel?: number;
+  filterable?: boolean;
+  preview?: boolean;
+}
+const { article, hidden = false, headingLevel = 3, filterable = false, preview = false } = Astro.props;
+const excerpt = article.summary || articleExcerpt(article.content);
+const showCover = article.contentType === 'article' && Boolean(article.coverUrl) && article.cardLayout !== 'text';
+const external = article.contentType === 'link';
+const inlineNote = article.contentType === 'note';
+const Link = preview || inlineNote ? 'div' : 'a';
+const noteContentId = preview ? 'article-note-preview' : `article-note-${article.id}`;
+const dateLabel = articleDateLabel(article.createdAt, article.contentType === 'update');
+---
+
+<article class:list={['article-card', { 'article-card--cover': showCover }]} data-preview-card={preview ? '' : undefined} data-article-card={!preview ? article.id : undefined} hidden={hidden} data-content-type={article.contentType} data-image-side={article.cardLayout} data-source={article.source} data-category={article.category} data-created={article.createdAt} data-updated={article.updatedAt} data-tags={filterable ? JSON.stringify(article.tags) : undefined}>
+  <Link class="article-card__link" href={!preview && !inlineNote ? external ? article.externalUrl : '/articles/' + article.id : undefined} target={!preview && external ? '_blank' : undefined} rel={!preview && external ? 'noopener noreferrer' : undefined}>
+    {(showCover || preview) && <div class="article-card__cover" aria-hidden="true" hidden={!showCover}>
+      <img class="article-card__glow" src={article.coverUrl || undefined} alt="" loading={preview ? 'eager' : 'lazy'} referrerpolicy="no-referrer" />
+      <img class="article-card__image" data-article-cover={!preview ? article.id : undefined} src={article.coverUrl || undefined} alt="" loading={preview ? 'eager' : 'lazy'} referrerpolicy="no-referrer" />
+    </div>}
+    <div class="article-card__copy">
+      <div class="article-tags"><span data-card-source>{article.source === 'original' ? '原创' : '搬运'}</span><span data-card-category>{article.category === 'discussion' ? '杂谈' : '日志'}</span></div>
+      <span class="article-card__destination" data-card-host hidden={!external}>{articleLinkHost(article.externalUrl)}</span>
+      <h3 aria-level={headingLevel} data-card-title>{inlineNote && !preview ? <a href={'/articles/' + article.id}>{article.title}</a> : article.title || (preview ? '文章题目' : '')}</h3>
+      {inlineNote || preview ? <div class="article-note__content" id={noteContentId} data-note-content>
+        <p data-card-excerpt>{excerpt || (preview ? '正文的前两行摘要会显示在这里。' : '')}</p>
+        <div class="article-prose article-note__prose" data-note-prose hidden set:html={inlineNote ? renderMarkdown(article.content, new URL('/articles/' + article.id, Astro.url).href) : ''} />
+      </div> : <p data-card-excerpt>{excerpt}</p>}
+      {(article.tags.length > 0 || preview) && <div class="article-keywords" data-card-tags hidden={!article.tags.length}>{article.tags.map((tag) => <span># {tag}</span>)}</div>}
+      <footer>
+        <span class="article-card__kind" data-card-kind>{articleContentTypes.find((type) => type.value === article.contentType)?.label}</span>
+        {inlineNote && !preview ? <a href={'/articles/' + article.id} aria-label={`阅读短记录：${article.title}`}><time datetime={article.createdAt || undefined} data-card-date>{dateLabel}</time></a> : <time datetime={article.createdAt || undefined} data-card-date>{dateLabel}</time>}
+        {(inlineNote || preview) && <button type="button" class="article-note__toggle" data-note-toggle hidden aria-expanded="false" aria-controls={noteContentId}>展开</button>}
+        {inlineNote && !preview && <a class="article-note__toggle" href={'/articles/' + article.id} data-note-fallback>阅读全文</a>}
+      </footer>
+      {external && !preview && <span class="sr-only">在新标签页打开外部链接</span>}
+    </div>
+  </Link>
+</article>
+
+<script>
+  import { initializeInlineNotes } from '../lib/reading-extras';
+  initializeInlineNotes(document);
+
+  document.querySelectorAll<HTMLImageElement>('.article-card__image').forEach((image) => {
+    const hideFailedCover = () => {
+      image.closest<HTMLElement>('.article-card__cover')!.hidden = true;
+      image.closest('.article-card')!.classList.remove('article-card--cover');
+    };
+    image.addEventListener('error', hideFailedCover);
+    if (image.complete && !image.naturalWidth) hideFailedCover();
+  });
+</script>

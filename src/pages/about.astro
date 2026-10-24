@@ -1,27 +1,34 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+import FriendsSection from '../components/FriendsSection.astro';
 import ContributionGraph from '../components/ContributionGraph.astro';
-import ArticleList from '../components/ArticleList.astro';
 import SocialIcon from '../components/SocialIcon.astro';
 import { siteConfig } from '../config/site';
-import { buildTokenUsageCalendar, getGithubContributions, type TokenUsage } from '../lib/contributions';
+import { buildContributionCalendar, buildTokenUsageCalendar, getGithubContributions, type TokenUsage } from '../lib/contributions';
+import { getArticlePublicationCounts } from '../lib/articles';
+import { listSponsors, sponsorAvatarUrl } from '../lib/sponsors';
 import '../styles/simple-pages.css';
 
 const githubContributions = await getGithubContributions();
-const sponsors = [...siteConfig.sponsors].sort((first, second) => second.amount - first.amount);
+const sponsors = listSponsors();
 const latestContribution = githubContributions.available ? githubContributions.days.findLast((day) => day.count > 0)?.date : undefined;
+const publicationCounts = getArticlePublicationCounts();
+const publicationCalendar = {
+  ...buildContributionCalendar(new Map(publicationCounts.map(({ date, count }) => [date, count])), new Date(`${new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' })}T00:00:00Z`)),
+  total: publicationCounts.reduce((total, day) => total + day.count, 0),
+};
 const gptTokenUsage = buildTokenUsageCalendar(new Map<string, TokenUsage>([
   ['2026-07-23', { cacheHit: 60218880, cacheMiss: 1425016, output: 251793 }],
   ['2026-07-24', { cacheHit: 66291968, cacheMiss: 3071170, output: 216141 }],
   ['2026-07-25', { cacheHit: 101629696, cacheMiss: 3007611, output: 467086 }],
   ['2026-07-26', { cacheHit: 220374784, cacheMiss: 6058955, output: 825617 }],
-  ['2026-07-27', { cacheHit: 126363136, cacheMiss: 3416379, output: 467084 }],
+  ['2026-07-27', { cacheHit: 126547456, cacheMiss: 3435642, output: 467481 }],
   ['2026-07-28', { cacheHit: 90019584, cacheMiss: 2266999, output: 264622 }],
   ['2026-07-29', { cacheHit: 18721024, cacheMiss: 530499, output: 61545 }],
   ['2026-07-30', { cacheHit: 130610048, cacheMiss: 3584326, output: 436620 }],
   ['2026-08-02', { cacheHit: 289792, cacheMiss: 33982, output: 18583 }],
   ['2026-08-04', { cacheHit: 133888, cacheMiss: 3798, output: 2042 }],
-  ['2026-08-06', { cacheHit: 96330496, cacheMiss: 2819775, output: 301360 }],
+  ['2026-08-06', { cacheHit: 102781440, cacheMiss: 3757199, output: 310767 }],
   ['2026-08-08', { cacheHit: 1030912, cacheMiss: 100271, output: 13390 }],
   ['2026-08-09', { cacheHit: 79232, cacheMiss: 370, output: 835 }],
   ['2026-08-11', { cacheHit: 15643520, cacheMiss: 350820, output: 49591 }],
@@ -63,19 +70,21 @@ const gptTokenUsage = buildTokenUsageCalendar(new Map<string, TokenUsage>([
   ['2026-10-14', { cacheHit: 43058816, cacheMiss: 1764263, output: 68600 }],
   ['2026-10-15', { cacheHit: 36797440, cacheMiss: 766744, output: 93037 }],
   ['2026-10-17', { cacheHit: 222461952, cacheMiss: 4817099, output: 709134 }],
-  ['2026-10-18', { cacheHit: 84069760, cacheMiss: 1935168, output: 390853 }],
-]));
-const deepseekTokenUsage = buildTokenUsageCalendar(new Map<string, TokenUsage>([
-  ['2026-07-28', { cacheHit: 27344768, cacheMiss: 749990, output: 71258 }], ['2026-07-29', { cacheHit: 86561152, cacheMiss: 3915929, output: 465942 }], ['2026-07-30', { cacheHit: 52268800, cacheMiss: 1755878, output: 358305 }], ['2026-07-31', { cacheHit: 53601280, cacheMiss: 2068349, output: 486681 }],
-  ['2026-08-08', { cacheHit: 228736, cacheMiss: 65475, output: 2950 }], ['2026-08-09', { cacheHit: 1596160, cacheMiss: 311605, output: 397084 }],
+  ['2026-10-18', { cacheHit: 285545344, cacheMiss: 8402527, output: 1199246 }],
+  ['2026-10-19', { cacheHit: 41868160, cacheMiss: 1001752, output: 172229 }],
+  ['2026-10-20', { cacheHit: 96015232, cacheMiss: 2587783, output: 325034 }],
+  ['2026-10-21', { cacheHit: 99560448, cacheMiss: 3548701, output: 412332 }],
+  ['2026-10-22', { cacheHit: 144335360, cacheMiss: 3946487, output: 496262 }],
+  ['2026-10-23', { cacheHit: 252651264, cacheMiss: 6406873, output: 1201421 }],
+  ['2026-10-24', { cacheHit: 144476288, cacheMiss: 2352311, output: 543238 }],
 ]));
 ---
 
-<BaseLayout title="关于" description="联系方式、文章与 GitHub 贡献痕迹。" bodyClass="about-page" quickNavigation={[
+<BaseLayout title="关于" description="联系方式、网站友链、GitHub 贡献与模型用量痕迹。" bodyClass="about-page" quickNavigation={[
   { href: '#contact', label: '联系' },
-  { href: '#articles', label: '文章' },
   { href: '#activity', label: '痕迹' },
   { href: '#sponsor', label: '赞赏' },
+  { href: '#friends', label: '友链' },
 ]}>
   <section class="about-contact" id="contact" data-reveal>
     <div class="shell">
@@ -104,8 +113,6 @@ const deepseekTokenUsage = buildTokenUsageCalendar(new Map<string, TokenUsage>([
     </nav>
   </section>
 
-  <ArticleList />
-
   <section class="about-activity" id="activity" data-reveal>
     <div class="shell">
       <header class="about-section-heading">
@@ -114,15 +121,15 @@ const deepseekTokenUsage = buildTokenUsageCalendar(new Map<string, TokenUsage>([
       </header>
       <div class="contribution-panels">
         <ContributionGraph title="GitHub 提交" eyebrow="CODE" calendar={githubContributions} href={siteConfig.social.github} inlineTotal latestContribution={latestContribution} />
-        <ContributionGraph title="GPT 用量" eyebrow="TOKENS" calendar={gptTokenUsage} unit="Token" period="CCswitch 记录 · 2026-10-18" showUsage />
-        <ContributionGraph title="DeepSeek 用量" eyebrow="TOKENS" calendar={deepseekTokenUsage} unit="Token" period="已核对数据 · 2026-08-09" showUsage />
+        <ContributionGraph title="ChatGPT 用量" eyebrow="TOKENS" calendar={gptTokenUsage} unit="Token" period="CCswitch 记录 · 2026-10-24（当日未完）" showUsage inlineTotal />
+        <ContributionGraph title="文章数量" eyebrow="ARTICLES" calendar={publicationCalendar} unit="篇" period="累计文章 · 近一年分布" inlineTotal />
       </div>
     </div>
   </section>
 
   <section class="about-sponsor" id="sponsor">
     <div class="shell sponsor-layout">
-      <button type="button" class="sponsor-toggle" aria-label="展开赞助清单" aria-expanded="false" aria-controls="sponsor-list" data-sponsor-toggle></button>
+      {sponsors.length > 0 && <button type="button" class="sponsor-toggle" aria-label="展开赞助清单" aria-expanded="false" aria-controls="sponsor-list" data-sponsor-toggle></button>}
       <div class="sponsor-copy" data-reveal>
         <span>SUPPORT</span>
         <h2>赞赏支持</h2>
@@ -131,14 +138,20 @@ const deepseekTokenUsage = buildTokenUsageCalendar(new Map<string, TokenUsage>([
         <p>建站不易，若有整改建议等，可留言或投稿邮箱 <a href="mailto:3092243018@qq.com">3092243018@qq.com</a></p>
       </div>
       <div class="sponsor-display" data-sponsor-display>
-        <div class="sponsor-list" id="sponsor-list" hidden>
+        <div class:list={['sponsor-list', { 'sponsor-list--columns': sponsors.length >= siteConfig.sponsorPresentation.twoColumnMinimumCount }]} id="sponsor-list" hidden>
           <h3>赞助我的小游戏服务器：</h3>
-          <ol>{sponsors.map(({ name, amount }) => <li><span>{name}</span><strong>¥{amount}</strong></li>)}</ol>
+          <ol>{sponsors.map((sponsor) => {
+            const avatarUrl = sponsorAvatarUrl(sponsor);
+            return <li>
+            <span class="sponsor-avatar" aria-hidden="true"><span>{Array.from(sponsor.name)[0]}</span>{avatarUrl && <img src={avatarUrl} width={siteConfig.sponsorPresentation.avatarSizePixels} height={siteConfig.sponsorPresentation.avatarSizePixels} loading="lazy" decoding="async" referrerpolicy="no-referrer" alt="" data-sponsor-avatar />}</span>
+            <span>{sponsor.name}</span><strong>¥{sponsor.amount}</strong>
+          </li>})}</ol>
         </div>
         <span class="sponsor-smile" aria-hidden="true" data-sponsor-smile>(｡･ω･｡)ﾉ♡</span>
       </div>
     </div>
   </section>
+  <FriendsSection />
 </BaseLayout>
 
 <script>
@@ -148,10 +161,38 @@ const deepseekTokenUsage = buildTokenUsageCalendar(new Map<string, TokenUsage>([
   const sponsorDisplay = document.querySelector<HTMLElement>('[data-sponsor-display]');
   const sponsorList = document.querySelector<HTMLElement>('#sponsor-list');
   const sponsorSmile = document.querySelector<HTMLElement>('[data-sponsor-smile]');
+  let avatarsReady: Promise<void> | undefined;
+  const prepareAvatars = () => avatarsReady ??= Promise.all(
+    [...document.querySelectorAll<HTMLImageElement>('[data-sponsor-avatar]')].map((image) => new Promise<void>((resolve) => {
+      image.loading = 'eager';
+      let settled = false;
+      const finish = (loaded: boolean) => {
+        if (settled) return;
+        settled = true; window.clearTimeout(timeout); image.hidden = !loaded; resolve();
+      };
+      const timeout = window.setTimeout(() => finish(false), siteConfig.sponsorPresentation.avatarTimeoutMilliseconds);
+      void image.decode().then(() => finish(true), () => finish(false));
+    })),
+  ).then(() => undefined);
+  if (sponsorDisplay) {
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries.some((entry) => entry.isIntersecting)) return;
+      observer.disconnect(); void prepareAvatars();
+    }, { rootMargin: `${siteConfig.sponsorPresentation.avatarPreloadMarginPixels}px` });
+    observer.observe(sponsorDisplay);
+  }
   let sponsorAnimation: Animation | undefined;
-  sponsorToggle?.addEventListener('click', () => {
-    if (!sponsorDisplay || !sponsorList || !sponsorSmile) return;
+  sponsorToggle?.addEventListener('click', async () => {
+    if (!sponsorDisplay || !sponsorList || !sponsorSmile || sponsorToggle.disabled) return;
     const open = sponsorToggle.getAttribute('aria-expanded') !== 'true';
+    if (open) {
+      sponsorToggle.disabled = true;
+      sponsorToggle.setAttribute('aria-busy', 'true');
+      sponsorToggle.setAttribute('aria-label', '正在准备赞助清单');
+      await prepareAvatars();
+      sponsorToggle.disabled = false;
+      sponsorToggle.removeAttribute('aria-busy');
+    }
     sponsorToggle.setAttribute('aria-expanded', String(open));
     sponsorToggle.setAttribute('aria-label', open ? '收起赞助清单' : '展开赞助清单');
     animateContentHeight(sponsorDisplay, () => { sponsorList.hidden = !open; sponsorSmile.hidden = open; });
@@ -185,5 +226,4 @@ const deepseekTokenUsage = buildTokenUsageCalendar(new Map<string, TokenUsage>([
     }, 1600);
   });
 
-  if (window.location.hash === '#friends') window.location.replace('/#friends');
 </script>

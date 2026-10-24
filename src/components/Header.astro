@@ -6,6 +6,7 @@ import ThemeToggle from './ThemeToggle.astro';
 const currentPath = Astro.url.pathname;
 const { showMotion = true } = Astro.props;
 const isCurrentPage = (href: string) => currentPath === href
+  || (href === '/content' && currentPath.startsWith('/articles/'))
   || (href !== '/' && !href.includes('#') && currentPath.startsWith(href));
 ---
 
@@ -13,13 +14,13 @@ const isCurrentPage = (href: string) => currentPath === href
   <div class="header-identity">
     <a class="site-brand" href="/" aria-label="SamsBlog 首页">
       <img class="site-brand__avatar" src="/media/brand/logo.jpg" alt="" width="44" height="44" />
-      <img
+      <span class="site-brand__sticker" data-brand-sticker><img
         class="site-brand__wordmark"
         src="/media/branding/samsblog-wordmark-nav.webp"
         alt="SamsBlog"
         width="480"
         height="179"
-      />
+      /></span>
     </a>
     <nav class="header-socials" aria-label="社交链接">
       <a class="header-social header-social--bilibili" href={siteConfig.social.bilibili} target="_blank" rel="noreferrer" aria-label="Bilibili">
@@ -69,10 +70,32 @@ const isCurrentPage = (href: string) => currentPath === href
 </header>
 
 <script>
+  import { siteConfig } from '../config/site';
+  import { motionDisabled } from '../lib/motion';
   const header = document.querySelector<HTMLElement>('[data-site-header]');
   const menuButton = header?.querySelector<HTMLButtonElement>('[data-menu-button]');
   const mobileMenu = header?.querySelector<HTMLElement>('[data-mobile-menu]');
   const mobileViewport = window.matchMedia('(max-width: 1080px)');
+  const sticker = header?.querySelector<HTMLElement>('[data-brand-sticker]');
+  let stickerFrame = 0;
+  const resetSticker = () => {
+    cancelAnimationFrame(stickerFrame); stickerFrame = 0;
+    sticker?.style.removeProperty('--sticker-x'); sticker?.style.removeProperty('--sticker-y'); sticker?.style.removeProperty('--sticker-light');
+  };
+  sticker?.addEventListener('pointermove', (event) => {
+    if (event.pointerType !== 'mouse' || motionDisabled()) return;
+    cancelAnimationFrame(stickerFrame);
+    stickerFrame = requestAnimationFrame(() => {
+      const bounds = sticker.getBoundingClientRect();
+      const x = Math.max(-1, Math.min(1, (event.clientX - bounds.left) / bounds.width * 2 - 1));
+      const y = Math.max(-1, Math.min(1, (event.clientY - bounds.top) / bounds.height * 2 - 1));
+      sticker.style.setProperty('--sticker-x', `${-y * siteConfig.effects.pointerTiltDegrees}deg`);
+      sticker.style.setProperty('--sticker-y', `${x * siteConfig.effects.pointerTiltDegrees}deg`);
+      sticker.style.setProperty('--sticker-light', `${50 + x * 35}%`);
+    });
+  });
+  sticker?.addEventListener('pointerleave', resetSticker);
+  window.addEventListener('blur', resetSticker);
 
   // 移动选项面板的展开、外部关闭与焦点恢复。
   function setMenuOpen(open: boolean, restoreFocus = true) {

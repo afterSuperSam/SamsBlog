@@ -1,0 +1,24 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import '../styles/articles.css';
+import { cancelReplyNotifications } from '../lib/reply-notifications';
+import { readPositiveId, HttpError, readRequestBytes } from '../lib/http';
+Astro.response.headers.set('Cache-Control', 'private, no-store');
+Astro.response.headers.set('Referrer-Policy', 'no-referrer');
+Astro.response.headers.set('X-Robots-Tag', 'noindex, nofollow');
+let message = '';
+if (Astro.request.method === 'POST') {
+  try {
+    if (Astro.request.headers.get('origin') !== Astro.url.origin) throw new HttpError(403, '请求来源不正确');
+    const form = new URLSearchParams((await readRequestBytes(Astro.request, 2048)).toString('utf8'));
+    cancelReplyNotifications(readPositiveId(Number(form.get('message'))), form.get('token') || '');
+    message = '已停止发送这条评论的回复通知。';
+  } catch (error) { if (!(error instanceof HttpError)) throw error; Astro.response.status = error.status; message = error.message; }
+}
+---
+<BaseLayout title="回复通知" description="管理这条评论的回复通知。">
+  <section class="shell notification-preferences"><span class="section-kicker">NOTIFICATIONS</span><h1 class="section-title">回复通知</h1>
+    {message ? <p role="status">{message}</p> : <form method="post"><p>停止接收这条评论下的新回复，评论内容会继续保留。</p><input type="hidden" name="message" value={Astro.url.searchParams.get('message') || ''} /><input type="hidden" name="token" value={Astro.url.searchParams.get('token') || ''} /><button type="submit" class="articles-more">停止通知</button></form>}
+    <a href="/" class="articles-more">回到首页</a>
+  </section>
+</BaseLayout>

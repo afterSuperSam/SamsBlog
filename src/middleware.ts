@@ -1,12 +1,15 @@
 import { randomUUID } from 'node:crypto';
 import { defineMiddleware } from 'astro:middleware';
 import { hashVisitorToken, recordPageView } from './lib/stats';
+import { scheduleReplyNotifications } from './lib/reply-notifications';
 
 const visitorCookie = 'samsblog-visitor';
 const botPattern = /bot|crawler|spider|slurp|preview|monitor|uptime/i;
+let notificationWorkerStarted = false;
 
 export const onRequest = defineMiddleware(async ({ cookies, request, url }, next) => {
   const response = await next();
+  if (!notificationWorkerStarted) { notificationWorkerStarted = true; scheduleReplyNotifications(); }
   const acceptsHtml = request.headers.get('accept')?.includes('text/html') ?? false;
   const documentRequest = !request.headers.get('sec-fetch-dest') || request.headers.get('sec-fetch-dest') === 'document';
   const publicPage = !url.pathname.startsWith('/api/') && !url.pathname.startsWith('/admin');
@@ -25,7 +28,8 @@ export const onRequest = defineMiddleware(async ({ cookies, request, url }, next
     });
     // 匿名统计降级不影响已生成的公开页面，日志只记录错误分类。
     try {
-      recordPageView(hashVisitorToken(token));
+      const article = url.pathname.match(/^\/articles\/([1-9]\d*)\/?$/);
+      recordPageView(hashVisitorToken(token), new Date(), article ? Number(article[1]) : undefined);
     } catch (error) {
       const code = error && typeof error === 'object' && 'code' in error && typeof error.code === 'string' ? error.code : '';
       if (/^SQLITE_(?:BUSY|LOCKED|FULL|IOERR|READONLY|CANTOPEN|CORRUPT|NOTADB)(?:_|$)/.test(code)) {

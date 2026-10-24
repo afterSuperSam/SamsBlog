@@ -1,5 +1,8 @@
 ---
 import { listPublishedMessages } from '../lib/db';
+import { replyNotificationsConfigured } from '../lib/reply-notifications';
+import PaperCheckbox from './PaperCheckbox.astro';
+import FriendApplication from './FriendApplication.astro';
 import '../styles/guestbook.css';
 
 const messages = listPublishedMessages();
@@ -9,8 +12,8 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
 <section class="home-guestbook" id="guestbook">
   <div class="shell" data-reveal>
     <header class="home-guestbook__header">
-      <span>GUESTBOOK</span>
-      <h2>留言纸条</h2>
+      <div><span>GUESTBOOK</span><h2>留言纸条</h2></div>
+      <FriendApplication />
     </header>
 
     <div class="guestbook-layout">
@@ -22,17 +25,25 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
           </span>
           <h3>写一张小纸条</h3>
         </div>
-        <label>
+        <label class="paper-input-label">
           <span>怎么称呼你</span>
           <input name="nickname" type="text" minlength="2" maxlength="48" data-character-maximum="24" autocomplete="off" spellcheck="false" placeholder="2–24 个字符" aria-required="true" aria-describedby="message-form-status" />
         </label>
-        <label>
+        <label class="paper-input-label">
           <span>想说的话</span>
           <textarea name="content" minlength="2" maxlength="1000" data-character-maximum="500" rows="4" autocomplete="off" spellcheck="false" aria-required="true" aria-describedby="message-form-status"></textarea>
         </label>
         <label class="message-form__honeypot" aria-hidden="true" hidden>
           <span>网站</span><input name="website" tabindex="-1" autocomplete="off" />
         </label>
+        <div class="message-contact">
+          <label class="paper-input-label"><span>邮箱 · 可选，不公开</span><input name="email" type="text" inputmode="email" maxlength="254" autocomplete="off" /></label>
+          <div class="visitor-preferences">
+            {replyNotificationsConfigured && <PaperCheckbox name="notifyReply">收到回复邮件通知</PaperCheckbox>}
+            <PaperCheckbox remember>记住称呼和邮箱</PaperCheckbox>
+          </div>
+          <small data-remember-status role="status"></small>
+        </div>
         <div class="message-form__footer">
           <span><b data-message-count>0</b> / 500</span>
           <button class="button button--primary message-submit" type="submit" disabled>
@@ -41,6 +52,13 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
           </button>
         </div>
         <p class="form-status" id="message-form-status" role="status" data-form-status></p>
+        <div class="message-receipt" data-message-receipt aria-hidden="true" hidden>
+          <div class="message-receipt__paper" data-receipt-paper>
+            <i class="message-receipt__fold message-receipt__fold--top" data-receipt-top></i>
+            <i class="message-receipt__fold message-receipt__fold--bottom" data-receipt-bottom></i>
+            <strong class="message-receipt__stamp" data-receipt-stamp>已收到</strong>
+          </div>
+        </div>
         <noscript><p>留言需要启用 JavaScript 后才能提交。</p></noscript>
       </form>
 
@@ -73,16 +91,53 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
 </section>
 
 <script>
-  import { createCharacters, animateCharacters, animateContentHeight } from '../lib/motion';
+  import { attachPaperCaret } from '../lib/paper-caret';
+  import { createCharacters, animateCharacters, animateContentHeight, animateMotion, motionDisabled } from '../lib/motion';
   import { siteConfig } from '../config/site';
   import { requestJson } from '../lib/client-request';
+  import { rememberVisitor } from '../lib/visitor-profile';
   const form = document.querySelector<HTMLFormElement>('[data-message-form]');
+  const visitor = form ? rememberVisitor(form) : undefined;
   const nickname = form?.querySelector<HTMLInputElement>('input[name="nickname"]');
   const textarea = form?.querySelector<HTMLTextAreaElement>('textarea[name="content"]');
   const counter = form?.querySelector<HTMLElement>('[data-message-count]');
   const status = form?.querySelector<HTMLElement>('[data-form-status]');
   const messageScroll = document.querySelector<HTMLElement>('[data-message-scroll]');
   const messageWall = messageScroll?.parentElement;
+  const receipt = form?.querySelector<HTMLElement>('[data-message-receipt]');
+  let receiptAnimations: Animation[] = [];
+  const stopReceipt = () => {
+    receiptAnimations.forEach((animation) => animation.cancel()); receiptAnimations = [];
+    if (receipt) receipt.hidden = true;
+  };
+  // 只在成功且输入已安全清空后折信；继续输入或切走页面会立即恢复纸条。
+  const showReceipt = async () => {
+    stopReceipt();
+    if (!form || !receipt || motionDisabled() || document.hidden) return;
+    receipt.hidden = false;
+    const duration = siteConfig.interactions.receiptDurationMilliseconds;
+    const easing = getComputedStyle(form).getPropertyValue('--ease-out').trim();
+    const play = (element: Element, frames: Keyframe[], start = 0, length = 1) => {
+      const animation = animateMotion(element, frames.map((frame) => ({ ...frame, easing })), { duration: duration * length, delay: duration * start, fill: 'both' });
+      if (animation) receiptAnimations.push(animation);
+    };
+    [...form.children].filter((element) => element !== receipt && element !== status).forEach((element) => play(element,
+      [{ opacity: 1 }, { opacity: 0, offset: .14 }, { opacity: 0, offset: .8 }, { opacity: 1 }]));
+    play(receipt.querySelector('[data-receipt-paper]')!, [
+      { opacity: 0, transform: 'translateY(12px) scale(.92)' },
+      { opacity: 1, transform: 'translateY(0) scale(1)', offset: .16 },
+      { opacity: 1, transform: 'translateY(0) scale(1)', offset: .78 },
+      { opacity: 0, transform: 'translateY(-18px) scale(.96)' },
+    ]);
+    play(receipt.querySelector('[data-receipt-top]')!, [{ transform: 'rotateX(0deg)' }, { transform: 'rotateX(-180deg)' }], .13, .28);
+    play(receipt.querySelector('[data-receipt-bottom]')!, [{ transform: 'rotateX(0deg)' }, { transform: 'rotateX(180deg)' }], .28, .28);
+    play(receipt.querySelector('[data-receipt-stamp]')!, [{ opacity: 0, transform: 'scale(1.5) rotate(-18deg)' }, { opacity: 1, transform: 'scale(1) rotate(-8deg)' }], .52, .2);
+    await Promise.allSettled(receiptAnimations.map((animation) => animation.finished));
+    stopReceipt();
+  };
+  form?.addEventListener('input', stopReceipt);
+  form?.addEventListener('focusin', stopReceipt);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) stopReceipt(); });
   if (form && messageScroll && messageWall) {
     const updateWall = () => {
       messageWall.style.height = `${form.offsetHeight}px`;
@@ -138,93 +193,7 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
   form?.addEventListener('focusin', scheduleWritingVisibility);
   form?.addEventListener('input', scheduleWritingVisibility);
 
-  // 手绘光标跟随真实插入点，原生文本框继续处理输入法、选区和滚动。
-  [nickname, textarea].forEach((field) => {
-    const label = field?.closest('label');
-    if (!field || !label) return;
-    const caret = document.createElement('span');
-    caret.className = 'paper-caret';
-    caret.setAttribute('aria-hidden', 'true');
-    caret.hidden = true;
-    label.append(caret);
-    label.classList.add('has-paper-caret');
-    const mirror = document.createElement('div');
-    mirror.setAttribute('aria-hidden', 'true');
-    mirror.style.cssText = 'position:fixed;left:-10000px;top:0;visibility:hidden;pointer-events:none;border:0;white-space:pre-wrap;overflow-wrap:break-word;';
-    const before = document.createTextNode('');
-    const marker = document.createElement('span');
-    marker.style.cssText = 'display:inline-block;width:0;height:var(--paper-caret-height);vertical-align:middle;';
-    const after = document.createTextNode('');
-    mirror.append(before, marker, after);
-    document.body.append(mirror);
-    let frame = 0;
-    let revealCaret = false;
-    let composing = false;
-    const updateCaret = () => {
-      frame = 0;
-      const reveal = revealCaret;
-      revealCaret = false;
-      if (composing || document.activeElement !== field || field.selectionStart !== field.selectionEnd) {
-        caret.hidden = true;
-        return;
-      }
-      const styles = getComputedStyle(field);
-      mirror.style.font = styles.font;
-      mirror.style.letterSpacing = styles.letterSpacing;
-      mirror.style.padding = styles.padding;
-      mirror.style.boxSizing = styles.boxSizing;
-      mirror.style.width = `${field.clientWidth}px`;
-      mirror.style.whiteSpace = field instanceof HTMLInputElement ? 'pre' : 'pre-wrap';
-      const position = field.selectionStart || 0;
-      before.data = field.value.slice(0, position);
-      after.data = field.value.slice(position) || '\u200b';
-      const markerBounds = marker.getBoundingClientRect();
-      const mirrorBounds = mirror.getBoundingClientRect();
-      const fieldBounds = field.getBoundingClientRect();
-      const labelBounds = label.getBoundingClientRect();
-      const verticalOffset = field instanceof HTMLInputElement ? Math.max(0, (field.clientHeight - parseFloat(styles.paddingTop) - parseFloat(styles.paddingBottom) - parseFloat(styles.lineHeight)) / 2) : 0;
-      let x = markerBounds.left - mirrorBounds.left - field.scrollLeft;
-      let y = markerBounds.top - mirrorBounds.top - field.scrollTop + verticalOffset;
-      if (reveal) {
-        const insetTop = parseFloat(styles.paddingTop);
-        const insetBottom = parseFloat(styles.paddingBottom);
-        if (y < insetTop) field.scrollTop = Math.max(0, field.scrollTop + y - insetTop);
-        else if (y + markerBounds.height > field.clientHeight - insetBottom) field.scrollTop += y + markerBounds.height - field.clientHeight + insetBottom;
-        if (field instanceof HTMLInputElement) {
-          const insetLeft = parseFloat(styles.paddingLeft);
-          const insetRight = parseFloat(styles.paddingRight);
-          if (x < insetLeft) field.scrollLeft = Math.max(0, field.scrollLeft + x - insetLeft);
-          else if (x + caret.offsetWidth > field.clientWidth - insetRight) field.scrollLeft += x + caret.offsetWidth - field.clientWidth + insetRight;
-        }
-        x = markerBounds.left - mirrorBounds.left - field.scrollLeft;
-        y = markerBounds.top - mirrorBounds.top - field.scrollTop + verticalOffset;
-      }
-      caret.style.left = `${fieldBounds.left - labelBounds.left + x}px`;
-      caret.style.top = `${fieldBounds.top - labelBounds.top + y}px`;
-      caret.hidden = x < 0 || x > field.clientWidth || y < 0 || y + markerBounds.height > field.clientHeight;
-      caret.getAnimations().forEach((animation) => { animation.currentTime = 0; });
-    };
-    const scheduleCaret = (reveal = false) => {
-      revealCaret ||= reveal;
-      if (!frame) frame = requestAnimationFrame(updateCaret);
-    };
-    ['focus', 'input', 'keyup', 'click', 'select'].forEach((event) => field.addEventListener(event, () => { if (!composing) scheduleCaret(true); }));
-    field.addEventListener('compositionstart', () => {
-      composing = true;
-      field.dataset.composing = 'true';
-      caret.hidden = true;
-    });
-    field.addEventListener('compositionend', () => {
-      composing = false;
-      delete field.dataset.composing;
-      scheduleCaret();
-    });
-    field.addEventListener('scroll', () => scheduleCaret(), { passive: true });
-    field.addEventListener('blur', () => { caret.hidden = true; composing = false; delete field.dataset.composing; });
-    document.addEventListener('selectionchange', () => { if (!composing && document.activeElement === field) scheduleCaret(); });
-    form?.addEventListener('reset', () => scheduleCaret(true));
-    new ResizeObserver(() => scheduleCaret()).observe(field);
-  });
+  [nickname, textarea, form?.querySelector<HTMLInputElement>('[name="email"]')].forEach(attachPaperCaret);
 
   textarea?.addEventListener('input', () => { if (counter) counter.textContent = String(Array.from(textarea.value).length); });
   [nickname, textarea].forEach((field) => {
@@ -251,23 +220,27 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
     submitting = true;
     const submit = form.querySelector<HTMLButtonElement>('button[type="submit"]');
     const data = new FormData(form);
+    const email = String(data.get('email') || '').trim();
+    const notifyReply = data.has('notifyReply') && email.length > 0;
     submit?.setAttribute('disabled', 'true');
     showStatus('正在送出…', 'loading');
     try {
       const result = await requestJson<{ ok?: boolean; message?: string; error?: string }>(
         '/api/guestbook/messages.json', 'POST',
-        { nickname: data.get('nickname'), content: data.get('content'), website: data.get('website') },
+        { nickname: data.get('nickname'), content: data.get('content'), website: data.get('website'), email: notifyReply ? email : '', notifyReply },
         '留言服务暂时不可用，请稍后重试。',
       );
       if (!result.ok) throw new Error(result.error || '提交失败，请稍后重试。');
+      visitor?.save();
       // 只清空本次送出后未变化的字段，不打断等待期间的新输入或中文组词。
       [nickname, textarea].forEach((field) => {
-        if (!field || field.dataset.composing === 'true' || field.value !== data.get(field.name)) return;
+        if (!field || (field === nickname && visitor?.enabled()) || field.dataset.composing === 'true' || field.value !== data.get(field.name)) return;
         field.value = '';
         field.dispatchEvent(new Event('input', { bubbles: true }));
       });
       if (counter) counter.textContent = String(Array.from(textarea?.value || '').length);
       showStatus(result.message || '留言已送出。', 'success');
+      if (!textarea?.value) await showReceipt();
     } catch (error) {
       showStatus(error instanceof TypeError ? '网络连接失败，请检查连接后重试。' : error instanceof Error ? error.message : '提交失败，请稍后重试。', 'error');
     } finally {

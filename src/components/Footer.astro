@@ -78,7 +78,7 @@ const signatureLetters = [
     </div>
     <div class="footer-notes">
     {showSignature && <div class="footer-signature" data-footer-signature data-duration={siteConfig.signature.durationMilliseconds} data-stroke-pause={siteConfig.signature.strokePauseMilliseconds} data-visibility-threshold={siteConfig.signature.visibilityThreshold} data-easing={siteConfig.signature.easing} data-settle-duration={siteConfig.signature.settleDurationMilliseconds} data-character-duration={siteConfig.signature.versionCharacterDurationMilliseconds} data-character-stagger={siteConfig.signature.versionCharacterStaggerMilliseconds}>
-      <svg viewBox="0 0 360 90" width="360" height="90" role="img" aria-label="SuperSam 手写签名">
+      <svg data-signature-drawing viewBox="0 0 360 90" width="360" height="90" role="img" aria-label="SuperSam 手写签名">
         <defs>
           {signatureLetters.map((letter, index) => <mask id={`footer-signature-mask-${index}`} maskUnits="userSpaceOnUse" x="0" y="0" width="360" height="90">
             {letter.traces.map((trace) => <path class="signature-stroke" d={trace} data-letter={letter.letter} pathLength="1" />)}
@@ -106,7 +106,7 @@ const signatureLetters = [
     const pause = Number(signature.dataset.strokePause);
     const threshold = Number(signature.dataset.visibilityThreshold);
     const easing = signature.dataset.easing;
-    const drawing = signature.querySelector<SVGSVGElement>('svg')!;
+    const drawing = signature.querySelector<SVGSVGElement>('[data-signature-drawing]')!;
     const versionCharacters = [...signature.querySelectorAll<HTMLElement>('.signature-version-character')];
     const settleDuration = Number(signature.dataset.settleDuration);
     const characterDuration = Number(signature.dataset.characterDuration);

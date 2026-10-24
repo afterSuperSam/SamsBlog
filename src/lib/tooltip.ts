@@ -1,4 +1,5 @@
 import { siteConfig } from '../config/site';
+import { animateMotion } from './motion';
 
 interface TooltipContent {
   show(trigger: HTMLElement): void;
@@ -13,10 +14,12 @@ export const createTooltip = (popover: HTMLElement, content: TooltipContent) => 
   let hoveringPopover = false;
   let dismissTimer: number | undefined;
   let focusFrame: number | undefined;
+  let revealAnimation: Animation | undefined;
   const cancelDismiss = () => { window.clearTimeout(dismissTimer); dismissTimer = undefined; };
   const focusedTrigger = () => triggers.find((trigger) => trigger.contains(document.activeElement));
   const hide = (cancelPendingFocus = true) => {
     cancelDismiss();
+    revealAnimation?.cancel();
     if (cancelPendingFocus && focusFrame !== undefined) {
       cancelAnimationFrame(focusFrame);
       focusFrame = undefined;
@@ -32,12 +35,21 @@ export const createTooltip = (popover: HTMLElement, content: TooltipContent) => 
     if (activeTrigger && activeTrigger !== trigger) content.hide?.(activeTrigger);
     activeTrigger = trigger;
     content.show(trigger);
-    if (!popover.matches(':popover-open')) popover.showPopover();
+    const opening = !popover.matches(':popover-open');
+    if (opening) popover.showPopover();
+    else revealAnimation?.cancel();
     const anchor = trigger.getBoundingClientRect();
-    const detail = popover.getBoundingClientRect();
-    const top = anchor.top >= detail.height + 20 ? anchor.top - detail.height - 10 : anchor.bottom + 10;
-    popover.style.left = `${Math.max(12, Math.min(anchor.left + anchor.width / 2 - detail.width / 2, window.innerWidth - detail.width - 12))}px`;
+    const detail = { width: popover.offsetWidth, height: popover.offsetHeight };
+    const above = anchor.top >= detail.height + 20;
+    const top = above ? anchor.top - detail.height - 10 : anchor.bottom + 10;
+    const left = Math.max(12, Math.min(anchor.left + anchor.width / 2 - detail.width / 2, window.innerWidth - detail.width - 12));
+    popover.style.left = `${left}px`;
     popover.style.top = `${Math.max(12, Math.min(top, window.innerHeight - detail.height - 12))}px`;
+    popover.style.transformOrigin = `${Math.max(0, Math.min(anchor.left + anchor.width / 2 - left, detail.width))}px ${above ? 'bottom' : 'top'}`;
+    if (opening) revealAnimation = animateMotion(popover, [
+      { opacity: .85, transform: `translateY(${above ? 3 : -3}px) scale(.98)` },
+      { opacity: 1, transform: 'translateY(0) scale(1)' },
+    ], { duration: siteConfig.interactions.tooltipRevealMilliseconds, easing: getComputedStyle(document.documentElement).getPropertyValue('--ease-out').trim() });
   };
   const scheduleDismiss = () => {
     cancelDismiss();

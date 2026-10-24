@@ -1,0 +1,93 @@
+<button type="button" class="friends-more" data-friend-apply>申请友链 <span aria-hidden="true">＋</span></button>
+<dialog class="friend-application-dialog" data-friend-application aria-label="申请友链">
+  <div class="friend-application-content">
+  <p class="friend-application-intro">友链申请可能需要一些时间，请先将本站添加到您的友链页面，确认后会添加您的友链</p>
+  <dl class="friend-application-guidelines">
+    <div><dt>链接维护</dt><dd>友链网站长期无法访问或内容违规，将会被移除</dd></div>
+    <div><dt>内容要求</dt><dd>内容积极向上，不含有任何含色情/反动/暴力等违法违规内容</dd></div>
+    <div><dt>站点要求</dt><dd>支持 HTTPS，以原创内容为主，能够正常访问且有持续更新</dd></div>
+  </dl>
+  <form method="post" data-friend-apply-form novalidate autocomplete="off">
+    <label class="paper-input-label"><span>网站名称</span><input name="name" required maxlength="60" /></label>
+    <label class="paper-input-label"><span>网站地址</span><input name="url" type="url" required maxlength="4096" placeholder="https://…" /></label>
+    <label class="paper-input-label"><span>图标地址</span><input name="iconUrl" type="url" required maxlength="4096" placeholder="https://…" /></label>
+    <label class="paper-input-label"><span>一句话介绍</span><input name="description" required maxlength="240" /></label>
+    <label class="paper-input-label"><span>联系邮箱 · 可选，不公开</span><input name="email" type="text" inputmode="email" pattern="[^\s@]+@[^\s@]+\.[^\s@]+" maxlength="254" /></label>
+    <label class="paper-input-label"><span>RSS 地址 · 可选</span><input name="rssUrl" type="url" maxlength="4096" placeholder="https://…" /></label>
+    <label hidden aria-hidden="true">网站<input name="website" tabindex="-1" autocomplete="off" /></label>
+    <footer><button type="button" class="friend-application-close" data-friend-apply-close aria-label="关闭友链申请">关闭</button><button type="submit" class="friends-more" disabled>送出申请 ↗</button></footer>
+    <p class="form-status" role="status" data-friend-apply-feedback></p>
+  </form>
+  </div>
+</dialog>
+<script>
+  import { siteConfig } from '../config/site';
+  import { requestJson } from '../lib/client-request';
+  import { animateMotion, setFeedbackText } from '../lib/motion';
+  import { attachPaperCaret } from '../lib/paper-caret';
+  const dialog = document.querySelector<HTMLDialogElement>('[data-friend-application]');
+  const opener = document.querySelector<HTMLButtonElement>('[data-friend-apply]');
+  if (dialog && opener) {
+    const form = dialog.querySelector<HTMLFormElement>('[data-friend-apply-form]')!;
+    const feedback = form.querySelector<HTMLElement>('[data-friend-apply-feedback]')!;
+    const fields = [...form.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('.paper-input-label :is(input,textarea)')];
+    const refreshCarets = fields.map(attachPaperCaret);
+    const draftKey = siteConfig.friendApplications.draftStorageKey;
+    const saveDraft = () => {
+      const draft = Object.fromEntries(fields.map((field) => [field.name, field.value]));
+      try {
+        if (fields.some((field) => field.value.trim())) localStorage.setItem(draftKey, JSON.stringify(draft));
+        else localStorage.removeItem(draftKey);
+      } catch { setFeedbackText(feedback, '浏览器未允许保存草稿，关闭页面前请保留填写内容。'); }
+    };
+    try {
+      const stored = localStorage.getItem(draftKey);
+      if (stored && stored.length <= fields.reduce((total, field) => total + field.maxLength * 6 + field.name.length + 6, 2)) {
+        const draft = JSON.parse(stored);
+        if (draft && typeof draft === 'object' && !Array.isArray(draft)) fields.forEach((field) => {
+          const value = draft[field.name];
+          if (typeof value === 'string' && value.length <= field.maxLength && !value.includes('\0')) field.value = value;
+        });
+      }
+    } catch { feedback.textContent = '本机草稿暂时无法读取，可以重新填写。'; }
+    window.addEventListener('pagehide', saveDraft);
+    const styles = getComputedStyle(document.documentElement);
+    const duration = (name: string) => Number.parseFloat(styles.getPropertyValue(name));
+    const easing = styles.getPropertyValue('--ease-out').trim();
+    opener.addEventListener('click', () => {
+      if (dialog.open) return;
+      dialog.showModal(); refreshCarets.forEach((refresh) => refresh());
+      animateMotion(dialog, [{ opacity: 0, translate: '0 20px', scale: '.96', filter: 'blur(9px)' }, { opacity: 1, translate: '0 0', scale: '1', filter: 'blur(0)' }], { duration: duration('--motion-reorder-duration'), easing });
+    });
+    const close = async () => {
+      if (dialog.hasAttribute('data-closing')) return;
+      saveDraft(); dialog.dataset.closing = '';
+      const animation = animateMotion(dialog, [{ opacity: 1, scale: '1', filter: 'blur(0)' }, { opacity: 0, translate: '0 12px', scale: '.98', filter: 'blur(7px)' }], { duration: duration('--motion-disclosure-duration'), easing });
+      if (animation) await animation.finished.catch(() => undefined);
+      dialog.close(); delete dialog.dataset.closing; opener.focus({ preventScroll: true });
+    };
+    dialog.querySelector('[data-friend-apply-close]')!.addEventListener('click', () => void close());
+    dialog.addEventListener('cancel', (event) => { event.preventDefault(); void close(); });
+    const outside = (event: MouseEvent) => {
+      const bounds = dialog.getBoundingClientRect();
+      return event.target === dialog && (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom);
+    };
+    let startedOutside = false;
+    dialog.addEventListener('pointerdown', (event) => { startedOutside = outside(event); });
+    dialog.addEventListener('click', (event) => { if (startedOutside && outside(event)) void close(); startedOutside = false; });
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault(); const button = form.querySelector<HTMLButtonElement>('button[type="submit"]')!; if (button.disabled) return;
+      const invalid = fields.find((input) => !input.validity.valid);
+      if (invalid) { setFeedbackText(feedback, `请检查${invalid.closest('label')?.querySelector('span')?.textContent || '申请信息'}`); invalid.focus(); return; }
+      button.disabled = true; const payload = Object.fromEntries(new FormData(form)); setFeedbackText(feedback, '正在送出申请…');
+      try {
+        await requestJson('/api/friends/applications.json', 'POST', payload, '申请暂时无法送出，填写内容仍保留。');
+        if (JSON.stringify(Object.fromEntries(new FormData(form))) === JSON.stringify(payload)) form.reset();
+        saveDraft(); refreshCarets.forEach((refresh) => refresh());
+        setFeedbackText(feedback, '申请已送达，通过后会出现在网站友链中。');
+      } catch (error) { setFeedbackText(feedback, error instanceof Error ? error.message : '提交失败，请稍后再试。'); }
+      finally { button.disabled = false; }
+    });
+    form.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled = false;
+  }
+</script>

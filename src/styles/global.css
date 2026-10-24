@@ -13,7 +13,28 @@
 .rss-source__attribute { color: var(--summer-pink); }
 
 :root {
+  --admin-sidebar-width: 174px;
+  --admin-drawer-width: 740px;
+  --admin-editor-width: 1240px;
+  --application-dialog-width: 960px;
+  --application-glass-core: var(--surface);
+  --application-glass-blur: 8px;
+  --sticker-spectrum: linear-gradient(115deg,#69aab9,#8bafa0 13%,#c3aa80 26%,#bf849f 39%,#9c91bc 52%,#7e9ebc 65%,#8bafa0 78%,#bf849f 91%,#9c91bc);
+  --sticker-opacity: .38;
+  --article-card-padding-block: 12px;
+  --article-card-min-height: 160px;
+  --sponsor-avatar-size: 34px;
+  --annotation-width: 180px;
+  --quote-dialog-width: 520px;
+  --quote-star-opacity: .55;
+  --quote-background: var(--bg);
+  --quote-halo-opacity: .04;
+  --quote-glow-blue: var(--glow-blue);
+  --quote-glow-pink: var(--glow-pink);
   --motion-feedback-duration: 180ms;
+  --motion-disclosure-duration: 260ms;
+  --motion-spring-duration: 360ms;
+  --ease-spring: cubic-bezier(.18,1.25,.3,1);
   --motion-reorder-duration: 420ms;
   --motion-decoration-duration: 620ms;
   --article-reading-width: 780px;
@@ -36,9 +57,25 @@
   --message-wall-fade: 120px;
   --message-wall-blur: 6px;
   --paper-label-duration: 650ms;
+  --article-search-font-size: clamp(1.08rem,1.4vw,1.2rem);
+  --article-search-width: 260px;
+  --article-search-cancel-color: #e38289;
+  --content-top-space: clamp(64px,8vw,104px);
+  --paper-caret-blink-duration: 1.1s;
   --jump-backlight: color-mix(in srgb, var(--glow-blue) 16%, transparent);
   --project-ink-easing: cubic-bezier(.65,0,.35,1);
   --project-archived-color: #e28a94;
+  --terrain-column: #4a6069;
+  --terrain-blue: #718991;
+  --terrain-pink: #767383;
+  --terrain-side: #394f59;
+  --terrain-mark: #a4c4ce;
+  --terrain-scan-strength: .42;
+  --terrain-opacity: .54;
+  --terrain-overflow: clamp(48px,10svh,96px);
+  --terrain-edge-fade: .52;
+  --terrain-edge-range: clamp(320px,55%,720px);
+  --terrain-edge-blur: 32px;
   --cover-transition-duration: 580ms;
   color-scheme: dark;
   --bg: #202123;
@@ -46,7 +83,8 @@
   --surface: #292a2c;
   --surface-2: #333438;
   --article-image-width: clamp(100px, 38%, 360px);
-  --article-image-blur: 18px;
+  --article-image-feather: 80px;
+  --article-image-blur: 24px;
   --article-image-glow-opacity: .22;
   --article-hover-surface: color-mix(in srgb, var(--surface) 96%, var(--summer-blue) 4%);
   --article-hover-glow: color-mix(in oklab, var(--glow-blue) 20%, transparent);
@@ -59,6 +97,8 @@
   --project-title-glow-wide: color-mix(in oklab, var(--glow-blue) 38%, transparent);
   --project-number-gap: 24px;
   --friend-rss-duration: 560ms;
+  --friend-focus-scale: 1.045;
+  --friend-focus-duration: 560ms;
   --friend-hover-light-strength: 12%;
   --friend-hover-shadow-strength: 16%;
   --contact-hover-light-strength: 16%;
@@ -99,6 +139,12 @@
   --hover: rgba(255, 242, 221, 0.055);
   --header-bg: rgba(29, 31, 33, 0.9);
   --on-media: #fff7eb;
+  --on-media-accent: #ffe6a2;
+  --hero-note-color: var(--on-media);
+  --content-note-color: var(--summer-pink);
+  --content-link-color: var(--summer-blue);
+  --content-update-color: var(--summer-orange);
+  --content-timeline-width: clamp(92px,12vw,134px);
   --media-bg: #111315;
   --flow-bg:
     radial-gradient(ellipse at 8% 18%, color-mix(in oklab, var(--accent) 5%, transparent), transparent 38rem),
@@ -136,6 +182,9 @@
   --paper-input-line-height: 1.3;
   --paper-caret-height: 13px;
   --paper-caret-width: 3px;
+  --paper-checkbox-size: 26px;
+  --paper-checkbox-stroke: 2.8px;
+  --project-title-glow-duration: 900ms;
   --friend-overlay-start: rgba(32,33,35,.38);
   --friend-overlay-middle: rgba(32,33,35,.28);
   --friend-overlay-end: rgba(32,33,35,.05);
@@ -143,9 +192,19 @@
   --gutter: clamp(22px, 5vw, 82px);
   --header-height: 76px;
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in: cubic-bezier(.55, 0, .8, .35);
+  --page-transition-exit: 180ms;
+  --page-transition-enter: 420ms;
+  --page-transition-delay: 40ms;
+  --page-transition-blur: 3px;
+  --hero-release-distance: -40px;
+  --hero-release-scale: .94;
   --ease: var(--ease-out);
   --motion-drift: 18s;
   --ambient-halo-size: min(48vw,620px);
+  --ambient-rest-strength: .6;
+  --ambient-quiet-strength: .16;
+  --ambient-shift-duration: 1100ms;
   --ambient-halo-opacity: .16;
   --ambient-pink-halo-size: min(65vw,840px);
   --ambient-pink-halo-opacity: .1;
@@ -167,13 +226,30 @@
   --contribution-cell-gap: 4px;
 }
 
+@supports (animation-timing-function:linear(0,1)) {
+  :root { --ease-spring: linear(0,0.1769,0.4917,0.7616,0.9333,1.0166,1.0423,1.0389,1.0258,1.0132,1.0045,1,0.9983,0.9982,0.9987,0.9993,0.9997,1,1.0001,1.0001,1.0001,1,1,1,1); }
+}
+
 :root[data-theme="light"] {
+  --quote-star-opacity: .4;
+  --quote-background: #fcfeff;
+  --quote-halo-opacity: .7;
+  --quote-glow-blue: #c7eff8;
+  --quote-glow-pink: #ffdeef;
+  --terrain-column: #cbdfe5;
+  --terrain-blue: #dbeaef;
+  --terrain-pink: #e2dce8;
+  --terrain-side: #b2cad3;
+  --terrain-mark: #7696a3;
+  --terrain-scan-strength: .3;
+  --terrain-opacity: .72;
   color-scheme: light;
   --friend-overlay-start: rgba(249,253,254,.4);
   --friend-overlay-middle: rgba(249,253,254,.3);
   --friend-overlay-end: rgba(249,253,254,.06);
   --ambient-pink-halo-opacity: .34;
   --surface-paper: #f6f0e5;
+  --article-search-cancel-color: #b94454;
   --surface-paper-tape: rgba(205, 190, 164, 0.36);
   --shadow-paper: 0 14px 30px rgba(93, 77, 52, 0.1), inset 0 1px rgba(255, 255, 255, 0.65);
   --bg: #f4fbfc;
@@ -182,6 +258,7 @@
   --surface-2: #e2f6f6;
   --text: #26393d;
   --text-strong: #162d32;
+  --hero-note-color: var(--text-strong);
   --text-soft: #49666b;
   --muted: #536f74;
   --accent: #aa6552;
@@ -317,6 +394,18 @@ p {
   }
 }
 
+/* 纸条和搜索共用短手绘光标与标签聚焦色。 */
+.paper-input-label>span:first-child{width:fit-content;color:transparent;background:linear-gradient(90deg,var(--summer-blue) 0 33%,var(--text-soft) 67% 100%) 100% 0 / 300% 100%;background-clip:text;font-size:var(--font-size-label);transition:background-position var(--paper-label-duration) var(--ease-out)}
+.paper-input-label:focus-within>span:first-child{background-position:0 0}
+.has-paper-caret{position:relative}
+.has-paper-caret :is(input,textarea):not([data-composing="true"]){caret-color:transparent}
+.paper-caret{position:absolute;width:var(--paper-caret-width);height:var(--paper-caret-height);border-radius:55% 40% 45% 50%;background:var(--summer-blue);clip-path:polygon(24% 0,95% 4%,80% 100%,5% 94%);transform:rotate(-5deg);pointer-events:none;animation:paper-caret-blink var(--paper-caret-blink-duration) step-end infinite}
+.paper-caret[hidden]{display:none}
+.paper-caret-mirror{position:fixed;left:-10000px;top:0;visibility:hidden;pointer-events:none;border:0;white-space:pre-wrap;overflow-wrap:break-word}
+.paper-caret-marker{display:inline-block;width:0;height:var(--paper-caret-height);vertical-align:middle}
+@keyframes paper-caret-blink{0%,100%{opacity:1}50%{opacity:0}}
+@media(forced-colors:active){.paper-input-label>span:first-child{background:none;color:CanvasText}.paper-input-label:focus-within>span:first-child{color:Highlight}.paper-caret{display:none}.has-paper-caret :is(input,textarea){caret-color:Highlight!important}}
+
 body { position: relative; isolation: isolate; }
 
 @media (max-width: 720px) {
@@ -364,6 +453,16 @@ main { position:relative; z-index:1; }
 ::view-transition-old(root),::view-transition-new(root){animation:none}
 ::view-transition-group(*){animation-duration:var(--cover-transition-duration);animation-timing-function:var(--ease-out)}
 ::view-transition-group(root){animation:none}
+:root[data-page-transition="soft"] .site-header{view-transition-name:page-header}
+:root[data-page-transition="soft"] #main-content{view-transition-name:page-content}
+:root[data-page-transition="soft"] :is([data-reveal].reveal-pending,.reveal-character){opacity:1}
+:root[data-page-transition="soft"]::view-transition-group(page-header),:root[data-page-transition="soft"]::view-transition-group(page-content){animation:none}
+:root[data-page-transition="soft"]::view-transition-old(page-header){display:none}
+:root[data-page-transition="soft"]::view-transition-new(page-header){animation:none}
+:root[data-page-transition="soft"]::view-transition-old(page-content){animation:page-soft-out var(--page-transition-exit) var(--ease-in) both;mix-blend-mode:normal}
+:root[data-page-transition="soft"]::view-transition-new(page-content){animation:page-soft-in var(--page-transition-enter) var(--ease-out) var(--page-transition-delay) both;mix-blend-mode:normal}
+@keyframes page-soft-out{from{opacity:1;filter:blur(0)}to{opacity:0;filter:blur(var(--page-transition-blur))}}
+@keyframes page-soft-in{from{opacity:0;filter:blur(var(--page-transition-blur))}to{opacity:1;filter:blur(0)}}
 :root.motion-paused::view-transition-group(*),:root.motion-paused::view-transition-old(*),:root.motion-paused::view-transition-new(*){animation:none!important}
 @media(prefers-reduced-motion:reduce){::view-transition-group(*),::view-transition-old(*),::view-transition-new(*){animation:none!important}}
 
@@ -391,14 +490,31 @@ html[data-theme-transition]::view-transition-new(root){z-index:2}
 .rss-subscription .section-kicker{display:block;padding-right:18px;font-size:var(--font-size-small);letter-spacing:.04em;text-transform:none}
 
 /* 代码和订阅地址共用复制成功的粉色反馈。 */
-.copy-feedback{position:relative;isolation:isolate;transition:color var(--motion-feedback-duration) var(--ease-out)}
+.copy-feedback{position:relative;isolation:isolate;min-inline-size:4em;transition:color var(--motion-feedback-duration) var(--ease-out)}
+.visitor-preferences{display:flex;flex-wrap:wrap;gap:0 18px;align-items:center}
+.visitor-preferences .paper-checkbox{position:relative;display:inline-flex;align-items:center;gap:8px;min-height:44px;font:400 var(--font-size-small)/1.5 var(--playful);color:var(--text-soft);cursor:pointer;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}
+.visitor-preferences .paper-checkbox input{position:absolute;inset:0 auto 0 0;margin:auto 0;min-height:0;width:var(--paper-checkbox-size);height:var(--paper-checkbox-size);padding:0;opacity:0;cursor:inherit}
+.visitor-preferences .paper-checkbox svg{flex:none;width:var(--paper-checkbox-size);height:var(--paper-checkbox-size);stroke:currentColor;stroke-width:var(--paper-checkbox-stroke);stroke-linecap:round;stroke-linejoin:round;overflow:visible}
+.paper-checkbox__box{transition:stroke var(--motion-feedback-duration) var(--ease-out)}
+.paper-checkbox__check{stroke:var(--summer-blue);stroke-dasharray:1;stroke-dashoffset:1;transition:stroke-dashoffset var(--motion-spring-duration) var(--ease-out)}
+.paper-checkbox input:checked+svg .paper-checkbox__check{stroke-dashoffset:0}
+.paper-checkbox input:checked+svg .paper-checkbox__box{stroke:var(--summer-blue)}
+.paper-checkbox input:focus-visible+svg{outline:2px solid var(--summer-blue);outline-offset:4px;border-radius:5px}
+@media(prefers-reduced-motion:reduce){.paper-checkbox path,.project-title-glow{transition:none}}
+@media(forced-colors:active){.paper-checkbox__check,.paper-checkbox input:checked+svg .paper-checkbox__box{stroke:Highlight}}
+form>label[hidden]{display:none!important}
+[data-remember-status]{display:block;color:var(--muted);font:400 var(--font-size-small)/1.6 var(--playful)}
+[data-remember-status]:empty{display:none}
+.copy-feedback>span{display:inline-block}
+.copy-feedback::after{position:absolute;left:-16px;top:calc(50% - 5px);width:10px;height:6px;border:solid currentColor;border-width:0 0 2px 2px;content:"";opacity:0;transform:rotate(-45deg) scale(.5);transition:opacity var(--motion-feedback-duration) var(--ease-out),transform var(--motion-spring-duration) var(--ease-spring);pointer-events:none}
 .copy-feedback::before{position:absolute;inset:5px -14px;z-index:-1;content:"";border-radius:50%;background:radial-gradient(ellipse,color-mix(in srgb,var(--glow-pink) 24%,transparent),transparent 72%);opacity:0;pointer-events:none;transition:opacity var(--motion-decoration-duration) var(--ease-out)}
 .copy-feedback[data-copy-state="success"]{color:var(--summer-pink)}
 .copy-feedback[data-copy-state="success"]::before{opacity:1}
-.copy-feedback[data-copy-state="success"] span{background:linear-gradient(110deg,var(--summer-pink),color-mix(in srgb,var(--summer-pink) 70%,var(--text)));background-clip:text;-webkit-background-clip:text;color:transparent;animation:copy-confirm var(--motion-decoration-duration) var(--ease-out)}
+.copy-feedback[data-copy-state="success"]::after{opacity:1;transform:rotate(-45deg) scale(1)}
+.copy-feedback[data-copy-state="success"] span{background:linear-gradient(110deg,var(--summer-pink),color-mix(in srgb,var(--summer-pink) 70%,var(--text)));background-clip:text;-webkit-background-clip:text;color:transparent;animation:copy-confirm var(--motion-spring-duration) var(--ease-spring)}
 .copy-feedback[data-copy-state="error"]{color:var(--danger)}
 .copy-feedback:disabled{cursor:progress}
-@keyframes copy-confirm{from{opacity:.35;translate:0 2px}to{opacity:1;translate:0 0}}
+@keyframes copy-confirm{from{opacity:.55;translate:0 2px;scale:.96}to{opacity:1;translate:0 0;scale:1}}
 @media(prefers-reduced-motion:reduce){.copy-feedback,.copy-feedback::before{transition:none}.copy-feedback[data-copy-state="success"] span{animation:none}}
 
 /* 触摸设备保留点击和键盘反馈，不保留鼠标悬停的位移与光效。 */
@@ -408,9 +524,20 @@ html[data-theme-transition]::view-transition-new(root){z-index:2}
   .about-link:hover:not(:focus-visible) .about-link__icon{transform:none}
   .article-card:hover:not(:has(:focus-visible)) .article-card__cover img{transform:none}
   .article-card:hover:not(:has(:focus-visible))::before,.friend-card:hover:not(:has(:focus-visible))::after,.about-link:hover:not(:focus-visible)::before{opacity:0}
-  .articles-more:hover:not(:focus-visible),.articles-more:hover:not(:focus-visible) span,.friend-card__rss:hover:not(:focus-visible),.article-filters__options button:hover:not(:focus-visible){transform:none}
-  .articles-more:hover:not(:focus-visible)::before,.friend-card__rss:hover:not(:focus-visible)::before{opacity:0}
+  :is(.articles-more,.friends-more):hover:not(:focus-visible),:is(.articles-more,.friends-more):hover:not(:focus-visible) span,.friend-card__rss:hover:not(:focus-visible),.article-filters__options button:hover:not(:focus-visible){transform:none}
+  :is(.articles-more,.friends-more):hover:not(:focus-visible)::before,.friend-card__rss:hover:not(:focus-visible)::before{opacity:0}
   .friend-card__rss:hover:not(:focus-visible) path{stroke-dashoffset:.16;opacity:.65}
   .project-list article:hover:not(:has(:focus-visible)) .project-keyword{color:inherit}
   .project-list article:hover:not(:has(:focus-visible)) .project-keyword path{stroke-dashoffset:1}
 }
+
+/* 区块末端的无边框跳转入口 */
+button:is(.articles-more,.friends-more){appearance:none;border:0;padding:0;background:transparent;box-shadow:none;cursor:pointer}
+:is(.articles-more,.friends-more){position:relative;isolation:isolate;display:inline-flex;align-items:center;gap:10px;min-height:44px;flex-shrink:0;color:var(--summer-blue);font:700 var(--font-size-jump)/1.5 var(--playful);text-decoration:none;transition:transform var(--motion-reorder-duration) var(--ease-link),color var(--motion-feedback-duration) var(--ease-out)}
+:is(.articles-more,.friends-more)::before{position:absolute;inset:0 -18px;z-index:-1;content:"";border-radius:50%;background:radial-gradient(ellipse,var(--jump-backlight),transparent 72%);filter:blur(8px);opacity:0;pointer-events:none;transition:opacity .45s var(--ease-out)}
+:is(.articles-more,.friends-more) span{display:inline-block;transition:transform var(--motion-reorder-duration) var(--ease-link)}
+:is(.articles-more,.friends-more):focus-visible::before{opacity:1}
+@media(hover:hover) and (pointer:fine){:is(.articles-more,.friends-more):hover{transform:translate(3px,-2px)}:is(.articles-more,.friends-more):hover::before{opacity:1}:is(.articles-more,.friends-more):hover span{transform:translate(5px,-3px) rotate(4deg)}}
+:is(.articles-more,.friends-more):active{transform:translateY(0) scale(.97);transition-duration:var(--motion-feedback-duration)}
+@media(prefers-reduced-motion:reduce){:is(.articles-more,.friends-more),:is(.articles-more,.friends-more) span,:is(.articles-more,.friends-more)::before{transition:none}:is(.articles-more,.friends-more):is(:hover,:focus-visible),:is(.articles-more,.friends-more):is(:hover,:focus-visible) span{transform:none}}
+.motion-paused :is(.articles-more,.friends-more),.motion-paused :is(.articles-more,.friends-more) span{transform:none}

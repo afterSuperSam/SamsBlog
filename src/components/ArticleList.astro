@@ -1,153 +1,366 @@
 ---
-import { listArticles, type ArticleRecord } from '../lib/articles';
-import { articleExcerpt } from '../lib/markdown';
+import { listArticles, listHomepageArticles, type ArticleRecord } from '../lib/articles';
+import ArticleCard from './ArticleCard.astro';
+import ReadingTrail from './ReadingTrail.astro';
+import { articlePlainText } from '../lib/markdown';
+import { articleMonth, readArticleFilters, matchesArticle, compareArticles, articleFilterParameters, articleContentTypes } from '../lib/article-catalog';
 import { siteConfig } from '../config/site';
 import '../styles/articles.css';
 
 interface Props { featured?: boolean; articles?: ArticleRecord[] }
 const { featured = false, articles: suppliedArticles } = Astro.props;
-const parameters = Astro.url.searchParams;
-const selectedSource = ['original', 'repost'].includes(parameters.get('source') || '') ? parameters.get('source')! : '';
-const selectedCategory = ['discussion', 'journal'].includes(parameters.get('category') || '') ? parameters.get('category')! : '';
-const selectedSort = ['created-desc', 'created-asc', 'updated-desc', 'updated-asc'].includes(parameters.get('sort') || '') ? parameters.get('sort')! : 'created-desc';
-const articles = suppliedArticles ?? listArticles(featured ? { limit: siteConfig.articles.homepageCount } : {});
-if (!featured) articles.sort((first, second) => {
-  const key = selectedSort.startsWith('updated') ? 'updatedAt' : 'createdAt';
-  const comparison = Date.parse(first[key]) - Date.parse(second[key]) || first.id - second.id;
-  return selectedSort.endsWith('asc') ? comparison : -comparison;
-});
-const matches = (article: typeof articles[number]) => featured || ((!selectedSource || article.source === selectedSource) && (!selectedCategory || article.category === selectedCategory));
-const matchedArticles = articles.filter(matches);
-const visibleArticles = featured ? articles.slice(0, siteConfig.articles.homepageCount) : articles;
-const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
+const filters = readArticleFilters(featured ? new URLSearchParams() : Astro.url.searchParams);
+const articles = (suppliedArticles ?? (featured ? listHomepageArticles() : listArticles()))
+  .map((article) => ({ ...article, search: !featured && filters.q ? `${article.title} ${article.summary} ${articlePlainText(article.content)}` : '' }))
+  .sort((first, second) => compareArticles(first, second, filters));
+const visibleArticles = featured ? articles.filter((article) => article.contentType === 'article').slice(0, siteConfig.articles.homepageCount) : articles;
+const supportingGroups = featured ? [
+  { name: 'notes', label: '短记录', kicker: 'NOTES', articles: articles.filter((article) => article.contentType === 'note' || article.contentType === 'update').slice(0, siteConfig.articles.homepageNoteCount) },
+  { name: 'links', label: '精选链接', kicker: 'LINKS', articles: articles.filter((article) => article.contentType === 'link').slice(0, siteConfig.articles.homepageLinkCount) },
+].filter((group) => group.articles.length) : [];
+const matchedArticles = visibleArticles.filter((article) => matchesArticle(article, filters));
+const matchedArticleIds = new Set(matchedArticles.map((article) => article.id));
+const archiveMonths = new Map<string, { firstArticleId: number; count: number }>();
+if (!featured) {
+  for (const article of visibleArticles) {
+    const month = articleMonth(article.createdAt);
+    const group = archiveMonths.get(month) || { firstArticleId: article.id, count: 0 };
+    if (matchedArticleIds.has(article.id)) group.count += 1;
+    archiveMonths.set(month, group);
+  }
+}
+const tags = [...new Set(articles.flatMap((article) => article.tags))].sort((first, second) => first.localeCompare(second, 'zh-CN'));
+const months = [...new Set(articles.map((article) => articleMonth(article.createdAt)))].sort().reverse();
+const years = [...new Set(months.map((month) => month.slice(0, 4)))];
+const monthLabel = (month: string) => `${month.slice(0, 4)} 年 ${Number(month.slice(5))} 月`;
+const filterHref = (name: string, value: string) => `/content?${articleFilterParameters({ ...filters, [name]: value })}`;
 const filterGroups = [
-  { name: 'sort', label: '排序', selected: selectedSort, options: [
+  { name: 'sort', label: '排序', options: [
     { value: 'created-desc', label: '最新发布' }, { value: 'created-asc', label: '最早发布' },
     { value: 'updated-desc', label: '最近编辑' }, { value: 'updated-asc', label: '最早编辑' },
   ] },
-  { name: 'source', label: '来源', selected: selectedSource, options: [
-    { value: '', label: '全部' }, { value: 'original', label: '原创' }, { value: 'repost', label: '搬运' },
+  { name: 'source', label: '来源', options: [
+    { value: '', label: '全部来源' }, { value: 'original', label: '原创' }, { value: 'repost', label: '搬运' },
   ] },
-  { name: 'category', label: '分类', selected: selectedCategory, options: [
-    { value: '', label: '全部' }, { value: 'discussion', label: '杂谈' }, { value: 'journal', label: '日志' },
+  { name: 'category', label: '分类', options: [
+    { value: '', label: '全部分类' }, { value: 'discussion', label: '杂谈' }, { value: 'journal', label: '日志' },
   ] },
+  { name: 'contentType', label: '形式', options: [{ value: '', label: '全部形式' }, ...articleContentTypes] },
+  ...(tags.length ? [{ name: 'tag', label: '标签', options: [{ value: '', label: '全部标签' }, ...tags.map((tag) => ({ value: tag, label: `# ${tag}` }))] }] : []),
 ];
-const selectedFilters = filterGroups.map((group) => {
-  const option = group.options.find((option) => option.value === group.selected)!;
-  return option.value ? option.label : `全部${group.label}`;
-}).join(' · ');
+const selectedFilters = filterGroups.slice(0, 4).map((group) => group.options.find((option) => option.value === filters[group.name as keyof typeof filters])!.label).join(' · ');
 ---
 
-{(!featured || visibleArticles.length > 0) && <section class:list={['articles-section', { 'articles-section--featured': featured }]} id={featured ? 'latest-article' : 'articles'} aria-labelledby={featured ? 'latest-article-title' : 'articles-title'} data-article-list={!featured ? '' : undefined}>
-  <div class="shell" data-reveal>
+{(!featured || visibleArticles.length > 0 || supportingGroups.length > 0) && <section class:list={['articles-section', { 'articles-section--featured': featured }]} id={featured ? 'latest-article' : 'articles'} aria-labelledby={featured ? 'latest-article-title' : 'articles-title'} data-article-list={!featured ? '' : undefined}>
+  <div class="shell">
     <header class="articles-heading">
-      <div><span class="section-kicker">ARTICLES</span><h2 class="section-title" id={featured ? 'latest-article-title' : 'articles-title'}>{featured ? '最近写下' : '文章'}</h2></div>
-      {featured && <a class="articles-more" href="/about#articles">全部文章 <span aria-hidden="true">↗</span></a>}
-      {!featured && <span class="articles-heading__note" aria-hidden="true">moments ✧</span>}
+      <div><span class="section-kicker">{featured ? 'ARTICLES' : 'CONTENT'}</span>{featured ? <h2 class="section-title" id="latest-article-title">最近写下</h2> : <h1 class="section-title" id="articles-title">内容</h1>}</div>
+      {featured && <a class="articles-more" href="/content">全部内容 <span aria-hidden="true">↗</span></a>}
+      {!featured && <div class="article-catalog__toolbar" data-catalog-toolbar>
+        <nav class="article-catalog__views" aria-label="内容展示方式">{[{ value: 'list', label: '全部' }, { value: 'archive', label: '归档' }].map((option) => <a href={filterHref('view', option.value)} data-filter-name="view" data-filter-value={option.value} aria-current={filters.view === option.value ? 'true' : undefined}>{option.label}</a>)}</nav>
+        {articles.length > 0 && <div class="article-catalog__search-control" data-search-control>
+          <form class="article-catalog__search" id="article-search-bar" action="/content" method="get" role="search" aria-label="搜索内容" data-article-search>
+            {Object.entries(filters).filter(([name]) => name !== 'q').map(([name, value]) => <input type="hidden" name={name} value={value} />)}
+            <label class="article-catalog__query paper-input-label" for="article-search"><span class="sr-only">搜索题目、摘要或正文</span><input id="article-search" type="search" name="q" value={filters.q} maxlength={siteConfig.articles.searchMaximumLength} autocomplete="off" spellcheck="false" placeholder="搜索正文与题目…" /></label>
+            <button class="articles-more article-catalog__submit" type="submit">查找</button>
+          </form>
+          <button class="articles-more article-catalog__search-toggle" type="button" aria-expanded="false" aria-controls="article-search-bar" data-search-toggle hidden><span data-search-label>搜索</span></button>
+        </div>}
+      </div>}
     </header>
-    <div class:list={['article-browser', { 'article-browser--filters': !featured && articles.length > 0 }]}>
-    <div class="article-browser__main">
-    <div class="article-grid" data-article-grid>
-      {visibleArticles.map((article, index) => <article class:list={['article-card', { 'article-card--cover': article.coverUrl }]} data-article-card={article.id} hidden={!matches(article)} data-image-side={(featured ? index : matchedArticles.indexOf(article)) % 2 === 0 ? 'left' : 'right'} data-source={article.source} data-category={article.category} data-created={article.createdAt} data-updated={article.updatedAt}>
-        <a class="article-card__link" href={`/articles/${article.id}`}>
-          {article.coverUrl && <div class="article-card__cover" aria-hidden="true"><img class="article-card__glow" src={article.coverUrl} alt="" loading="lazy" referrerpolicy="no-referrer" /><img class="article-card__image" data-article-cover={article.id} src={article.coverUrl} alt="" loading="lazy" referrerpolicy="no-referrer" /></div>}
-          <div class="article-card__copy">
-            <div class="article-tags"><span>{article.source === 'original' ? '原创' : '搬运'}</span><span>{article.category === 'discussion' ? '杂谈' : '日志'}</span></div>
-            <h3>{article.title}</h3>
-            <p>{articleExcerpt(article.content)}</p>
-            <footer><time datetime={article.createdAt}>{dateLabel(article.createdAt)}</time></footer>
-          </div>
-        </a>
-      </article>)}
-    </div>
-    {!featured && <p class="articles-empty" data-article-empty hidden={matchedArticles.length > 0}><span aria-hidden="true">{articles.length ? '⌕' : '✎'}</span><span>{articles.length ? '还没有找到这样的文章' : '纸页已经铺好，等下一次落笔'}</span></p>}
-    {!featured && articles.length > 0 && <p class="article-results" role="status" aria-live="polite" data-article-results>共 {matchedArticles.length} 篇文章</p>}
-    </div>
-    {!featured && articles.length > 0 && <aside class="article-filters" data-article-filters aria-label="文章筛选与排序">
-      <button class="article-filters__toggle" type="button" aria-expanded="false" aria-controls="article-filter-groups" data-filter-toggle><span data-filter-summary>{selectedFilters}</span><span aria-hidden="true">⌄</span></button>
-      <div class="article-filters__groups" id="article-filter-groups">
-      {filterGroups.map((group) => <fieldset class="article-filters__group">
-        <legend>{group.label}</legend>
-        <div class="article-filters__options">{group.options.map((option) => <button type="button" data-filter-name={group.name} data-filter-value={option.value} aria-pressed={option.value === group.selected}>{option.label}<span aria-hidden="true">↗</span></button>)}</div>
-      </fieldset>)}
+    {featured ? <ReadingTrail compact /> : <ReadingTrail articles={articles} />}
+    <div class:list={['article-browser', { 'article-browser--filters': !featured && articles.length > 0 }]} hidden={featured && !visibleArticles.length}>
+      <div class="article-browser__main">
+        <div class="article-grid" data-article-grid data-view={filters.view}>
+          {visibleArticles.map((article) => {
+            const month = articleMonth(article.createdAt);
+            const group = archiveMonths.get(month);
+            return <>
+              {group?.firstArticleId === article.id && <h2 class="article-archive-heading" data-archive-month={month} hidden={filters.view !== 'archive' || !group.count}>{monthLabel(month)} <span>{group.count} 条</span></h2>}
+              <ArticleCard article={article} hidden={!matchedArticleIds.has(article.id)} headingLevel={featured || filters.view === 'archive' ? 3 : 2} filterable={!featured} />
+            </>;
+          })}
+        </div>
+        {!featured && <p class="articles-empty" data-article-empty hidden={matchedArticles.length > 0}><span aria-hidden="true">{articles.length ? '⌕' : '✎'}</span><span>{articles.length ? '还没有找到这样的内容，试试其他关键词或重置筛选' : '纸页已经铺好，等下一次落笔'}</span></p>}
+        {!featured && <p class="article-results" role="status" aria-live="polite" data-article-results>共 {matchedArticles.length} 条内容</p>}
       </div>
-    </aside>}
+      {!featured && articles.length > 0 && <aside class="article-filters" data-article-filters aria-label="内容筛选与排序">
+        <button class="article-filters__toggle" type="button" aria-expanded="false" aria-controls="article-filter-groups" data-filter-toggle><span data-filter-summary>{selectedFilters}</span><span aria-hidden="true">⌄</span></button>
+        <div class="article-filters__body" id="article-filter-groups"><div class="article-filters__groups">
+          {filterGroups.map((group) => <fieldset class="article-filters__group">
+            <legend>{group.label}</legend>
+            <div class="article-filters__options">{group.options.map((option) => <a href={filterHref(group.name, option.value)} data-filter-name={group.name} data-filter-value={option.value} aria-current={filters[group.name as keyof typeof filters] === option.value ? 'true' : undefined}>{option.label}<span aria-hidden="true">✧</span></a>)}</div>
+          </fieldset>)}
+          <fieldset class="article-filters__group article-filters__period">
+            <legend>年月</legend>
+            <div class="article-filters__options">
+              <a href={filterHref('period', '')} data-filter-name="period" data-filter-value="" aria-current={!filters.period ? 'true' : undefined}>全部日期<span aria-hidden="true">✧</span></a>
+              {years.map((year) => <details open={filters.period.startsWith(year)}>
+                <summary>{year} 年</summary>
+                <a href={filterHref('period', year)} data-filter-name="period" data-filter-value={year} aria-current={filters.period === year ? 'true' : undefined}>全年<span aria-hidden="true">✧</span></a>
+                {months.filter((month) => month.startsWith(year)).map((month) => <a href={filterHref('period', month)} data-filter-name="period" data-filter-value={month} aria-current={filters.period === month ? 'true' : undefined}>{Number(month.slice(5))} 月<span aria-hidden="true">✧</span></a>)}
+              </details>)}
+            </div>
+          </fieldset>
+          <a class="articles-more article-filters__reset" href="/content" data-filter-reset>重置筛选</a>
+        </div></div>
+      </aside>}
     </div>
+    {supportingGroups.length > 0 && <div class="home-content-groups">
+      {supportingGroups.map((group) => <section class="home-content-group" data-content-group={group.name} aria-labelledby={`home-${group.name}-title`}>
+        <header class="home-content-group__heading"><span aria-hidden="true">{group.kicker}</span><h3 id={`home-${group.name}-title`}>{group.label}</h3>{group.name === 'links' && <button type="button" class="articles-more home-content-shuffle" data-link-shuffle hidden><span data-shuffle-label>换一条</span><span aria-hidden="true">↻</span></button>}</header>
+        <div class="article-grid">{group.articles.map((article) => <ArticleCard article={article} headingLevel={4} />)}</div>
+        {group.name === 'links' && <span class="sr-only" data-shuffle-status role="status"></span>}
+      </section>)}
+    </div>}
   </div>
 </section>}
 
 <script>
-  import { animateMotion, animateContentHeight } from '../lib/motion';
+  import { animateMotion, animateContentHeight, setFeedbackText } from '../lib/motion';
   import { siteConfig } from '../config/site';
-  // 已公开文章在页面内筛选、排序，无需额外请求。
-  document.querySelectorAll<HTMLElement>('[data-article-list]').forEach((section) => {
-    const filters = section.querySelector<HTMLElement>('[data-article-filters]');
-    const grid = section.querySelector<HTMLElement>('[data-article-grid]');
-    const empty = section.querySelector<HTMLElement>('[data-article-empty]');
-    const result = section.querySelector<HTMLElement>('[data-article-results]');
-    const cards = [...section.querySelectorAll<HTMLElement>('[data-article-card]')];
-    if (!filters || !grid) return;
-    const buttons = [...filters.querySelectorAll<HTMLButtonElement>('[data-filter-name]')];
-    const toggle = filters.querySelector<HTMLButtonElement>('[data-filter-toggle]');
-    const summary = filters.querySelector<HTMLElement>('[data-filter-summary]');
-    filters.dataset.filtersReady = '';
-    const setExpanded = (expanded: boolean) => animateContentHeight(filters, () => {
-      filters.dataset.expanded = String(expanded);
-      toggle?.setAttribute('aria-expanded', String(expanded));
+  import { attachPaperCaret } from '../lib/paper-caret';
+  import { initializeInlineNotes } from '../lib/reading-extras';
+  import { articleMonth, readArticleFilters, matchesArticle, compareArticles, articleFilterParameters, articleDateLabel, articleLinkHost, type CatalogArticle } from '../lib/article-catalog';
+
+  document.querySelectorAll<HTMLButtonElement>('[data-link-shuffle]').forEach((button) => {
+    button.hidden = false;
+    const group = button.closest<HTMLElement>('[data-content-group]')!;
+    const label = button.querySelector<HTMLElement>('[data-shuffle-label]')!;
+    const status = group.querySelector<HTMLElement>('[data-shuffle-status]')!;
+    button.addEventListener('click', async () => {
+      if (button.disabled) return;
+      const card = group.querySelector<HTMLElement>('[data-article-card]')!;
+      button.disabled = true; setFeedbackText(label, '翻找中'); status.textContent = '';
+      try {
+        const response = await fetch(`/api/public/featured-link.json?after=${card.dataset.articleCard}`, { signal: AbortSignal.timeout(siteConfig.interactions.requestTimeoutMilliseconds) });
+        if (!response.ok) throw new Error(`Featured link returned ${response.status}`);
+        const { article } = await response.json();
+        if (!article || String(article.id) === card.dataset.articleCard) { status.textContent = '暂时只有这一条精选链接'; return; }
+        const replacement = card.cloneNode(true) as HTMLElement;
+        replacement.dataset.articleCard = String(article.id);
+        replacement.querySelector<HTMLAnchorElement>('a')!.href = article.externalUrl;
+        replacement.querySelector('[data-card-title]')!.textContent = article.title;
+        replacement.querySelector('[data-card-excerpt]')!.textContent = article.excerpt;
+        replacement.querySelector('[data-card-host]')!.textContent = articleLinkHost(article.externalUrl);
+        replacement.querySelector('[data-card-source]')!.textContent = article.source === 'original' ? '原创' : '搬运';
+        replacement.querySelector('[data-card-category]')!.textContent = article.category === 'discussion' ? '杂谈' : '日志';
+        const date = replacement.querySelector<HTMLTimeElement>('[data-card-date]')!;
+        date.dateTime = article.createdAt; date.textContent = articleDateLabel(article.createdAt);
+        replacement.querySelector('[data-card-tags]')?.remove();
+        if (article.tags.length) {
+          const tags = document.createElement('div'); tags.className = 'article-keywords'; tags.dataset.cardTags = '';
+          tags.replaceChildren(...article.tags.map((tag: string) => { const span = document.createElement('span'); span.textContent = `# ${tag}`; return span; }));
+          replacement.querySelector('footer')!.before(tags);
+        }
+        animateContentHeight(card.parentElement!, () => card.replaceWith(replacement));
+        animateMotion(replacement, [{ opacity: 0, translate: '0 8px' }, { opacity: 1, translate: '0 0' }], { duration: siteConfig.articles.reorderMilliseconds, easing: getComputedStyle(document.documentElement).getPropertyValue('--ease-out').trim() });
+        status.textContent = `已换为：${article.title}`;
+      } catch (error) { console.warn('Featured link switch failed', error); status.textContent = '暂时无法换一条，请稍后重试'; }
+      finally { button.disabled = false; setFeedbackText(label, '换一条'); }
     });
-    toggle?.addEventListener('click', () => setExpanded(toggle.getAttribute('aria-expanded') !== 'true'));
+  });
+
+
+  document.querySelectorAll<HTMLElement>('[data-article-list]').forEach((section) => {
+    const grid = section.querySelector<HTMLElement>('[data-article-grid]')!;
+    const filters = section.querySelector<HTMLElement>('[data-article-filters]');
+    if (!filters) return;
+    const cards = [...grid.querySelectorAll<HTMLElement>('[data-article-card]')].map((element) => ({
+      element, id: Number(element.dataset.articleCard), contentType: element.dataset.contentType as CatalogArticle['contentType'], source: element.dataset.source!, category: element.dataset.category!,
+      createdAt: element.dataset.created!, updatedAt: element.dataset.updated!, tags: JSON.parse(element.dataset.tags || '[]') as string[], search: '',
+    } satisfies CatalogArticle & { element: HTMLElement }));
+    const headers = new Map([...grid.querySelectorAll<HTMLElement>('[data-archive-month]')].map((header) => [header.dataset.archiveMonth!, header]));
+    const links = [...section.querySelectorAll<HTMLAnchorElement>('[data-filter-name]')];
+    const search = section.querySelector<HTMLFormElement>('[data-article-search]')!;
+    const query = search.elements.namedItem('q') as HTMLInputElement;
+    query.setAttribute('writingsuggestions', 'false');
+    const refreshCaret = attachPaperCaret(query);
+    const searchControl = search.closest<HTMLElement>('[data-search-control]')!;
+    const searchToggle = searchControl.querySelector<HTMLButtonElement>('[data-search-toggle]')!;
+    const searchLabel = searchToggle.querySelector<HTMLElement>('[data-search-label]')!;
+    const toolbar = searchControl.closest<HTMLElement>('[data-catalog-toolbar]')!;
+    let searchExpanded = false;
+    let searchAnimation: Animation | undefined;
+    search.hidden = true;
+    searchToggle.hidden = false;
+    searchControl.dataset.searchReady = '';
+    const updateSearchToggle = () => {
+      const cancel = !searchExpanded && Boolean(query.value.trim());
+      setFeedbackText(searchLabel, searchExpanded ? '收起' : cancel ? '取消' : '搜索');
+      searchToggle.dataset.searchState = cancel ? 'cancel' : 'search';
+      searchToggle.setAttribute('aria-label', searchExpanded ? '收起搜索栏' : cancel ? '取消搜索' : '搜索');
+    };
+    updateSearchToggle();
+    const setSearchExpanded = (expanded: boolean) => {
+      if (searchExpanded === expanded) return;
+      searchExpanded = expanded;
+      const styles = getComputedStyle(search);
+      const start = search.hidden ? { width: '0px', opacity: 0, translate: '12px 0', marginRight: '0px' }
+        : { width: styles.width, opacity: styles.opacity, translate: styles.translate, marginRight: styles.marginRight };
+      searchAnimation?.cancel();
+      search.hidden = false;
+      search.inert = !expanded;
+      searchToggle.setAttribute('aria-expanded', String(expanded));
+      toolbar.dataset.searchExpanded = 'true';
+      updateSearchToggle();
+      const expandedStyles = getComputedStyle(search);
+      searchAnimation = animateMotion(search, [start, expanded
+        ? { width: expandedStyles.width, opacity: 1, translate: '0 0', marginRight: expandedStyles.marginRight }
+        : { width: '0px', opacity: 0, translate: '12px 0', marginRight: '0px' }], {
+        duration: expanded ? siteConfig.articles.searchRevealMilliseconds : siteConfig.articles.searchDismissMilliseconds,
+        easing: getComputedStyle(document.documentElement).getPropertyValue(expanded ? '--ease-out' : '--ease-in').trim(),
+      });
+      const settle = () => {
+        if (searchExpanded !== expanded) return;
+        search.hidden = !expanded;
+        toolbar.dataset.searchExpanded = String(expanded);
+        refreshCaret();
+      };
+      if (searchAnimation) void searchAnimation.finished.then(settle, settle);
+      else settle();
+      if (expanded) { query.focus({ preventScroll: true }); refreshCaret(); }
+    };
+    searchToggle.addEventListener('click', () => {
+      if (!searchExpanded && query.value.trim()) {
+        query.value = '';
+        refreshCaret();
+        filterArticles();
+      } else setSearchExpanded(!searchExpanded);
+    });
+    searchControl.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape' || !searchExpanded) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setSearchExpanded(false);
+      searchToggle.focus({ preventScroll: true });
+    });
+    document.addEventListener('pointerdown', (event) => { if (!searchControl.contains(event.target as Node)) setSearchExpanded(false); });
+    searchControl.addEventListener('focusout', (event) => { if (event.relatedTarget && !searchControl.contains(event.relatedTarget as Node)) setSearchExpanded(false); });
+    const empty = section.querySelector<HTMLElement>('[data-article-empty]')!;
+    const result = section.querySelector<HTMLElement>('[data-article-results]')!;
+    const toggle = filters.querySelector<HTMLButtonElement>('[data-filter-toggle]')!;
+    const summary = filters.querySelector<HTMLElement>('[data-filter-summary]')!;
+    const filterBody = filters.querySelector<HTMLElement>('.article-filters__body')!;
+    const syncFilterAccess = () => {
+      filterBody.inert = getComputedStyle(toggle).display !== 'none' && toggle.getAttribute('aria-expanded') !== 'true';
+    };
+    let values = readArticleFilters(new URLSearchParams(location.search));
+    let searchTimer: ReturnType<typeof setTimeout> | undefined;
+    filters.dataset.filtersReady = '';
+    const setExpanded = (expanded: boolean) => {
+      filters.dataset.filtersInteracted = '';
+      filters.dataset.expanded = String(expanded);
+      toggle.setAttribute('aria-expanded', String(expanded));
+      syncFilterAccess();
+    };
+    syncFilterAccess();
+    window.addEventListener('resize', syncFilterAccess);
+    toggle.addEventListener('click', () => setExpanded(toggle.getAttribute('aria-expanded') !== 'true'));
     filters.addEventListener('keydown', (event) => {
-      if (event.key !== 'Escape' || toggle?.getAttribute('aria-expanded') !== 'true') return;
+      if (event.key !== 'Escape' || toggle.getAttribute('aria-expanded') !== 'true') return;
       setExpanded(false);
       toggle.focus();
     });
-    const values: Record<string, string> = Object.fromEntries(buttons.filter((button) => button.getAttribute('aria-pressed') === 'true').map((button) => [button.dataset.filterName!, button.dataset.filterValue!]));
-    const filterArticles = () => {
-      const positions = new Map(cards.filter((card) => !card.hidden).map((card) => [card, card.getBoundingClientRect()]));
-      cards.forEach((card) => card.getAnimations().forEach((animation) => animation.cancel()));
-      const { source, category, sort } = values;
-      const [field, direction] = sort.split('-');
-      let count = 0;
-      cards.sort((first, second) => {
-        const key = field === 'updated' ? 'updated' : 'created';
-        const comparison = Date.parse(first.dataset[key] || '') - Date.parse(second.dataset[key] || '') || Number(first.dataset.articleCard) - Number(second.dataset.articleCard);
-        return direction === 'asc' ? comparison : -comparison;
-      }).forEach((card) => {
-        card.hidden = Boolean(source && card.dataset.source !== source) || Boolean(category && card.dataset.category !== category);
-        if (!card.hidden) {
-          card.dataset.imageSide = count % 2 === 0 ? 'left' : 'right';
-          count += 1;
-        }
-        grid.append(card);
+    let searchRevision = 0;
+    let searchController: AbortController | undefined;
+    let searchedQuery = '';
+    let searchedIds = new Set<number>();
+    const filterArticles = async () => {
+      clearTimeout(searchTimer);
+      values.q = query.value.trim().slice(0, siteConfig.articles.searchMaximumLength);
+      updateSearchToggle();
+      const revision = ++searchRevision;
+      searchController?.abort();
+      if (values.q && searchedQuery !== values.q) {
+        const searchTerm = values.q;
+        searchController = new AbortController();
+        setFeedbackText(result, '正在搜索正文…');
+        try {
+          const response = await fetch(`/api/articles/search.json?${new URLSearchParams({ q: searchTerm })}`, { signal: AbortSignal.any([searchController.signal, AbortSignal.timeout(siteConfig.interactions.requestTimeoutMilliseconds)]) });
+          if (!response.ok) throw new Error('Search request failed');
+          const data = await response.json() as { ids: number[] };
+          if (revision !== searchRevision) return;
+          searchedIds = new Set(data.ids); searchedQuery = searchTerm;
+        } catch { if (revision === searchRevision) setFeedbackText(result, '搜索暂时不可用，请稍后再试。'); return; }
+      }
+      const included = (card: CatalogArticle) => matchesArticle(card, { ...values, q: '' }) && (!values.q || searchedIds.has(card.id));
+      const positions = new Map(cards.filter((card) => !card.element.hidden).map((card) => [card.element, card.element.getBoundingClientRect()]));
+      cards.forEach((card) => card.element.getAnimations().forEach((animation) => animation.cancel()));
+      const counts = new Map<string, number>();
+      const includedMonths = new Set<string>();
+      cards.filter(included).forEach((card) => {
+        const month = articleMonth(card.createdAt);
+        counts.set(month, (counts.get(month) || 0) + 1);
       });
-      if (empty) empty.hidden = count > 0;
-      if (result) result.textContent = `共 ${count} 篇文章`;
-      if (summary) summary.textContent = ['sort', 'source', 'category'].map((name) => {
-        const selected = buttons.find((button) => button.dataset.filterName === name && button.getAttribute('aria-pressed') === 'true');
-        const text = selected?.childNodes[0]?.textContent || '';
-        return values[name] ? text : `全部${name === 'source' ? '来源' : '分类'}`;
-      }).join(' · ');
+      let count = 0;
+      const fragment = document.createDocumentFragment();
+      cards.sort((first, second) => compareArticles(first, second, values)).forEach((card) => {
+        const month = articleMonth(card.createdAt);
+        if (!includedMonths.has(month)) {
+          const header = headers.get(month)!;
+          header.hidden = values.view !== 'archive' || !counts.has(month);
+          header.querySelector('span')!.textContent = `${counts.get(month) || 0} 条`;
+          fragment.append(header);
+          includedMonths.add(month);
+        }
+        card.element.hidden = !included(card);
+        card.element.querySelector('h3')!.setAttribute('aria-level', values.view === 'archive' ? '3' : '2');
+        if (!card.element.hidden) count += 1;
+        fragment.append(card.element);
+      });
+      const viewChanged = grid.dataset.view !== values.view;
+      grid.dataset.view = values.view;
+      grid.append(fragment);
+      if (viewChanged) initializeInlineNotes(grid);
+      empty.hidden = count > 0;
+      setFeedbackText(result, `共 ${count} 条内容`);
+      links.forEach((link) => {
+        const name = link.dataset.filterName as keyof typeof values;
+        if (values[name] === link.dataset.filterValue) link.setAttribute('aria-current', 'true');
+        else link.removeAttribute('aria-current');
+        link.href = `/content?${articleFilterParameters({ ...values, [name]: link.dataset.filterValue || '' })}`;
+      });
+      setFeedbackText(summary, ['sort', 'source', 'category', 'contentType', 'tag', 'period'].flatMap((name) => {
+        const selected = links.find((link) => link.dataset.filterName === name && link.getAttribute('aria-current') === 'true');
+        return selected && (name === 'sort' || values[name as keyof typeof values]) ? [selected.childNodes[0].textContent?.trim()] : [];
+      }).join(' · '));
+      search.querySelectorAll<HTMLInputElement>('input[type="hidden"]').forEach((input) => { input.value = values[input.name as keyof typeof values]; });
       const easing = getComputedStyle(document.documentElement).getPropertyValue('--ease-out').trim();
-      cards.filter((card) => !card.hidden).forEach((card) => {
-        const previous = positions.get(card);
-        const next = card.getBoundingClientRect();
-        card.classList.remove('reveal-pending');
-        card.dataset.reordered = 'true';
-        animateMotion(card, [
+      cards.filter((card) => !card.element.hidden).forEach(({ element }) => {
+        const previous = positions.get(element);
+        const next = element.getBoundingClientRect();
+        element.classList.remove('reveal-pending');
+        element.dataset.reordered = 'true';
+        animateMotion(element, [
           { translate: previous ? `${previous.left - next.left}px ${previous.top - next.top}px` : '0 16px', opacity: previous ? 1 : 0 },
           { translate: '0 0', opacity: 1 },
         ], { duration: siteConfig.articles.reorderMilliseconds, easing });
       });
       const url = new URL(location.href);
-      Object.entries(values).forEach(([key, value]) => value && value !== 'created-desc' ? url.searchParams.set(key, value) : url.searchParams.delete(key));
+      url.search = articleFilterParameters(values).toString();
       history.replaceState(history.state, '', url);
     };
-    buttons.forEach((button) => button.addEventListener('click', () => {
-      const name = button.dataset.filterName || '';
-      if (!(name in values)) return;
-      values[name] = button.dataset.filterValue || '';
-      buttons.filter((option) => option.dataset.filterName === name).forEach((option) => option.setAttribute('aria-pressed', String(option === button)));
+    links.forEach((link) => link.addEventListener('click', (event) => {
+      if (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      event.preventDefault();
+      values[link.dataset.filterName as keyof typeof values] = link.dataset.filterValue || '';
       filterArticles();
     }));
+    search.addEventListener('submit', (event) => { event.preventDefault(); filterArticles(); });
+    query.addEventListener('input', (event) => {
+      clearTimeout(searchTimer);
+      if (!(event as InputEvent).isComposing) searchTimer = setTimeout(filterArticles, siteConfig.articles.searchDelayMilliseconds);
+    });
+    query.addEventListener('compositionend', () => { clearTimeout(searchTimer); searchTimer = setTimeout(filterArticles, siteConfig.articles.searchDelayMilliseconds); });
+    section.querySelector('[data-filter-reset]')?.addEventListener('click', (event) => {
+      if (event instanceof MouseEvent && (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)) return;
+      event.preventDefault();
+      values = readArticleFilters(new URLSearchParams());
+      query.value = '';
+      refreshCaret();
+      filterArticles();
+    });
+    window.addEventListener('pagehide', () => { clearTimeout(searchTimer); searchController?.abort(); });
   });
 </script>

@@ -1,0 +1,30 @@
+import { describe, expect, it } from 'vitest';
+import { parseReadingHistory, getReadingTrail } from '../src/lib/reading-history';
+import { siteConfig } from '../src/config/site';
+
+const record = { version: 'v1', progress: .4, heading: 'article-heading-test', offset: 20, updatedAt: 1 };
+
+describe('local reading trail', () => {
+  it('preserves older positions and rejects corrupt or unsafe records', () => {
+    expect(parseReadingHistory(null)).toEqual({});
+    expect(parseReadingHistory('{')).toEqual({});
+    expect(parseReadingHistory('[]')).toEqual({});
+    expect(parseReadingHistory(JSON.stringify({ 1: record, 2: { ...record, progress: 2 }, 3: { ...record, visitedAt: 9e30 }, bad: record }))).toEqual({ 1: record });
+  });
+  it('bounds stored entries by most recent visit while retaining progress', () => {
+    const entries = Object.fromEntries(Array.from({ length: siteConfig.articleReading.positionLimit + 10 }, (_, index) => [index + 1, { ...record, visitedAt: index + 1 }]));
+    const history = parseReadingHistory(JSON.stringify(entries));
+    expect(Object.keys(history)).toHaveLength(siteConfig.articleReading.positionLimit);
+    expect(history['1']).toBeUndefined();
+    expect(history[String(siteConfig.articleReading.positionLimit + 10)].progress).toBe(.4);
+  });
+  it('selects the latest public article even when it is not a featured article', () => {
+    const history = { 1: { ...record, visitedAt: 1 }, 2: { ...record, visitedAt: 3 }, 3: { ...record, visitedAt: 5 } };
+    expect(getReadingTrail(history, [{ id: 1, title: '最新发布', updatedAt: 'v1' }, { id: 2, title: '旧文章的新标题', updatedAt: 'v1' }], 1))
+      .toEqual([{ id: '2', title: '旧文章的新标题', visitedAt: 3, progress: .4 }]);
+  });
+  it('does not display an obsolete position after the article changes', () => {
+    expect(getReadingTrail({ 1: record }, [{ id: 1, title: '文章', updatedAt: 'v2' }], 6)[0].progress).toBe(0);
+    expect(getReadingTrail({ 1: record }, [], 6)).toEqual([]);
+  });
+});

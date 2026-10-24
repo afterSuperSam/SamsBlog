@@ -1,0 +1,6 @@
+---
+import Admin from '../admin.astro';
+const sections = ['articles', 'media', 'messages', 'friends', 'applications', 'projects', 'sponsors', 'analytics', 'notifications'];
+if (!sections.includes(Astro.params.section || '')) return Astro.redirect('/admin');
+---
+<Admin />

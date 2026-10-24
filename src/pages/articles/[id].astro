@@ -5,6 +5,7 @@ import { getArticle, getAdjacentArticles } from '../../lib/articles';
 import { articleExcerpt, renderArticleMarkdown } from '../../lib/markdown';
 import { siteConfig } from '../../config/site';
 import '../../styles/articles.css';
+import ArticleDiscussion from '../../components/ArticleDiscussion.astro';
 
 const identifier = Number(Astro.params.id);
 const article = Number.isSafeInteger(identifier) && identifier > 0 ? getArticle(identifier) : undefined;
@@ -16,7 +17,8 @@ const articleMetadata = article ? {
   publishedTime: article.createdAt, modifiedTime: article.updatedAt, author: author || '',
   structuredData: {
     '@context': 'https://schema.org', '@type': 'BlogPosting', headline: article.title,
-    description: articleExcerpt(article.content), datePublished: article.createdAt, dateModified: article.updatedAt,
+    description: article.summary || articleExcerpt(article.content), datePublished: article.createdAt, dateModified: article.updatedAt,
+    ...(article.tags.length ? { keywords: article.tags.join(', ') } : {}),
     mainEntityOfPage: new URL(`/articles/${article.id}`, siteConfig.siteUrl).href,
     ...(article.coverUrl ? { image: new URL(article.coverUrl, siteConfig.siteUrl).href } : {}),
     ...(author ? { author: { '@type': article.source === 'repost' ? 'Person' : 'Organization', name: author } } : {}),
@@ -27,14 +29,16 @@ const articleMetadata = article ? {
 const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 ---
 
-{article ? <BaseLayout title={article.title} description={articleExcerpt(article.content)} image={article.coverUrl || undefined} articleMetadata={articleMetadata} bodyClass="article-page">
+{article ? <BaseLayout title={article.title} description={article.summary || articleExcerpt(article.content)} image={article.coverUrl || undefined} articleMetadata={articleMetadata} bodyClass="article-page">
   <article class="article-reading shell" data-article-reading data-article-id={article.id} data-article-version={article.updatedAt}>
-    <a class="articles-more article-reading__back" href="/about#articles"><span aria-hidden="true">←</span> 回到文章</a>
+    <a class="articles-more article-reading__back" href="/content"><span aria-hidden="true">←</span> 回到内容</a>
     <header class="article-reading__heading">
       <div class="article-tags"><span>{article.source === 'original' ? '原创' : '搬运'}</span><span>{article.category === 'discussion' ? '杂谈' : '日志'}</span></div>
       <h1>{article.title}</h1>
+      {article.tags.length > 0 && <nav class="article-keywords" aria-label="文章标签">{article.tags.map((tag) => <a href={`/content?${new URLSearchParams({ tag })}`}># {tag}</a>)}</nav>}
       <div class="article-reading__dates"><span>写于 <time datetime={article.createdAt}>{dateLabel(article.createdAt)}</time></span><span>编辑于 <time datetime={article.updatedAt}>{dateLabel(article.updatedAt)}</time></span></div>
       {article.source === 'repost' && (article.originalAuthor || article.originalUrl) && <p class="article-reading__source">{article.originalAuthor && <span>原作者：{article.originalAuthor}</span>}{article.originalUrl && <a href={article.originalUrl} target="_blank" rel="noopener noreferrer">阅读原文 ↗</a>}</p>}
+      {article.contentType === 'link' && <p class="article-reading__source"><a href={article.externalUrl} target="_blank" rel="noopener noreferrer">打开推荐链接 ↗</a></p>}
     </header>
     {article.coverUrl && <img class="article-reading__cover" data-article-cover={article.id} src={article.coverUrl} alt="文章首图" referrerpolicy="no-referrer" fetchpriority="high" />}
     <div class="article-reading__tools" data-reading-tools hidden>
@@ -51,11 +55,17 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
       {previous ? <a href={`/articles/${previous.id}`} rel="prev"><span>上一篇</span><strong>{previous.title}</strong></a> : <span />}
       {next && <a href={`/articles/${next.id}`} rel="next"><span>下一篇</span><strong>{next.title}</strong></a>}
     </nav>}
+    <ArticleDiscussion articleId={article.id} />
   </article>
   <dialog class="article-image-dialog" data-article-image-dialog aria-label="正文图片查看器">
     <div class="article-image-dialog__toolbar"><button type="button" data-image-zoom aria-pressed="false">放大图片</button><button type="button" data-image-close autofocus aria-label="关闭图片查看器">关闭 ×</button></div>
     <div class="article-image-dialog__viewport" data-image-viewport tabindex="0"><img data-image-full alt="" /></div>
     <p data-image-caption></p>
+  </dialog>
+  <dialog class="quote-dialog" data-quote-dialog aria-labelledby="quote-dialog-title">
+    <header><h2 id="quote-dialog-title">留下一段文字</h2><button type="button" data-quote-close autofocus aria-label="关闭摘录卡片">关闭 ×</button></header>
+    <canvas data-quote-canvas role="img" aria-label="摘录卡片预览"></canvas>
+    <footer><a data-quote-download class="articles-more" download="SamsBlog-摘录.png">保存图片 ↘</a><span data-quote-status role="status"></span></footer>
   </dialog>
 </BaseLayout> : <NotFound />}
 

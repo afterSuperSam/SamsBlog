@@ -1,0 +1,11 @@
+---
+interface Props { id: string; title: string; wide?: boolean }
+const { id, title, wide = false } = Astro.props;
+---
+<dialog id={id} class:list={['admin-drawer', { 'admin-drawer--wide': wide }]} data-admin-drawer aria-labelledby={`${id}-title`}>
+  <header class="admin-drawer__header"><h2 id={`${id}-title`}>{title}</h2><button type="button" data-drawer-close aria-label="关闭编辑面板">关闭 <span aria-hidden="true">×</span></button></header>
+  <div class="admin-drawer__body"><slot /></div>
+</dialog>
+<script>
+  import '../lib/admin-drawers';
+</script>

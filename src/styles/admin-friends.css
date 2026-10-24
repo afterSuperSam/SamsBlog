@@ -26,7 +26,7 @@
 }
 .admin-friend-import textarea,.admin-friend-card__fields textarea { field-sizing:content; min-height:70px; padding:10px 13px; resize:vertical; overflow-wrap:anywhere; }
 .admin-friend-import :is(input,textarea):focus,.admin-friend-card__fields :is(input,textarea):focus { background:var(--bg); box-shadow:0 0 0 2px color-mix(in oklab,var(--glow-blue) 36%,transparent); }
-.admin-friend-import .admin-create { justify-self:start; }
+.admin-friend-import .media-button { justify-self:start; }
 .admin-friend-import>small { grid-column:1/-1; color:var(--muted); font-size:.875rem; line-height:1.6; overflow-wrap:anywhere; }
 .admin-friend-list { display:grid; gap:13px; }
 .admin-friend-card {
@@ -55,9 +55,9 @@
 .admin-friend-card footer button:last-child { color:var(--danger); }
 
 @media(max-width:1100px){
-  .admin-friend-import{grid-template-columns:repeat(2,minmax(0,1fr))}.admin-friend-import .admin-create{justify-self:start}
+  .admin-friend-import{grid-template-columns:repeat(2,minmax(0,1fr))}.admin-friend-import .media-button{justify-self:start}
   .admin-friend-card{grid-template-columns:58px minmax(0,1fr)}.admin-friend-card__icon{width:58px;height:58px}
 }
 @media(max-width:680px){
-  .admin-tabs{grid-template-columns:1fr 1fr}.admin-friend-import{grid-template-columns:minmax(0,1fr);padding:20px}.admin-friend-import>small{grid-column:1}.admin-friend-card{grid-template-columns:minmax(0,1fr)}.admin-friend-card__icon{width:48px;height:48px}.admin-friend-card__fields{grid-template-columns:minmax(0,1fr)}.admin-friend-card__visible,.admin-friend-card footer{grid-column:1}
+  .admin-friend-import{grid-template-columns:minmax(0,1fr);padding:20px}.admin-friend-import>small{grid-column:1}.admin-friend-card{grid-template-columns:minmax(0,1fr)}.admin-friend-card__icon{width:48px;height:48px}.admin-friend-card__fields{grid-template-columns:minmax(0,1fr)}.admin-friend-card__visible,.admin-friend-card footer{grid-column:1}
 }

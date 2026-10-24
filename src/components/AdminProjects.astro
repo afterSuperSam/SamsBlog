@@ -1,6 +1,7 @@
 ---
 import { siteConfig } from '../config/site';
 import { getProjectSettings, projectStatusLabels } from '../lib/projects';
+import AdminDrawer from './AdminDrawer.astro';
 
 const settings = getProjectSettings();
 ---
@@ -13,6 +14,8 @@ const settings = getProjectSettings();
       {[...settings.projects, null].map((project) => {
         const Wrapper = project ? 'div' : 'template';
         return <Wrapper data-project-item={project ? '' : undefined} data-project-template={!project ? '' : undefined}>
+          <div class="admin-record-row"><div><h3 data-project-summary>{project?.name || '新项目'}</h3><p>{project ? projectStatusLabels[project.status] : '填写项目资料'}</p></div><button type="button" data-drawer-open={`project-editor-${project?.id || 'new'}`}>编辑</button></div>
+          <AdminDrawer id={`project-editor-${project?.id || 'new'}`} title="编辑项目">
           <fieldset data-project-entry data-project-id={project?.id}>
             <legend data-project-heading>{project?.name || '新项目'}</legend>
             <div class="admin-project-fields">
@@ -29,10 +32,13 @@ const settings = getProjectSettings();
               {!project && <button type="button" data-project-discard>取消新增</button>}
             </div>
           </fieldset>
+          <button type="submit" class="media-button">保存项目设置</button>
+          <p class="form-status" role="status" data-project-feedback></p>
+          </AdminDrawer>
         </Wrapper>;
       })}
     </div>
-    <div class="project-editor-footer"><button type="button" data-project-add>＋ 新增项目</button><button class="admin-create" type="submit" disabled>保存项目设置</button></div>
+    <div class="project-editor-footer"><button type="button" data-project-add>＋ 新增项目</button><button class="media-button" type="submit" disabled>保存项目设置</button></div>
     <p class="form-status" id="project-settings-status" role="status" aria-live="polite" data-project-feedback></p>
   </form>
 </section>
@@ -42,14 +48,14 @@ const settings = getProjectSettings();
   import { animateContentHeight } from '../lib/motion';
   import { beginAdminAction, registerAdminDraft } from '../lib/admin-dialog';
   import { requestJson } from '../lib/client-request';
+  import { openAdminDrawer } from '../lib/admin-drawers';
 
   // 列表顺序即展示顺序；保存后回填稳定编号，避免重复新增。
   const form = document.querySelector<HTMLFormElement>('[data-admin-projects]');
   if (form) {
     const items = form.querySelector<HTMLElement>('[data-project-items]')!;
     const template = form.querySelector<HTMLTemplateElement>('[data-project-template]')!;
-    const feedback = form.querySelector<HTMLElement>('[data-project-feedback]')!;
-    const showFeedback = (message: string, state = '') => animateContentHeight(feedback, () => { feedback.textContent = message; feedback.dataset.state = state; });
+    const showFeedback = (message: string, state = '') => form.querySelectorAll<HTMLElement>('[data-project-feedback]').forEach((feedback) => animateContentHeight(feedback, () => { feedback.textContent = message; feedback.dataset.state = state; }));
     const entries = () => [...items.querySelectorAll<HTMLFieldSetElement>('[data-project-entry]')];
     const markSaved = registerAdminDraft(form, () => JSON.stringify([...form.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input,textarea')]
       .map((field) => [field.value, field instanceof HTMLInputElement && field.checked])));
@@ -62,6 +68,8 @@ const settings = getProjectSettings();
         const heading = field.querySelector<HTMLElement>('[data-project-heading]')!;
         const name = field.querySelector<HTMLInputElement>('[data-project-field="name"]')!.value.trim() || '新项目';
         heading.textContent = `${String(index + 1).padStart(2, '0')} · ${name}`;
+        field.closest('[data-project-item]')!.querySelector('[data-project-summary]')!.textContent = name;
+        field.closest('[data-project-item]')!.querySelector('.admin-record-row p')!.textContent = field.querySelector('[data-project-field="status"]:checked + span')?.textContent || '';
         field.querySelector<HTMLButtonElement>('[data-project-move="up"]')!.setAttribute('aria-label', `上移${name}`);
         field.querySelector<HTMLButtonElement>('[data-project-move="down"]')!.setAttribute('aria-label', `下移${name}`);
       });
@@ -74,10 +82,16 @@ const settings = getProjectSettings();
         const wrapper = document.createElement('div');
         wrapper.dataset.projectItem = '';
         wrapper.append(template.content.cloneNode(true));
+        const drawer = wrapper.querySelector<HTMLDialogElement>('[data-admin-drawer]')!;
+        drawer.id = `project-draft-${draftSequence}`;
+        const drawerHeading = drawer.querySelector<HTMLElement>('h2')!;
+        drawerHeading.id = `${drawer.id}-title`; drawer.setAttribute('aria-labelledby', drawerHeading.id);
+        wrapper.querySelector<HTMLElement>('[data-drawer-open]')!.dataset.drawerOpen = drawer.id;
         wrapper.querySelectorAll<HTMLInputElement>('[data-project-field="status"]').forEach((radio) => { radio.name = `project-draft-${draftSequence}`; });
         draftSequence += 1;
         items.insertBefore(wrapper, template);
         updateOrder();
+        openAdminDrawer(drawer);
         wrapper.querySelector<HTMLInputElement>('input')?.focus();
         showFeedback('新项目已加入草稿，填写后保存。');
         return;
@@ -86,6 +100,7 @@ const settings = getProjectSettings();
       const wrapper = field?.closest<HTMLElement>('[data-project-item]');
       if (!field || !wrapper) return;
       if (button.hasAttribute('data-project-discard')) {
+        wrapper.querySelector<HTMLDialogElement>('dialog')?.close();
         wrapper.remove();
         updateOrder();
         form.querySelector<HTMLButtonElement>('[data-project-add]')?.focus();
@@ -111,6 +126,8 @@ const settings = getProjectSettings();
       const invalid = fields.find((field) => !field.validity.valid || field.required && !field.value.trim());
       if (invalid) {
         invalid.setAttribute('aria-invalid', 'true');
+        const target = invalid.closest<HTMLDialogElement>('[data-admin-drawer]');
+        if (target && !target.open) { form.querySelector<HTMLDialogElement>('dialog[open]')?.close(); openAdminDrawer(target); }
         invalid.focus();
         showFeedback(`请正确填写${invalid.closest('label')?.querySelector('span')?.textContent || '项目内容'}。`, 'error');
         return;
@@ -149,7 +166,7 @@ const settings = getProjectSettings();
       }
     });
     updateOrder();
-    form.querySelector<HTMLButtonElement>('button[type="submit"]')?.removeAttribute('disabled');
+    form.querySelectorAll<HTMLButtonElement>('button[type="submit"]').forEach((button) => button.disabled = false);
   }
 </script>
 

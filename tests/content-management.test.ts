@@ -37,7 +37,7 @@ async function callMessageApi(handler: APIRoute, body: Record<string, unknown>, 
   messageRequestSequence += 1;
   return handler({
     request: new Request('https://blog.example.com/api/messages.json', {
-      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+      method: 'POST', headers: { 'content-type': 'application/json', origin: 'https://blog.example.com' }, body: JSON.stringify(body),
     }),
     clientAddress: `203.0.113.${messageRequestSequence}`,
     cookies: { get: () => authorized ? { value: createAdminSession() } : undefined },

@@ -9,6 +9,7 @@ const commitFormatter = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shang
 ---
 
 <section class="home-projects" id="projects" data-project-section data-project-reveal={JSON.stringify(siteConfig.reveal)}>
+  <div class="project-terrain" data-project-terrain aria-hidden="true"><canvas></canvas></div>
   <div class="shell" data-reveal>
     <header><span class="section-kicker">PROJECTS</span><h2 class="section-title">我的项目</h2><span class="project-tape" data-pointer-tilt={siteConfig.effects.pointerTiltDegrees}>{settings.currentWork}</span></header>
     <div class="project-list" id="home-project-list">
@@ -17,7 +18,7 @@ const commitFormatter = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shang
         const committedAt = getCachedProjectCommit(project.repository);
         return <article data-project-extra={index >= initialCount ? '' : undefined} hidden={index >= initialCount}>
           <span>{String(index + 1).padStart(2, '0')}</span><div>
-            <h3><a href={project.url} target="_blank" rel="noopener noreferrer">{project.name} ↗</a></h3>
+            <h3><a href={project.url} target="_blank" rel="noopener noreferrer">{project.name} ↗<span class="project-title-glow" aria-hidden="true">{project.name} ↗</span></a></h3>
             <p>{keywordIndex >= 0 ? <>{project.description.slice(0, keywordIndex)}<span class="project-keyword">{project.keyword}<svg aria-hidden="true" viewBox="0 0 100 24" preserveAspectRatio="none"><path d="M18 6 Q48 2 78 5 Q88 6 78 10 L12 17 Q3 20 14 20 Q51 17 96 20" pathLength="1" /></svg></span>{project.description.slice(keywordIndex + project.keyword.length)}</> : project.description}</p>
             <div class="project-meta"><span class="project-status" data-status={project.status}>{projectStatusLabels[project.status]}</span>
               {project.repository && <span data-project-commit={project.repository} hidden={!committedAt}>{committedAt && <time datetime={committedAt}>{commitFormatter.format(new Date(committedAt))}</time>}</span>}
@@ -31,9 +32,11 @@ const commitFormatter = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shang
 </section>
 
 <script>
-  import { animateMotion } from '../lib/motion';
+  import { animateMotion, motionDisabled } from '../lib/motion';
+  import { setupProjectTerrain } from '../lib/project-terrain';
 
   const section = document.querySelector<HTMLElement>('[data-project-section]');
+  if (section) setupProjectTerrain(section, motionDisabled);
   const expand = section?.querySelector<HTMLButtonElement>('[data-project-expand]');
   const extra = [...section?.querySelectorAll<HTMLElement>('[data-project-extra]') || []];
   const animations = new Set<Animation>();

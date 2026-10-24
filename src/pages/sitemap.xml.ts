@@ -1,7 +1,7 @@
 import type { APIRoute } from 'astro';
 import { listArticleMetadata } from '../lib/articles';
 
-const routes = ['/', '/about'];
+const routes = ['/', '/content', '/about'];
 
 const escapeXml = (value: string) => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 

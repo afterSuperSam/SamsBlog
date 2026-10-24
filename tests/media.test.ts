@@ -10,6 +10,7 @@ import { changeMediaVisibility, getMedia, listMedia, mediaResponse, saveMedia } 
 import { GET, POST, PATCH, DELETE } from '../src/pages/api/admin/media.json';
 import { GET as getRss } from '../src/pages/rss.xml';
 import { serverConfig } from '../src/config/server';
+import { renderMarkdown } from '../src/lib/markdown';
 
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6u1sAAAAASUVORK5CYII=', 'base64');
 const file = () => new File([png], '../图片<script>.png', { type: 'image/png' });
@@ -100,5 +101,23 @@ describe('authenticated image storage and media management', () => {
     }
     const gif = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
     expect((await saveMedia(new File([gif], 'pixel.gif'))).type).toBe('image/gif');
+  });
+
+  it('protects encoded local image references and rejects deleted images in angle-bracket destinations', async () => {
+    const gif = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
+    const media = await saveMedia(new File([gif], 'reference.gif'));
+    const encoded = `/uploads/%${media.filename.charCodeAt(0).toString(16)}${media.filename.slice(1)}`;
+    const content = `![图片](${encoded})`;
+    expect(renderMarkdown(content)).toContain(`<img src="${encoded}"`);
+    const articleId = saveArticle({ title: '编码媒体引用', content, source: 'original', category: 'journal' });
+    expect(() => changeMediaVisibility(media.id, false)).toThrow('图片仍被文章引用');
+    getDatabase().prepare('DELETE FROM blog_articles WHERE id=?').run(articleId);
+    getDatabase().prepare('INSERT INTO blog_article_drafts(id,article_id,payload,revision,updated_at) VALUES (?,NULL,?,1,?)')
+      .run('encoded-media-fixture', JSON.stringify({ content, coverUrl: '' }), new Date().toISOString());
+    expect(() => changeMediaVisibility(media.id, false)).toThrow('草稿引用');
+    getDatabase().prepare('DELETE FROM blog_article_drafts WHERE id=?').run('encoded-media-fixture');
+    changeMediaVisibility(media.id, false);
+    expect(() => saveArticle({ title: '已删媒体尖括号引用', content: `![图片](<${media.url}>)`, source: 'original', category: 'journal' })).toThrow('已删除或不存在');
+    expect(() => saveArticle({ title: '已删媒体编码引用', content, source: 'original', category: 'journal' })).toThrow('已删除或不存在');
   });
 });

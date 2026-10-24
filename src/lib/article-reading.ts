@@ -1,5 +1,7 @@
 import { siteConfig } from '../config/site';
 import { motionDisabled } from './motion';
+import { readReadingHistory, saveReadingHistory, type ReadingPosition } from './reading-history';
+import { initializeReadingExtras } from './reading-extras';
 
 const root = document.querySelector<HTMLElement>('[data-article-reading]');
 const prose = root?.querySelector<HTMLElement>('[data-article-prose]');
@@ -25,20 +27,20 @@ if (root && prose) {
   });
 
   // 位置只在读者主动选择后恢复，不接管目录锚点或浏览器返回滚动。
-  interface ReadingPosition { version: string; progress: number; heading: string; offset: number; updatedAt: number }
-  const positions = (): Record<string, ReadingPosition> => {
-    const parsed: unknown = JSON.parse(localStorage.getItem(configuration.positionStorageKey) || '{}');
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
-    return Object.fromEntries(Object.entries(parsed).filter(([identifier, value]) => /^\d+$/.test(identifier)
-      && value && typeof value.version === 'string' && typeof value.heading === 'string'
-      && Number.isFinite(value.progress) && value.progress >= 0 && value.progress <= 1
-      && Number.isFinite(value.offset) && Number.isFinite(value.updatedAt)));
-  };
+  const positions = readReadingHistory;
   const identifier = root.dataset.articleId!;
   let saved: ReadingPosition | undefined;
   try { saved = positions()[identifier]; }
   catch (error) { console.warn('Reading position unavailable', error); }
-  resume.hidden = !saved || saved.version !== root.dataset.articleVersion;
+  resume.hidden = !saved || saved.progress === 0 || saved.version !== root.dataset.articleVersion;
+  const title = root.querySelector('h1')!.textContent || '';
+  const visitedAt = Date.now();
+  try {
+    saveReadingHistory({ ...positions(), [identifier]: {
+      ...(saved && saved.version === root.dataset.articleVersion ? saved : { version: root.dataset.articleVersion!, progress: 0, heading: '', offset: 0, updatedAt: visitedAt }),
+      title, visitedAt,
+    } });
+  } catch (error) { console.warn('Reading trail save failed', error); }
   const headerOffset = () => Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--header-height')) + 24;
   resume.addEventListener('click', () => {
     if (!saved) return;
@@ -63,11 +65,11 @@ if (root && prose) {
     const position: ReadingPosition = {
       version: root.dataset.articleVersion!, progress: Math.max(0, Math.min(1, (offset - bounds.top) / prose.offsetHeight)),
       heading: heading?.id || '', offset: heading ? offset - heading.getBoundingClientRect().top : 0, updatedAt: Date.now(),
+      title, visitedAt,
     };
     try {
       const entries = { ...positions(), [identifier]: position };
-      localStorage.setItem(configuration.positionStorageKey, JSON.stringify(Object.fromEntries(Object.entries(entries)
-        .sort((left, right) => right[1].updatedAt - left[1].updatedAt).slice(0, configuration.positionLimit))));
+      saveReadingHistory(entries);
     } catch (error) { console.warn('Reading position save failed', error); }
   };
   window.addEventListener('scroll', () => {
@@ -76,13 +78,25 @@ if (root && prose) {
   }, { passive: true });
   window.addEventListener('pagehide', savePosition);
   document.addEventListener('visibilitychange', () => { if (document.hidden) savePosition(); });
+  initializeReadingExtras(root, prose);
 
   // 代码工具从原始文本复制，换行只影响排版，不修改代码内容。
-  prose.querySelectorAll<HTMLPreElement>('pre').forEach((block) => {
+  prose.querySelectorAll<HTMLPreElement>('pre').forEach((block, index) => {
     const code = block.querySelector('code');
     if (!code) return;
     const tools = document.createElement('div');
     tools.className = 'article-code-tools';
+    const container = document.createElement('div');
+    container.className = 'article-code';
+    block.before(container);
+    container.append(tools, block);
+    block.id = `article-code-${index + 1}`;
+    const filename = document.createElement('span');
+    filename.className = 'article-code-filename';
+    filename.textContent = code.dataset.filename || code.className.replace(/^language-/, '');
+    const expand = document.createElement('button');
+    expand.type = 'button'; expand.textContent = '展开'; expand.hidden = true;
+    expand.setAttribute('aria-expanded', 'false'); expand.setAttribute('aria-controls', block.id);
     const copy = document.createElement('button');
     copy.type = 'button'; copy.className = 'article-code-copy copy-feedback';
     copy.setAttribute('aria-live', 'polite'); copy.setAttribute('aria-atomic', 'true');
@@ -91,8 +105,21 @@ if (root && prose) {
     let copyFeedbackTimer: ReturnType<typeof setTimeout> | undefined;
     const wrap = document.createElement('button');
     wrap.type = 'button'; wrap.textContent = '自动换行'; wrap.setAttribute('aria-pressed', 'false');
-    tools.append(copy, wrap);
-    block.before(tools);
+    tools.append(filename, copy, wrap, expand);
+    const updateCollapse = () => {
+      if (container.dataset.expanded === 'true') return;
+      expand.hidden = block.scrollHeight <= block.clientHeight + 1;
+    };
+    // 同一高度上限用于初始折叠与换行后的重新测量，工具条始终留在滚动区外。
+    block.style.maxBlockSize = `${configuration.codeCollapsedLines * 1.8 + 2.5}em`;
+    new ResizeObserver(updateCollapse).observe(block);
+    expand.addEventListener('click', () => {
+      const expanded = expand.getAttribute('aria-expanded') !== 'true';
+      container.dataset.expanded = String(expanded);
+      expand.setAttribute('aria-expanded', String(expanded)); expand.textContent = expanded ? '收起' : '展开';
+      block.style.maxBlockSize = expanded ? 'none' : `${configuration.codeCollapsedLines * 1.8 + 2.5}em`;
+      if (!expanded) { block.scrollTop = 0; tools.scrollIntoView({ block: 'nearest', behavior: 'instant' }); }
+    });
     block.tabIndex = 0;
     block.setAttribute('aria-label', '代码，可横向滚动');
     copy.addEventListener('click', async () => {
@@ -122,6 +149,7 @@ if (root && prose) {
       const enabled = block.classList.toggle('article-code-wrap');
       wrap.setAttribute('aria-pressed', String(enabled));
       block.setAttribute('aria-label', enabled ? '代码，自动换行' : '代码，可横向滚动');
+      updateCollapse();
     });
   });
 

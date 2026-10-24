@@ -4,6 +4,7 @@ import { listArticles } from '../lib/articles';
 import { articleExcerpt, renderMarkdown } from '../lib/markdown';
 import { version } from '../../package.json';
 import stylesheet from '../styles/global.css?url';
+import { articleContentTypes } from '../lib/article-catalog';
 
 const xml = (value: string) => value.replace(/[^\u0009\u000A\u000D\u0020-\uD7FF\uE000-\uFFFD\u{10000}-\u{10FFFF}]/gu, '')
   .replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' })[character]!);
@@ -22,16 +23,17 @@ export const GET: APIRoute = ({ request }) => {
   const articles = listArticles({ limit: siteConfig.articles.feedCount });
   const items = articles.map((article) => {
     const url = new URL(`/articles/${article.id}`, siteConfig.rss.siteUrl).href;
-    const content = `${article.coverUrl ? `<p><img src="${xml(new URL(article.coverUrl, siteConfig.rss.siteUrl).href)}" alt="" /></p>` : ''}${renderMarkdown(article.content, url)}`;
+    const content = `${article.coverUrl ? `<p><img src="${xml(new URL(article.coverUrl, siteConfig.rss.siteUrl).href)}" alt="" /></p>` : ''}${article.contentType === 'link' ? `<p><a href="${xml(article.externalUrl)}">打开推荐链接</a></p>` : ''}${renderMarkdown(article.content, url)}`;
     return `<item>
 <title>${xml(article.title)}</title>
 <link>${xml(url)}</link>
 <guid isPermaLink="true">${xml(url)}</guid>
-<description>${xml(articleExcerpt(article.content))}</description>
+<description>${xml(article.summary || articleExcerpt(article.content))}</description>
 <pubDate>${new Date(article.createdAt).toUTCString()}</pubDate>
 <atom:updated>${article.updatedAt}</atom:updated>
 <category>${article.source === 'original' ? '原创' : '搬运'}</category>
 <category>${article.category === 'discussion' ? '杂谈' : '日志'}</category>
+<category>${articleContentTypes.find((type) => type.value === article.contentType)!.label}</category>
 <content:encoded>${xml(content)}</content:encoded>
 </item>`;
   }).join('\n');

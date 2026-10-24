@@ -1,0 +1,43 @@
+---
+import { listFriendApplications } from '../lib/friends';
+import AdminDrawer from './AdminDrawer.astro';
+const applications = listFriendApplications();
+const labels = { pending: '待处理', accepted: '已通过', declined: '未通过' };
+---
+<section class="admin-panel"><header class="admin-panel__heading"><div><span>REQUESTS</span><h2>友链申请</h2></div><p>通过前可调整站点信息，接受后加入现有友链。</p></header>
+  {!applications.length && <p class="admin-empty">还没有新的申请。</p>}
+  {applications.map((entry) => <div class="admin-record-row"><div><b>{entry.name}</b><p>{entry.url}</p><small>{labels[entry.status]}</small></div><button type="button" data-drawer-open={`application-${entry.id}`}>查看</button><AdminDrawer id={`application-${entry.id}`} title={entry.name}><form method="post" class="admin-application-form" data-application-form data-draft-owner data-id={entry.id} novalidate>
+    <label>名称<input name="name" value={entry.name} required maxlength="60" /></label><label>网址<input name="url" type="url" value={entry.url} required maxlength="4096" /></label><label>简介<textarea name="description" rows="3" required maxlength="240">{entry.description}</textarea></label><label>图标地址<input name="iconUrl" type="url" value={entry.iconUrl} required maxlength="4096" /></label><label>RSS 地址<input name="rssUrl" type="url" value={entry.rssUrl} maxlength="4096" /></label>
+    {entry.email && <p>联系邮箱：<a href={`mailto:${entry.email}`}>{entry.email}</a></p>}
+    {entry.status === 'pending' && <footer><button type="submit" value="accept" disabled>通过并加入友链</button><button type="submit" value="decline" formnovalidate disabled>不通过</button></footer>}
+    <p class="form-status" role="status"></p>
+  </form></AdminDrawer></div>)}
+</section>
+<script>
+  import { requestJson } from '../lib/client-request';
+  import { setFeedbackText } from '../lib/motion';
+  import { prepareAdminNavigation, registerAdminDraft } from '../lib/admin-dialog';
+  document.querySelectorAll<HTMLFormElement>('[data-application-form]').forEach((form) => {
+    registerAdminDraft(form, () => JSON.stringify([...new FormData(form)]));
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const payload = { ...Object.fromEntries(new FormData(form)), id: Number(form.dataset.id), accepted: (event.submitter as HTMLButtonElement)?.value === 'accept' };
+      const feedback = form.querySelector<HTMLElement>('[role="status"]')!;
+      const invalid = payload.accepted && [...form.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input,textarea')].find((field) => !field.validity.valid || field.required && !field.value.trim());
+      if (invalid) { setFeedbackText(feedback, '请检查名称、网址、简介和图标地址。'); invalid.focus(); return; }
+      const release = await prepareAdminNavigation(form);
+      if (!release) return;
+      form.setAttribute('aria-busy', 'true');
+      setFeedbackText(feedback, '正在处理申请…');
+      try {
+        await requestJson('/api/admin/applications.json', 'PATCH', payload, '暂时无法处理申请。');
+        location.reload();
+      } catch (error) {
+        setFeedbackText(feedback, error instanceof Error ? error.message : '处理失败，请稍后再试。');
+        form.removeAttribute('aria-busy');
+        release();
+      }
+    });
+    form.querySelectorAll<HTMLButtonElement>('button[type="submit"]').forEach((button) => { button.disabled = false; });
+  });
+</script>

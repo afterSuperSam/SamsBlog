@@ -9,6 +9,8 @@ export type MessageStatus = 'pending' | 'published' | 'hidden';
 
 export interface MessageRecord {
   id: number;
+  articleId?: number | null;
+  isAdmin?: boolean;
   parentId: number | null;
   nickname: string;
   content: string;
@@ -227,7 +229,87 @@ export function getDatabase() {
         )`);
         connection.prepare('INSERT INTO schema_migrations (id, applied_at) VALUES (?, ?)').run('20261023-media-library', new Date().toISOString());
       }
+      if (!appliedMigrations.has('20261024-article-tags')) {
+        connection.exec(`ALTER TABLE blog_articles ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'
+          CHECK(json_valid(tags) AND json_type(tags) = 'array')`);
+        connection.prepare('INSERT INTO schema_migrations (id, applied_at) VALUES (?, ?)').run('20261024-article-tags', new Date().toISOString());
+      }
+      if (!appliedMigrations.has('20261024-article-card-layout')) {
+        connection.exec(`ALTER TABLE blog_articles ADD COLUMN card_layout TEXT NOT NULL DEFAULT 'left'
+          CHECK(card_layout IN ('left','right','text'))`);
+        connection.prepare('INSERT INTO schema_migrations (id, applied_at) VALUES (?, ?)').run('20261024-article-card-layout', new Date().toISOString());
+      }
+      if (!appliedMigrations.has('20261024-article-content-types')) {
+        connection.exec(`ALTER TABLE blog_articles ADD COLUMN content_type TEXT NOT NULL DEFAULT 'article'
+          CHECK(content_type IN ('article','note','link','update'));
+          ALTER TABLE blog_articles ADD COLUMN external_url TEXT NOT NULL DEFAULT ''
+          CHECK(content_type != 'link' OR length(trim(external_url)) > 0)`);
+        connection.prepare('INSERT INTO schema_migrations (id, applied_at) VALUES (?, ?)').run('20261024-article-content-types', new Date().toISOString());
+      }
+      if (!appliedMigrations.has('20261024-sponsors')) {
+        connection.exec(`CREATE TABLE blog_sponsors (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL CHECK(length(trim(name)) > 0),
+          minecraft_username TEXT NOT NULL DEFAULT '',
+          amount_cents INTEGER NOT NULL CHECK(typeof(amount_cents) = 'integer' AND amount_cents > 0),
+          created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+        );
+        CREATE UNIQUE INDEX blog_sponsors_active_name_idx ON blog_sponsors(name COLLATE NOCASE) WHERE deleted_at IS NULL`);
+        const now = new Date().toISOString();
+        const insert = connection.prepare('INSERT INTO blog_sponsors (name,minecraft_username,amount_cents,created_at,updated_at) VALUES (?,?,?,?,?)');
+        for (const sponsor of siteConfig.sponsors) insert.run(sponsor.name, sponsor.name, Math.round(sponsor.amount * 100), now, now);
+        connection.prepare('INSERT INTO schema_migrations (id,applied_at) VALUES (?,?)').run('20261024-sponsors', now);
+      }
+      if (!appliedMigrations.has('20261024-publishing-interactions')) {
+        connection.exec(`
+          ALTER TABLE blog_articles ADD COLUMN publication_status TEXT NOT NULL DEFAULT 'published' CHECK(publication_status IN ('draft','published'));
+          ALTER TABLE blog_articles ADD COLUMN summary TEXT NOT NULL DEFAULT '';
+          CREATE TABLE blog_article_drafts (
+            id TEXT PRIMARY KEY, article_id INTEGER UNIQUE REFERENCES blog_articles(id),
+            payload TEXT NOT NULL CHECK(json_valid(payload)), revision INTEGER NOT NULL CHECK(revision > 0), updated_at TEXT NOT NULL
+          );
+          ALTER TABLE messages ADD COLUMN article_id INTEGER REFERENCES blog_articles(id);
+          ALTER TABLE messages ADD COLUMN email TEXT NOT NULL DEFAULT '';
+          ALTER TABLE messages ADD COLUMN notify_reply INTEGER NOT NULL DEFAULT 0 CHECK(notify_reply IN (0,1));
+          CREATE INDEX messages_article_idx ON messages(article_id, status, created_at);
+          CREATE TABLE article_reactions (
+            article_id INTEGER NOT NULL REFERENCES blog_articles(id), visitor_hash TEXT NOT NULL,
+            reaction TEXT NOT NULL CHECK(reaction IN ('like','helpful','inspired')), updated_at TEXT NOT NULL,
+            PRIMARY KEY(article_id, visitor_hash)
+          );
+          CREATE TABLE article_daily_visitors (
+            article_id INTEGER NOT NULL REFERENCES blog_articles(id), day TEXT NOT NULL, visitor_hash TEXT NOT NULL,
+            views INTEGER NOT NULL DEFAULT 1 CHECK(views > 0), PRIMARY KEY(article_id, day, visitor_hash)
+          );
+          CREATE TABLE friend_applications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, url TEXT NOT NULL, description TEXT NOT NULL,
+            icon_url TEXT NOT NULL, rss_url TEXT NOT NULL DEFAULT '', email TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','accepted','declined')),
+            fingerprint_hash TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+          );
+          CREATE UNIQUE INDEX friend_applications_pending_url_idx ON friend_applications(url) WHERE status = 'pending' AND deleted_at IS NULL;
+          CREATE INDEX friend_applications_rate_idx ON friend_applications(fingerprint_hash, created_at);
+          CREATE TABLE reply_notifications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, message_id INTEGER NOT NULL REFERENCES messages(id),
+            reply_id INTEGER NOT NULL REFERENCES messages(id), status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','sent','failed','cancelled')),
+            attempts INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+            UNIQUE(message_id, reply_id)
+          );
+        `);
+        connection.prepare('INSERT INTO schema_migrations (id,applied_at) VALUES (?,?)').run('20261024-publishing-interactions', new Date().toISOString());
+      }
+      if (!appliedMigrations.has('20261025-draft-notification-recovery')) {
+        connection.exec(`ALTER TABLE blog_article_drafts ADD COLUMN deleted_at TEXT;
+          ALTER TABLE reply_notifications ADD COLUMN retry_at TEXT NOT NULL DEFAULT '';
+          ALTER TABLE reply_notifications ADD COLUMN provider_id TEXT NOT NULL DEFAULT ''`);
+        connection.prepare('INSERT INTO schema_migrations (id,applied_at) VALUES (?,?)').run('20261025-draft-notification-recovery', new Date().toISOString());
+      }
+      if (!appliedMigrations.has('20261025-notification-request-payload')) {
+        connection.exec("ALTER TABLE reply_notifications ADD COLUMN request_payload TEXT NOT NULL DEFAULT ''");
+        connection.prepare('INSERT INTO schema_migrations (id,applied_at) VALUES (?,?)').run('20261025-notification-request-payload', new Date().toISOString());
+      }
       connection.exec('CREATE UNIQUE INDEX IF NOT EXISTS friends_active_url_idx ON friends(url) WHERE deleted_at IS NULL');
+      connection.exec('CREATE INDEX IF NOT EXISTS blog_articles_type_created_idx ON blog_articles(content_type, created_at DESC, id DESC) WHERE deleted_at IS NULL');
       connection.exec('CREATE INDEX IF NOT EXISTS friends_public_idx ON friends(visible, created_at ASC)');
       if (!friendsInitialized) {
         const now = new Date().toISOString();
@@ -260,6 +342,8 @@ export function getDatabase() {
 function mapRow(row: Record<string, unknown>): MessageRecord {
   return {
     id: Number(row.id),
+    articleId: row.article_id == null ? null : Number(row.article_id),
+    isAdmin: Boolean(row.is_admin),
     parentId: row.parent_id == null ? null : Number(row.parent_id),
     nickname: String(row.nickname),
     content: String(row.content),
@@ -269,22 +353,24 @@ function mapRow(row: Record<string, unknown>): MessageRecord {
 }
 
 // 先截取根留言，再查询对应回复，避免窗口截断父子关系
-function listMessageThreads(limit: number, publishedOnly: boolean) {
+function listMessageThreads(limit: number, publishedOnly: boolean, articleId: number | null = null) {
   const visibility = publishedOnly ? "AND status = 'published'" : '';
-  const roots = getDatabase().prepare(`SELECT id, parent_id, nickname, content, status, created_at
-    FROM messages WHERE parent_id IS NULL AND deleted_at IS NULL ${visibility}
-    ORDER BY created_at DESC, id DESC LIMIT ?`).all(limit) as Record<string, unknown>[];
+  const scope = publishedOnly ? 'AND article_id IS ?' : '';
+  const parameters = publishedOnly ? [articleId, limit] : [limit];
+  const roots = getDatabase().prepare(`SELECT id, article_id, parent_id, nickname, content, status, created_at, fingerprint_hash = 'admin' AS is_admin
+    FROM messages WHERE parent_id IS NULL AND deleted_at IS NULL ${visibility} ${scope}
+    ORDER BY created_at DESC, id DESC LIMIT ?`).all(...parameters) as Record<string, unknown>[];
   if (roots.length === 0) return [];
-  const replies = getDatabase().prepare(`SELECT id, parent_id, nickname, content, status, created_at
+  const replies = getDatabase().prepare(`SELECT id, article_id, parent_id, nickname, content, status, created_at, fingerprint_hash = 'admin' AS is_admin
     FROM messages WHERE deleted_at IS NULL ${visibility} AND parent_id IN (
-      SELECT id FROM messages WHERE parent_id IS NULL AND deleted_at IS NULL ${visibility}
+      SELECT id FROM messages WHERE parent_id IS NULL AND deleted_at IS NULL ${visibility} ${scope}
       ORDER BY created_at DESC, id DESC LIMIT ?
-    ) ORDER BY created_at ASC, id ASC`).all(limit) as Record<string, unknown>[];
+    ) ORDER BY created_at ASC, id ASC`).all(...parameters) as Record<string, unknown>[];
   return [...roots, ...replies].map(mapRow);
 }
 
-export function listPublishedMessages(limit = 60) {
-  const records = listMessageThreads(limit, true);
+export function listPublishedMessages(limit = 60, articleId: number | null = null) {
+  const records = listMessageThreads(limit, true, articleId);
   const parents = records.filter((message) => message.parentId === null);
   for (const parent of parents) parent.replies = records.filter((reply) => reply.parentId === parent.id);
   return parents;
@@ -305,18 +391,23 @@ export function hasRecentSubmission(fingerprintHash: string, seconds = serverCon
 
 export function createMessage(input: {
   parentId?: number | null;
+  articleId?: number | null;
+  email?: string;
+  notifyReply?: boolean;
   nickname: string;
   content: string;
   fingerprintHash: string;
 }) {
+  const articleId = input.articleId || null;
+  if (articleId && !getDatabase().prepare("SELECT 1 FROM blog_articles WHERE id = ? AND deleted_at IS NULL AND publication_status = 'published'").get(articleId)) throw new HttpError(404, '文章不存在');
   if (input.parentId) {
-    const parent = getDatabase().prepare(`SELECT id FROM messages WHERE id = ? AND parent_id IS NULL AND deleted_at IS NULL AND status = 'published'`).get(input.parentId);
+    const parent = getDatabase().prepare(`SELECT id FROM messages WHERE id = ? AND article_id IS ? AND parent_id IS NULL AND deleted_at IS NULL AND status = 'published'`).get(input.parentId, articleId);
     if (!parent) throw new HttpError(404, '回复的留言不存在');
   }
   const result = getDatabase()
-    .prepare(`INSERT INTO messages (parent_id, nickname, content, fingerprint_hash)
-      VALUES (?, ?, ?, ?)`)
-    .run(input.parentId || null, input.nickname, input.content, input.fingerprintHash);
+    .prepare(`INSERT INTO messages (parent_id, article_id, nickname, content, fingerprint_hash, status, email, notify_reply)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(input.parentId || null, articleId, input.nickname, input.content, input.fingerprintHash, articleId ? 'published' : 'pending', input.email || '', Number(Boolean(input.email && input.notifyReply)));
   return Number(result.lastInsertRowid);
 }
 
@@ -325,12 +416,12 @@ export function updateMessageStatus(id: number, status: MessageStatus) {
 }
 
 export function createAdminReply(parentId: number, content: string) {
-  const parent = getDatabase().prepare(`SELECT id FROM messages WHERE id = ? AND parent_id IS NULL AND deleted_at IS NULL`).get(parentId);
+  const parent = getDatabase().prepare(`SELECT id, article_id FROM messages WHERE id = ? AND parent_id IS NULL AND deleted_at IS NULL`).get(parentId) as { id: number; article_id: number | null } | undefined;
   if (!parent) throw new HttpError(404, '留言不存在');
   const result = getDatabase()
-    .prepare(`INSERT INTO messages (parent_id, nickname, content, status, fingerprint_hash)
-      VALUES (?, 'Sam', ?, 'published', 'admin')`)
-    .run(parentId, content);
+    .prepare(`INSERT INTO messages (parent_id, article_id, nickname, content, status, fingerprint_hash)
+      VALUES (?, ?, 'Sam', ?, 'published', 'admin')`)
+    .run(parentId, parent.article_id, content);
   return Number(result.lastInsertRowid);
 }
 

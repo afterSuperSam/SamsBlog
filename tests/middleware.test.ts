@@ -15,6 +15,7 @@ function createMiddleware(recordPageView = vi.fn()) {
       if (name === 'astro:middleware') return { defineMiddleware: (handler: unknown) => handler };
       if (name === 'node:crypto') return { randomUUID: () => '11111111-1111-4111-8111-111111111111' };
       if (name === './lib/stats') return { hashVisitorToken: () => 'anonymous-fingerprint', recordPageView };
+      if (name === './lib/reply-notifications') return { scheduleReplyNotifications: vi.fn() };
       throw new Error(`Unexpected test import: ${name}`);
     },
     console: logger,
@@ -36,7 +37,10 @@ describe('public page view statistics boundary', () => {
     const { onRequest, recordPageView, logger } = createMiddleware();
     const response = new Response('<html>fixture</html>', { headers: { 'content-type': 'text/html', 'x-fixture': 'preserved' } });
     expect(await onRequest(requestContext(), async () => response)).toBe(response);
-    expect(recordPageView).toHaveBeenCalledExactlyOnceWith('anonymous-fingerprint');
+    expect(recordPageView).toHaveBeenCalledOnce();
+    expect(recordPageView.mock.calls[0][0]).toBe('anonymous-fingerprint');
+    expect(Number.isFinite(Date.parse(recordPageView.mock.calls[0][1].toISOString()))).toBe(true);
+    expect(recordPageView.mock.calls[0][2]).toBeUndefined();
     expect(logger.warn).not.toHaveBeenCalled();
     expect(logger.error).not.toHaveBeenCalled();
   });

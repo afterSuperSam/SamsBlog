@@ -32,6 +32,17 @@ export function animateCharacters(target: HTMLElement) {
   });
 }
 
+// 原位更新短反馈，只在文案变化时播放；连续操作先取消上一次反馈。
+export function setFeedbackText(target: HTMLElement, text: string) {
+  if (target.textContent === text) return;
+  target.getAnimations().forEach((animation) => animation.cancel());
+  target.textContent = text;
+  animateMotion(target, [{ opacity: .45, translate: '0 3px' }, { opacity: 1, translate: '0 0' }], {
+    duration: siteConfig.interactions.feedbackResizeMilliseconds,
+    easing: getComputedStyle(document.documentElement).getPropertyValue('--ease-out').trim(),
+  });
+}
+
 // 反馈文案保留逐字出现，同时让相邻布局跟随文字高度舒展。
 export function animateContentHeight(target: HTMLElement, update: () => void) {
   const previousHeight = target.getBoundingClientRect().height;

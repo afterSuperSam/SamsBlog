@@ -6,14 +6,23 @@ import { listAllMessages, type MessageStatus } from '../lib/db';
 import { listFriends } from '../lib/friends';
 import AdminProjects from '../components/AdminProjects.astro';
 import AdminMedia from '../components/AdminMedia.astro';
+import AdminSponsors from '../components/AdminSponsors.astro';
+import AdminDrawer from '../components/AdminDrawer.astro';
+import AdminStatistics from '../components/AdminStatistics.astro';
+import AdminApplications from '../components/AdminApplications.astro';
+import { listReplyNotifications, replyNotificationsConfigured } from '../lib/reply-notifications';
 import '../styles/guestbook.css';
 import '../styles/admin.css';
 import '../styles/admin-friends.css';
 
 Astro.response.headers.set('Cache-Control', 'private, no-store');
 const authenticated = readAdminSession(Astro.cookies);
-const messages = authenticated ? listAllMessages() : [];
-const friends = authenticated ? listFriends({ includeHidden: true }) : [];
+const activeSection = Astro.params.section || 'overview';
+const sections = [{ id: 'overview', label: '概览' }, { id: 'articles', label: '内容' }, { id: 'media', label: '媒体' },
+  { id: 'messages', label: '评论与留言' }, { id: 'friends', label: '友链' }, { id: 'applications', label: '友链申请' },
+  { id: 'projects', label: '项目' }, { id: 'sponsors', label: '赞助' }, { id: 'analytics', label: '访问统计' }, { id: 'notifications', label: '回复通知' }];
+const messages = authenticated && activeSection === 'messages' ? listAllMessages() : [];
+const friends = authenticated && activeSection === 'friends' ? listFriends({ includeHidden: true }) : [];
 const repliesByParent = new Map<number, typeof messages>();
 for (const message of messages) {
   if (message.parentId === null) continue;
@@ -34,13 +43,7 @@ const statusCounts = Object.fromEntries(statuses.map((status) => [status, messag
 const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
 ---
 
-<BaseLayout title="内容后台" description="SamsBlog 文章、友链与留言管理。" bodyClass="admin-page" quickNavigation={authenticated ? [
-  { href: '#articles', label: '文章' },
-  { href: '#media', label: '媒体' },
-  { href: '#messages', label: '留言' },
-  { href: '#friends', label: '友链' },
-  { href: '#projects', label: '项目' },
-] : []}>
+<BaseLayout title="内容后台" description="SamsBlog 文章、友链与留言管理。" bodyClass="admin-page" quickNavigation={[]}>
   <section class="admin-shell shell">
     <noscript><p>管理表单需要启用 JavaScript 后才能提交。</p></noscript>
     {authenticated ? (
@@ -54,9 +57,9 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
         <header class="admin-header">
           <div class="admin-header__copy"><span>ADMIN</span><h1>内容后台</h1></div>
           <div class="admin-header__tools">
-            <div class="admin-summary" aria-label="留言状态统计">
+            {activeSection === 'messages' && <div class="admin-summary" aria-label="留言状态统计">
               {statuses.map((status) => <span data-status={status}><b>{statusCounts[status]}</b>{statusLabels[status]}</span>)}
-            </div>
+            </div>}
             <button class="admin-logout" type="button" data-admin-logout>
               <span>退出</span>
               <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M10 5H5v14h5M14 8l4 4-4 4M9 12h9" /></svg>
@@ -64,22 +67,24 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
           </div>
         </header>
         <p class="form-status" role="status" data-admin-feedback></p>
-        <nav class="admin-tabs" aria-label="后台分区">
-          <a href="#messages"><b>{rootMessages.length}</b><span>留言</span></a>
-          <a href="#friends"><b>{friends.length}</b><span>友链</span></a>
-          <a href="#media"><span>媒体库</span></a>
-        </nav>
+        <div class="admin-workspace">
+        <nav class="admin-navigation" aria-label="后台分区">{sections.map((section) => <a href={section.id === 'overview' ? '/admin' : `/admin/${section.id}`} aria-current={activeSection === section.id ? 'page' : undefined}>{section.label}</a>)}</nav>
+        <div class="admin-workspace__main">
+        {activeSection === 'overview' && <section class="admin-panel"><header class="admin-panel__heading"><div><span>OVERVIEW</span><h2>工作台</h2></div><p>选择分区管理，编辑操作在右侧抽屉完成。</p></header><div class="admin-overview-grid">{sections.filter((section) => section.id !== 'overview').map((section) => <a href={`/admin/${section.id}`}><span>{section.label}</span><span aria-hidden="true">↗</span></a>)}</div></section>}
+        {activeSection === 'articles' && <AdminArticles />}
+        {activeSection === 'media' && <AdminMedia />}
+        {activeSection === 'analytics' && <AdminStatistics />}
+        {activeSection === 'applications' && <AdminApplications />}
+        {activeSection === 'notifications' && <section class="admin-panel"><header class="admin-panel__heading"><div><span>NOTIFICATIONS</span><h2>回复通知</h2></div></header><p>{replyNotificationsConfigured ? 'Resend 发信配置已填写。下方的“已提交”表示服务商已接受请求，实际收件仍需邮箱验证。' : '尚未启用。验证发信域名后，设置 RESEND_API_KEY、MAIL_FROM 和 BLOG_SECRET，再重启博客。访客端暂不展示邮件通知选项。'}</p><a href="https://resend.com/domains" target="_blank" rel="noopener noreferrer">打开 Resend 域名配置 ↗</a><div class="admin-data-table"><table><thead><tr><th>评论者</th><th>状态</th><th>尝试次数</th></tr></thead><tbody>{listReplyNotifications().map((notification) => <tr><td>{notification.nickname}</td><td>{{ pending: '等待发送', sent: '已提交', failed: '发送失败', cancelled: '已取消' }[notification.status]}</td><td>{notification.attempts}</td></tr>)}</tbody></table></div></section>}
 
-        <AdminArticles />
-        <AdminMedia />
-
-        <section class="admin-panel" id="messages">
+        {activeSection === 'messages' && <section class="admin-panel" id="messages">
           <header class="admin-panel__heading"><div><span>01 / VOICES</span><h2>留言</h2></div><p>审核、回复或收起访客留下的纸条。</p></header>
           <div class="admin-message-list">
           {rootMessages.length === 0 ? <p class="admin-empty">还没有留言。</p> : rootMessages.map((message, index) => (
             <article class="admin-message-card" data-admin-message data-id={message.id} data-status={message.status}>
               <span class="admin-message-card__index" aria-hidden="true">{String(index + 1).padStart(2, '0')}</span>
-              <div class="admin-message-card__body">
+              <div class="admin-message-card__body"><div class="admin-message-summary"><b>{message.nickname}</b>{message.articleId && <a href={`/articles/${message.articleId}`}>文章 #{message.articleId}</a>}<p>{message.content}</p><button type="button" data-drawer-open={`message-${message.id}`}>查看与回复</button></div>
+                <AdminDrawer id={`message-${message.id}`} title={`回复 ${message.nickname}`}>
                 <header>
                   <span class="admin-message-card__avatar" aria-hidden="true">{message.nickname.slice(0, 1)}</span>
                   <div><b>{message.nickname}</b><time>{dateFormatter.format(new Date(message.createdAt))}</time></div>
@@ -110,7 +115,7 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
                     <span>删除</span>
                   </button>
                 </footer>
-                <form method="post" class="admin-reply" data-reply-form>
+                <form method="post" novalidate class="admin-reply" data-reply-form>
                   <input name="content" minlength="2" maxlength="1000" aria-label={`回复 ${message.nickname} 的留言`} placeholder="以 Sam 的身份回一张纸条…" required />
                   <button type="submit" disabled>
                     <span>回复</span>
@@ -118,27 +123,32 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
                   </button>
                 </form>
                 <p class="form-status" role="status" data-admin-feedback></p>
+                </AdminDrawer>
               </div>
             </article>
           ))}
           </div>
-        </section>
+        </section>}
 
-        <section class="admin-panel" id="friends">
-          <header class="admin-panel__heading"><div><span>02 / NEIGHBORS</span><h2>友链管理</h2></div><p>导入外部站点，只接受完整的网址与网络图标地址。</p></header>
-          <form method="post" class="admin-friend-import" data-friend-import>
+        {activeSection === 'friends' && <section class="admin-panel" id="friends">
+          <header class="admin-panel__heading"><div><span>FRIENDS</span><h2>友链管理</h2></div><button type="button" data-drawer-open="friend-create">＋ 添加友链</button></header>
+          <AdminDrawer id="friend-create" title="添加友链">
+          <form method="post" novalidate class="admin-friend-import" data-friend-import>
             <label><span>名称</span><input name="name" minlength="1" maxlength="60" placeholder="站点名称" required /></label>
             <label><span>地址</span><textarea name="url" rows="2" inputmode="url" autocapitalize="off" spellcheck="false" placeholder="https://example.com" required></textarea></label>
             <label><span>简介</span><textarea name="description" rows="2" minlength="1" maxlength="240" placeholder="一句话介绍这个站点" required></textarea></label>
             <label><span>图标网址</span><textarea name="iconUrl" rows="2" inputmode="url" autocapitalize="off" spellcheck="false" placeholder="https://example.com/favicon.ico" required></textarea></label>
             <label><span>背景图片网址 · 可选</span><textarea name="backgroundUrl" rows="2" inputmode="url" autocapitalize="off" spellcheck="false" placeholder="留空时使用头像虚化背景"></textarea></label>
             <label><span>RSS 地址 · 可选</span><textarea name="rssUrl" rows="2" inputmode="url" autocapitalize="off" spellcheck="false" placeholder="https://example.com/rss.xml"></textarea></label>
-            <button class="admin-create" type="submit" disabled>＋ 导入友链</button>
+            <button class="media-button" type="submit" disabled>＋ 导入友链</button>
             <small class="form-status" role="status" aria-live="polite" data-admin-feedback>图标和背景仅保存网址；背景留空时使用头像虚化效果。</small>
           </form>
+          </AdminDrawer>
           <div class="admin-friend-list">
             {friends.map((friend) => (
-              <form method="post" class="admin-friend-card" data-friend-id={friend.id}>
+              <div class="admin-record-row"><div><b>{friend.name}</b><p>{friend.description}</p></div><button type="button" data-drawer-open={`friend-${friend.id}`}>编辑</button>
+              <AdminDrawer id={`friend-${friend.id}`} title={`编辑 ${friend.name}`}>
+              <form method="post" novalidate class="admin-friend-card" data-friend-id={friend.id}>
                 <span class="admin-friend-card__icon"><b>{friend.name.slice(0, 1)}</b><img src={friend.iconUrl} alt="" loading="lazy" referrerpolicy="no-referrer" /></span>
                 <div class="admin-friend-card__fields">
                   <label><span>名称</span><input name="name" value={friend.name} minlength="1" maxlength="60" aria-label="友链名称" required /></label>
@@ -152,18 +162,21 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
                 <footer><button type="submit" disabled>保存</button><button type="button" data-delete-friend>删除</button></footer>
                 <p class="form-status" role="status" data-admin-feedback></p>
               </form>
+              </AdminDrawer></div>
             ))}
           </div>
-        </section>
+        </section>}
 
-        <AdminProjects />
+        {activeSection === 'projects' && <AdminProjects />}
+        {activeSection === 'sponsors' && <AdminSponsors />}
+        </div></div>
       </>
     ) : (
       <div class="admin-login-scene">
         <div class="admin-login__decor" aria-hidden="true">
           <i></i><i></i><i></i>
         </div>
-        <form method="post" class="admin-login" data-admin-login>
+        <form method="post" novalidate class="admin-login" data-admin-login>
           <div class="admin-login__brand">
             <img src="/media/brand/logo.jpg" alt="" width="40" height="40" />
             <span>SamsBlog</span>
@@ -261,8 +274,6 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
       const count = document.querySelector<HTMLElement>(`.admin-summary [data-status="${status}"] b`);
       if (count) count.textContent = String(messages.filter((message) => message.dataset.status === status).length);
     });
-    const total = document.querySelector<HTMLElement>('.admin-tabs a[href="#messages"] b');
-    if (total) total.textContent = String(messages.filter((message) => !message.hasAttribute('data-parent-id')).length);
   };
   const bindMessageActions = (message: HTMLElement) => {
     const owned = <T extends HTMLElement>(selector: string) => [...message.querySelectorAll<T>(selector)].filter((element) => element.closest('[data-admin-message]') === message);
@@ -284,6 +295,7 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
       if (!await confirmAdminAction(reply ? '确定删除这条回复吗？' : '确定删除这条留言吗？回复也会一起删除。', reply ? '删除回复' : '删除留言')) return;
       void runAdminAction(message, async () => {
         await sendAdminRequest('/api/admin/messages.json', 'DELETE', { id });
+        if (!reply) message.querySelector<HTMLDialogElement>('dialog')?.close();
         message.remove();
         refreshMessageCounts();
       });
@@ -377,6 +389,8 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
         form.classList.remove('is-saved');
         await sendAdminRequest('/api/admin/friends.json', 'PATCH', payload);
         form.classList.add('is-saved');
+        const summary = form.closest('.admin-record-row');
+        if (summary) { const heading = summary.querySelector('b'); if (heading) heading.textContent = String(payload.name || ''); const description = summary.querySelector('p'); if (description) description.textContent = String(payload.description || ''); }
         return '友链已保存。';
       });
     });
@@ -385,9 +399,8 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
       if (!await confirmAdminAction('确定删除这条友链吗？', '删除友链')) return;
       void runAdminAction(form, async () => {
         await sendAdminRequest('/api/admin/friends.json', 'DELETE', { id });
-        form.remove();
-        const total = document.querySelector<HTMLElement>('.admin-tabs a[href="#friends"] b');
-        if (total) total.textContent = String(document.querySelectorAll('[data-friend-id]').length);
+        form.closest<HTMLDialogElement>('dialog')?.close();
+        (form.closest('.admin-record-row') || form).remove();
       });
     });
     const icon = form.querySelector<HTMLImageElement>('.admin-friend-card__icon img');

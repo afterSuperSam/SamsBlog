@@ -4,6 +4,8 @@ import path from 'node:path';
 import { getDatabase } from './db';
 import { HttpError } from './http';
 import { serverConfig } from '../config/server';
+import { siteConfig } from '../config/site';
+import { renderMarkdown } from './markdown';
 
 export interface MediaRecord {
   id: number;
@@ -19,6 +21,24 @@ const filenamePattern = /^[a-f0-9]{64}\.(?:jpg|png|webp|gif)$/;
 const directory = () => path.resolve(process.env.BLOG_DATA_DIR || 'data', 'uploads');
 const select = 'SELECT id, filename, original_name AS name, mime_type AS type, byte_size AS size, created_at AS createdAt, deleted_at AS deletedAt FROM blog_media';
 const withUrl = (row: Omit<MediaRecord, 'url'>): MediaRecord => ({ ...row, url: `/uploads/${row.filename}` });
+
+// 按阅读页实际解析地址识别媒体引用，兼容编码路径和 Markdown 尖括号地址。
+export function referencedMediaFilenames(content: string, coverUrl = '') {
+  const filenames = new Set<string>();
+  const origin = new URL(siteConfig.siteUrl).origin;
+  const values = [coverUrl, ...Array.from(renderMarkdown(content).matchAll(/(?:src|href)="([^"]+)"/g), (match) => match[1])];
+  for (const value of values) {
+    if (!value) continue;
+    try {
+      const address = new URL(value.replaceAll('&amp;', '&'), new URL('/articles/1', origin));
+      if (address.origin !== origin) continue;
+      const pathname = decodeURIComponent(address.pathname);
+      const filename = pathname.startsWith('/uploads/') ? pathname.slice('/uploads/'.length) : '';
+      if (filenamePattern.test(filename)) filenames.add(filename);
+    } catch { continue; }
+  }
+  return filenames;
+}
 
 export function listMedia() {
   return (getDatabase().prepare(`${select} ORDER BY created_at DESC, id DESC`).all() as MediaRecord[]).map(withUrl);
@@ -68,8 +88,16 @@ export function changeMediaVisibility(id: number, restore: boolean) {
     const row = database.prepare(`${select} WHERE id = ?`).get(id) as MediaRecord | undefined;
     if (!row) throw new HttpError(404, '图片不存在');
     if (!restore) {
-      const used = database.prepare('SELECT 1 FROM blog_articles WHERE instr(cover_url, ?) > 0 OR instr(content, ?) > 0 LIMIT 1').get(`/uploads/${row.filename}`, `/uploads/${row.filename}`);
+      const articles = database.prepare('SELECT content,cover_url AS coverUrl FROM blog_articles').all() as Array<{ content: string; coverUrl: string }>;
+      const used = articles.some((article) => article.content.includes(`/uploads/${row.filename}`) || article.coverUrl.includes(`/uploads/${row.filename}`)
+        || referencedMediaFilenames(article.content, article.coverUrl).has(row.filename));
       if (used) throw new HttpError(409, '图片仍被文章引用，请先移除首图或正文中的引用（包括已删除文章）');
+      const drafts = database.prepare('SELECT payload FROM blog_article_drafts').all() as Array<{ payload: string }>;
+      if (drafts.some((draft) => {
+        if (draft.payload.includes(`/uploads/${row.filename}`)) return true;
+        const payload = JSON.parse(draft.payload) as { content: string; coverUrl: string };
+        return referencedMediaFilenames(payload.content, payload.coverUrl).has(row.filename);
+      })) throw new HttpError(409, '图片仍被自动保存的草稿引用，请先移除草稿中的引用');
     }
     database.prepare('UPDATE blog_media SET deleted_at = ? WHERE id = ?').run(restore ? null : new Date().toISOString(), id);
   })();

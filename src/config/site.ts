@@ -6,6 +6,7 @@ export const siteConfig = {
   rss: { description: '只是一只大黄狗', siteUrl: 'https://blog.moesam.com/' },
   nav: [
     { href: '/', label: '首页' },
+    { href: '/content', label: '内容' },
     { href: '/about', label: '关于' },
   ],
   effects: { particleCount: 60, mobileParticleCount: 18, pointerTiltDegrees: 2.5, constellation: { desktopLineCount: 10, mobileLineCount: 5, desktopPointCount: 14, mobilePointCount: 8, refreshMilliseconds: 4200, fadeMilliseconds: 1100, maximumDistanceRatio: 0.26, maximumDegree: 2, scrollPeriodScreens: 2 } },
@@ -18,10 +19,24 @@ export const siteConfig = {
     { name: 'fume_shroom', amount: 10 },
     { name: 'DogTable_Kcid', amount: 30 },
   ],
-  articles: { homepageCount: 2, feedCount: 20, cardCount: 3, reorderMilliseconds: 420 },
-  articleReading: { positionStorageKey: 'sams-blog-reading-positions', preferenceStorageKey: 'sams-blog-reading-mode', positionLimit: 50, positionSaveMilliseconds: 1000, positionMinimumPixels: 240, imageZoomScale: 2, copyFeedbackMilliseconds: 1800 },
-  interactions: { feedbackResizeMilliseconds: 260, themeRevealMilliseconds: 760, monthScrollMilliseconds: 360, keyboardInsetPixels: 18, requestTimeoutMilliseconds: 15000, tooltipDismissMilliseconds: 160 },
+  sponsorPresentation: { twoColumnMinimumCount: 6, avatarSizePixels: 64, avatarBaseUrl: 'https://minotar.net/helm/', avatarTimeoutMilliseconds: 4000, avatarPreloadMarginPixels: 240 },
+  sponsorFields: { nameMaximumLength: 60, maximumAmount: 1000000 },
+  articles: { homepageCount: 1, homepageNoteCount: 2, homepageLinkCount: 1, feedCount: 20, cardCount: 3, reorderMilliseconds: 420, maximumTags: 8, tagMaximumLength: 24, searchMaximumLength: 120, searchDelayMilliseconds: 180, searchRevealMilliseconds: 280, searchDismissMilliseconds: 180 },
+  articleReading: { positionStorageKey: 'sams-blog-reading-positions', preferenceStorageKey: 'sams-blog-reading-mode', positionLimit: 50, positionSaveMilliseconds: 1000, positionMinimumPixels: 240, imageZoomScale: 2, copyFeedbackMilliseconds: 1800, codeCollapsedLines: 16 },
+  visitorProfile: { storageKey: 'sams-blog-visitor-profile', nicknameMaximumLength: 24, emailMaximumLength: 254 },
+  readingExtras: { historyVisibleCount: 2, quoteMaximumCharacters: 450, quoteWidth: 1080, quoteWordmarkWidth: 210, quoteFontSize: 42, quoteLineHeight: 72, quotePadding: 88, quoteMinimumHeight: 720 },
+  interactions: { feedbackResizeMilliseconds: 260, themeRevealMilliseconds: 760, monthScrollMilliseconds: 360, keyboardInsetPixels: 18, requestTimeoutMilliseconds: 15000, tooltipDismissMilliseconds: 160, tooltipRevealMilliseconds: 180, receiptDurationMilliseconds: 1440 },
   projectPresentation: { initialVisibleCount: 4 },
+  friendPresentation: { homepageCount: 6 },
+  friendApplications: { draftStorageKey: 'sams-blog-friend-application' },
+  projectTerrain: {
+    rows: 6, maximumColumns: 40, cellPixels: 60, mobileCellPixels: 48, mobileBreakpointPixels: 760,
+    cameraElevationDegrees: 87, footprintRatio: 1.004, maximumHeight: 108,
+    idleWaveAmplitude: 0.7, scrollWaveAmplitude: 14, wavePeriodMilliseconds: 5200, responseMilliseconds: 460, slideDistanceCells: 0.8,
+    columnTransitionSpan: 0.18, centerTransitionSpan: 0.06, transitionEasingPower: 8, staggerEasingPower: 2.4, scrollWaveTurns: 1.2,
+    fullVisibilityRatio: 0.1,
+    framesPerSecond: 30, idleFramesPerSecond: 20, motionSettledThreshold: 0.001, pixelRatioLimit: 1.5, preloadMarginPixels: 64, seed: 47,
+  },
   projects: [
     { repository: 'afterSuperSam/SamsTownWeb', name: 'SamsTownWeb', description: '楹雾镇 Minecraft 社区网站', keyword: '楹雾', status: 'active' },
     { repository: 'afterSuperSam/FlayerBot', name: 'FlayerBot', description: '单进程 Minecraft 自动化 Bot', keyword: 'Bot', status: 'maintenance' },
@@ -41,6 +56,13 @@ export const siteConfig = {
 } as const;
 
 const rssUrl = new URL(siteConfig.rss.siteUrl);
+const sponsorAvatarUrl = new URL(siteConfig.sponsorPresentation.avatarBaseUrl);
+if (sponsorAvatarUrl.protocol !== 'https:' || sponsorAvatarUrl.username || sponsorAvatarUrl.password || sponsorAvatarUrl.search || sponsorAvatarUrl.hash
+  || !Number.isSafeInteger(siteConfig.sponsorPresentation.twoColumnMinimumCount) || siteConfig.sponsorPresentation.twoColumnMinimumCount < 2
+  || !Number.isSafeInteger(siteConfig.sponsorPresentation.avatarSizePixels) || siteConfig.sponsorPresentation.avatarSizePixels < 16 || siteConfig.sponsorPresentation.avatarSizePixels > 256
+  || ![siteConfig.sponsorPresentation.avatarTimeoutMilliseconds, siteConfig.sponsorPresentation.avatarPreloadMarginPixels].every((value) => Number.isSafeInteger(value) && value > 0)
+  || !Number.isSafeInteger(siteConfig.sponsorFields.nameMaximumLength) || siteConfig.sponsorFields.nameMaximumLength < 1
+  || !Number.isSafeInteger(siteConfig.sponsorFields.maximumAmount) || siteConfig.sponsorFields.maximumAmount < 1) throw new Error('Invalid sponsor configuration');
 if (!siteConfig.rss.description.trim() || rssUrl.protocol !== 'https:' || rssUrl.username || rssUrl.password
   || rssUrl.pathname !== '/' || rssUrl.search || rssUrl.hash) {
   throw new Error('Invalid RSS configuration');
@@ -54,12 +76,36 @@ if (!Number.isSafeInteger(siteConfig.network.sampleCount) || siteConfig.network.
 
 if (!Object.values(siteConfig.interactions).every((value) => Number.isSafeInteger(value) && value > 0)
   || !Number.isSafeInteger(siteConfig.projectPresentation.initialVisibleCount) || siteConfig.projectPresentation.initialVisibleCount < 1
-  || ![siteConfig.articleReading.positionLimit, siteConfig.articleReading.positionSaveMilliseconds, siteConfig.articleReading.positionMinimumPixels, siteConfig.articleReading.imageZoomScale, siteConfig.articleReading.copyFeedbackMilliseconds].every((value) => Number.isFinite(value) && value > 0)
+  || !Number.isSafeInteger(siteConfig.friendPresentation.homepageCount) || siteConfig.friendPresentation.homepageCount < 1
+  || !Object.values(siteConfig.readingExtras).every((value) => Number.isSafeInteger(value) && value > 0)
+  || ![siteConfig.articleReading.positionLimit, siteConfig.articleReading.positionSaveMilliseconds, siteConfig.articleReading.positionMinimumPixels, siteConfig.articleReading.imageZoomScale, siteConfig.articleReading.copyFeedbackMilliseconds, siteConfig.articleReading.codeCollapsedLines, siteConfig.visitorProfile.nicknameMaximumLength, siteConfig.visitorProfile.emailMaximumLength].every((value) => Number.isSafeInteger(value) && value > 0)
+  || !siteConfig.visitorProfile.storageKey || !siteConfig.friendApplications.draftStorageKey
   || !siteConfig.articleReading.positionStorageKey || !siteConfig.articleReading.preferenceStorageKey) {
   throw new Error('Invalid interaction configuration');
 }
 
 const statistics = siteConfig.statistics;
+const terrain = siteConfig.projectTerrain;
+if (![terrain.rows, terrain.maximumColumns, terrain.cellPixels, terrain.mobileCellPixels, terrain.mobileBreakpointPixels, terrain.wavePeriodMilliseconds, terrain.responseMilliseconds, terrain.framesPerSecond, terrain.idleFramesPerSecond, terrain.preloadMarginPixels, terrain.seed].every((value) => Number.isSafeInteger(value) && value > 0)
+  || terrain.rows > 40 || terrain.maximumColumns > 80 || terrain.framesPerSecond > 60 || terrain.idleFramesPerSecond > terrain.framesPerSecond
+  || terrain.mobileCellPixels > terrain.cellPixels
+  || !Number.isFinite(terrain.columnTransitionSpan) || terrain.columnTransitionSpan <= 0 || terrain.columnTransitionSpan >= 1
+  || !Number.isFinite(terrain.centerTransitionSpan) || terrain.centerTransitionSpan <= 0 || terrain.centerTransitionSpan > terrain.columnTransitionSpan
+  || !Number.isFinite(terrain.transitionEasingPower) || terrain.transitionEasingPower < 1 || terrain.transitionEasingPower > 10
+  || !Number.isFinite(terrain.staggerEasingPower) || terrain.staggerEasingPower < 1 || terrain.staggerEasingPower > 5
+  || !Number.isFinite(terrain.motionSettledThreshold) || terrain.motionSettledThreshold <= 0 || terrain.motionSettledThreshold > 0.1
+  || !Number.isFinite(terrain.fullVisibilityRatio) || terrain.fullVisibilityRatio < 0 || terrain.fullVisibilityRatio > 0.3
+  || !Number.isFinite(terrain.footprintRatio) || terrain.footprintRatio <= 0 || terrain.footprintRatio > 1.02
+  || !Number.isFinite(terrain.scrollWaveTurns) || terrain.scrollWaveTurns < 0 || terrain.scrollWaveTurns > 3
+  || !Number.isFinite(terrain.slideDistanceCells) || terrain.slideDistanceCells < 0 || terrain.slideDistanceCells > 5
+  || !Number.isFinite(terrain.cameraElevationDegrees) || terrain.cameraElevationDegrees < 60 || terrain.cameraElevationDegrees >= 90
+  || !Number.isFinite(terrain.maximumHeight) || terrain.maximumHeight <= 0 || terrain.maximumHeight > 128
+  || ![terrain.idleWaveAmplitude, terrain.scrollWaveAmplitude].every((value) => Number.isFinite(value) && value >= 0 && value < terrain.maximumHeight / 2)
+  || terrain.idleWaveAmplitude > terrain.scrollWaveAmplitude
+  || !Number.isFinite(terrain.pixelRatioLimit) || terrain.pixelRatioLimit < 1 || terrain.pixelRatioLimit > 2) {
+  throw new Error('Invalid project terrain configuration');
+}
+
 if (!Number.isSafeInteger(statistics.countDurationMilliseconds) || statistics.countDurationMilliseconds <= 0
   || !Number.isSafeInteger(statistics.countStaggerMilliseconds) || statistics.countStaggerMilliseconds < 0
   || !Number.isFinite(statistics.easingPower) || statistics.easingPower < 1 || statistics.easingPower > 5

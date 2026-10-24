@@ -1,0 +1,47 @@
+---
+import { listArticleMetadata } from '../lib/articles';
+import { siteConfig } from '../config/site';
+
+interface Props { compact?: boolean; articles?: { id: number; title: string; updatedAt: string }[] }
+const { compact = false, articles = listArticleMetadata() } = Astro.props;
+const headingId = compact ? 'home-reading-trail-title' : 'reading-trail-title';
+---
+
+<section class:list={['reading-trail', { 'reading-trail--compact': compact }]} data-reveal data-reading-trail data-trail-articles={JSON.stringify(articles.map(({ id, title, updatedAt }) => ({ id, title, updatedAt })))} data-trail-limit={compact ? 1 : siteConfig.readingExtras.historyVisibleCount} hidden aria-labelledby={headingId}>
+  <header><h2 id={headingId}>{compact ? '之前读到' : '本机阅读路径'}</h2>{!compact && <button type="button" class="articles-more" data-trail-clear>清除记录</button>}</header>
+  <ol data-trail-list></ol><span class="sr-only" role="status" data-trail-status></span>
+</section>
+
+<script>
+  import { readReadingHistory, getReadingTrail } from '../lib/reading-history';
+  import { siteConfig } from '../config/site';
+  document.querySelectorAll<HTMLElement>('[data-reading-trail]').forEach((trail) => {
+    const list = trail.querySelector<HTMLOListElement>('[data-trail-list]')!;
+    const status = trail.querySelector<HTMLElement>('[data-trail-status]')!;
+    const articles = JSON.parse(trail.dataset.trailArticles!) as { id: number; title: string; updatedAt: string }[];
+    const renderTrail = () => {
+      try {
+        const history = getReadingTrail(readReadingHistory(), articles, Number(trail.dataset.trailLimit));
+        list.replaceChildren(...history.map((record) => {
+          const item = document.createElement('li');
+          const link = document.createElement('a'); link.href = `/articles/${record.id}`; link.textContent = record.title;
+          const date = document.createElement('time'); date.dateTime = new Date(record.visitedAt).toISOString();
+          date.textContent = new Date(record.visitedAt).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' });
+          const progress = document.createElement('span'); progress.textContent = record.progress > 0 ? `读到 ${Math.round(record.progress * 100)}%` : '刚刚翻开';
+          item.append(date, link, progress); return item;
+        }));
+        trail.hidden = !history.length;
+      } catch (error) { console.warn('Reading trail unavailable', error); trail.hidden = true; }
+    };
+    renderTrail();
+    window.addEventListener('pageshow', renderTrail);
+    window.addEventListener('storage', (event) => { if (event.key === null || event.key === siteConfig.articleReading.positionStorageKey) renderTrail(); });
+    trail.querySelector('[data-trail-clear]')?.addEventListener('click', () => {
+      try {
+        localStorage.removeItem(siteConfig.articleReading.positionStorageKey); trail.hidden = true;
+        const heading = document.getElementById('articles-title');
+        heading?.setAttribute('tabindex', '-1'); heading?.focus({ preventScroll: true });
+      } catch (error) { console.warn('Reading trail clear failed', error); status.textContent = '无法清除本机记录，请检查浏览器存储设置'; }
+    });
+  });
+</script>

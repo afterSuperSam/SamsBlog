@@ -30,13 +30,7 @@ const monthLabel = (month: string) => `${month.slice(0, 4)} 年 ${Number(month.s
     </div>
     {!inlineTotal && totalLabel && <strong>{totalLabel}</strong>}
   </header>
-  {showUsage && <nav class="contribution-months" aria-label={`${title}按月浏览`}>
-    <button type="button" data-month-previous aria-label="上一个月">←</button>
-    <output data-month-label aria-live="polite">{monthLabel(months.at(-1) || '')}</output>
-    <button type="button" data-month-next aria-label="下一个月" disabled>→</button>
-    <button type="button" class="contribution-months__latest" data-month-latest>回到最新</button>
-  </nav>}
-  <div class="contribution-scroll" role="group" aria-label={`${title}每日用量图，${calendar.available ? `共 ${calendar.total.toLocaleString('zh-CN')} ${unit}` : '暂时离线'}；方向键浏览日期，Home 和 End 跳至首尾`}>
+  <div class="contribution-scroll" role="group" aria-label={`${title}每日记录，${calendar.available ? `共 ${calendar.total.toLocaleString('zh-CN')} ${unit}` : '暂时离线'}；方向键浏览日期，Home 和 End 跳至首尾`}>
     <div class="contribution-grid">
       {calendar.days.map((day, index) => (
         <button
@@ -70,6 +64,12 @@ const monthLabel = (month: string) => `${month.slice(0, 4)} 年 ${Number(month.s
     <span>{calendar.available ? period : '网络恢复后自动更新'}</span>
     <div aria-label="活动强度"><small>少</small>{[0, 1, 2, 3, 4].map((level) => <i class={`contribution-cell contribution-cell--${level}`}></i>)}<small>多</small></div>
     {href && <a href={href} target="_blank" rel="noreferrer">查看 GitHub</a>}
+    {showUsage && <nav class="contribution-months" aria-label={`${title}按月浏览`}>
+      <button type="button" data-month-previous aria-label="上一个月">←</button>
+      <output data-month-label aria-live="polite">{monthLabel(months.at(-1) || '')}</output>
+      <button type="button" data-month-next aria-label="下一个月" disabled>→</button>
+      <button type="button" class="contribution-months__latest" data-month-latest>回到最新</button>
+    </nav>}
   </footer>
 </article>
 

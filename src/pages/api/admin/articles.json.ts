@@ -1,24 +1,30 @@
-import { deleteArticle, listArticles, restoreArticle, saveArticle } from '../../../lib/articles';
-import { adminRoute, HttpError, json, readJsonObject, readPositiveId } from '../../../lib/http';
+import { deleteArticle, listArticles, restoreArticle, withdrawArticle } from '../../../lib/articles';
+import { listArticleDrafts, saveArticleDraft, publishArticleDraft, deleteArticleDraft, restoreArticleDraft } from '../../../lib/article-drafts';
+import { adminRoute, HttpError, json, readJsonObject, readPositiveId, requireSameOrigin } from '../../../lib/http';
 
-const readArticleBody = readJsonObject;
+const readArticleBody = (request: Request) => { requireSameOrigin(request); return readJsonObject(request); };
 
-export const GET = adminRoute(() => json({ articles: listArticles({ includeDeleted: true }) }));
+export const GET = adminRoute(() => json({ articles: listArticles({ includeDeleted: true, includeDrafts: true }), drafts: listArticleDrafts() }));
 
 export const POST = adminRoute(async ({ request }) => {
   const body = await readArticleBody(request);
-  if ('id' in body) throw new HttpError(400, '新建文章不能携带编号');
-  return json({ ok: true, id: saveArticle(body) }, 201);
+  if (body.action === 'publish') return json({ ok: true, id: publishArticleDraft(body) }, 201);
+  if (body.action !== 'draft') throw new HttpError(400, '请选择保存草稿或发布');
+  return json({ ok: true, draft: saveArticleDraft(body) });
 });
 
 export const PATCH = adminRoute(async ({ request }) => {
   const body = await readArticleBody(request);
+  if (body.draftId && body.restore === true) { restoreArticleDraft(body); return json({ ok: true }); }
   const id = readPositiveId(body.id);
   if (body.restore === true) return restoreArticle(id) ? json({ ok: true, id }) : json({ error: '已删除的文章不存在' }, 404);
-  return json({ ok: true, id: saveArticle(body) });
+  if (body.withdraw === true) return withdrawArticle(id) ? json({ ok: true, id }) : json({ error: '公开文章不存在' }, 404);
+  throw new HttpError(400, '不支持的文章操作');
 });
 
 export const DELETE = adminRoute(async ({ request }) => {
-  const id = readPositiveId((await readArticleBody(request)).id);
+  const body = await readArticleBody(request);
+  if (body.draftId) { deleteArticleDraft(body); return json({ ok: true }); }
+  const id = readPositiveId(body.id);
   return deleteArticle(id) ? json({ ok: true }) : json({ error: '文章不存在' }, 404);
 });

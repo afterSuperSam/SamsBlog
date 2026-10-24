@@ -121,7 +121,7 @@ function inlineMarkdown(text: string, baseUrl?: string, depth = 0, allowLinks = 
 }
 
 const listMarker = /^ {0,3}([-+*]|\d+[.)])\s+(.*)$/;
-const fenceMarker = /^ {0,3}(`{3,}|~{3,})([\w+-]*)\s*$/;
+const fenceMarker = /^ {0,3}(`{3,}|~{3,})([\w+-]*)(?:[\t ]+(.+?))?[\t ]*$/;
 const headingMarker = /^ {0,3}(#{1,6})\s+(.+?)\s*#*$/;
 const ruleMarker = /^ {0,3}(?:(?:\*\s*){3,}|(?:-\s*){3,}|(?:_\s*){3,})$/;
 const quoteMarker = /^ {0,3}>\s?/;
@@ -138,6 +138,35 @@ function renderBlocks(markdown: string, baseUrl?: string, depth = 0): string {
   for (let index = 0; index < lines.length;) {
     const line = lines[index];
     if (!line.trim()) { index += 1; continue; }
+    const annotation = line.match(/^:::(details|aside)\s+(.+)$/);
+    if (annotation) {
+      const body: string[] = [];
+      let closing = index + 1;
+      let nesting = 1;
+      let fenced = '';
+      for (; closing < lines.length; closing++) {
+        const marker = lines[closing].match(fenceMarker);
+        if (marker && !fenced) fenced = marker[1];
+        else if (fenced && new RegExp(`^ {0,3}${fenced[0]}{${fenced.length},}\\s*$`).test(lines[closing])) fenced = '';
+        else if (!fenced) {
+          if (/^:::(?:details|aside)\s+.+$/.test(lines[closing])) nesting++;
+          else if (/^:::\s*$/.test(lines[closing]) && --nesting === 0) break;
+        }
+        body.push(lines[closing]);
+      }
+      if (!nesting) {
+        const title = inlineMarkdown(annotation[2], baseUrl, 0, false);
+        const content = renderBlocks(body.join('\n'), baseUrl, depth + 1);
+        result.push(annotation[1] === 'details'
+          ? `<details class="article-explanation"><summary>${title}</summary><div class="article-explanation__body">${content}</div></details>`
+          : `<aside class="article-aside"><strong class="article-aside__title">${title}</strong>${content}</aside>`);
+        index = closing + 1;
+        continue;
+      }
+      // 未闭合时保留原文，避免多个畸形开头反复扫描同一段正文。
+      result.push(`<p>${escapeHtml(lines.slice(index).join('\n'))}</p>`);
+      break;
+    }
     const fence = line.match(fenceMarker);
     if (fence) {
       const body: string[] = [];
@@ -145,7 +174,9 @@ function renderBlocks(markdown: string, baseUrl?: string, depth = 0): string {
       while (index < lines.length && !new RegExp(`^ {0,3}${fence[1][0]}{${fence[1].length},}\\s*$`).test(lines[index])) body.push(lines[index++]);
       const code = body.join('\n') + (body.length && index < lines.length ? '\n' : '');
       index += 1;
-      result.push(`<pre><code${fence[2] ? ` class="language-${escapeHtml(fence[2])}"` : ''}>${escapeHtml(code)}</code></pre>`);
+      const file = fence[3]?.match(/^(?:(?:title|filename)=)?(?:"([^"\r\n]+)"|'([^'\r\n]+)'|([^\s"'<>]+))$/);
+      const filename = file ? file[1] || file[2] || file[3] : '';
+      result.push(`<pre><code${fence[2] ? ` class="language-${escapeHtml(fence[2])}"` : ''}${filename ? ` data-filename="${escapeHtml(filename)}"` : ''}>${escapeHtml(code)}</code></pre>`);
       continue;
     }
     const heading = line.match(headingMarker);
@@ -188,7 +219,7 @@ function renderBlocks(markdown: string, baseUrl?: string, depth = 0): string {
     }
     const body = [line];
     index += 1;
-    while (index < lines.length && !startsBlock(lines[index])) body.push(lines[index++]);
+    while (index < lines.length && !startsBlock(lines[index]) && !/^:::(?:details|aside)\s+.+$/.test(lines[index])) body.push(lines[index++]);
     result.push(`<p>${inlineMarkdown(body.join('\n'), baseUrl).replace(/ {2,}\n/g, '<br>')}</p>`);
   }
   return result.join('\n');
@@ -221,10 +252,18 @@ export function renderArticleMarkdown(markdown: string) {
 
 export function articleExcerpt(markdown: string): string {
   const text = renderMarkdown(markdown)
+    .replace(/<pre>[\s\S]*?<\/pre>/g, ' ')
     .replace(/<img\b[^>]*\balt="([^"]*)"[^>]*>/g, '$1')
     .replace(/<[^>]*>/g, ' ')
     .replace(/&(amp|lt|gt|quot|#39);/g, (_, entity: string) => ({ amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'" })[entity]!)
     .replace(/\s+/g, ' ').trim();
   const characters = Array.from(text);
   return characters.length > 180 ? `${characters.slice(0, 180).join('')}…` : text;
+}
+
+// 检索保留代码文字，列表摘要仍单独跳过代码块。
+export function articlePlainText(markdown: string): string {
+  return renderMarkdown(markdown).replace(/<img\b[^>]*\balt="([^"]*)"[^>]*>/g, '$1').replace(/<[^>]*>/g, ' ')
+    .replace(/&(amp|lt|gt|quot|#39);/g, (_, entity: string) => ({ amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'" })[entity]!)
+    .replace(/\s+/g, ' ').trim();
 }

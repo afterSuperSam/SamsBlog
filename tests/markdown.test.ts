@@ -2,6 +2,24 @@ import { describe, expect, it } from 'vitest';
 import { articleExcerpt, renderArticleMarkdown, renderMarkdown } from '../src/lib/markdown';
 
 describe('article Markdown', () => {
+  it('renders safe expandable explanations and margin notes, keeping nested fences intact', () => {
+    const rendered = renderArticleMarkdown('正文\n:::details 为什么\n说明 **内容**\n\n:::aside 提醒\n[链接](/articles/1)\n:::\n\n```txt\n:::\n```\n\n## 一节\n:::\n\n结束');
+    expect(rendered.html).toContain('<details class="article-explanation"><summary>为什么</summary>');
+    expect(rendered.html).toContain('<aside class="article-aside">');
+    expect(rendered.html).toContain('<code class="language-txt">:::\n</code>');
+    expect(rendered.html).toContain('<p>结束</p>');
+    expect(rendered.headings).toHaveLength(1);
+    expect(renderMarkdown(':::aside <img onerror="alert(1)">\n<script>x</script>\n:::')).not.toContain('<script>');
+    expect(renderMarkdown(':::details [标题](/a)\n正文\n:::')).not.toContain('<summary><a');
+  });
+
+  it('keeps malformed annotation markers inert without quadratic suffix scans', () => {
+    const text = ':::details 尚未闭合\n'.repeat(3000);
+    const start = performance.now();
+    expect(renderMarkdown(text)).toBe(`<p>${text}</p>`);
+    expect(performance.now() - start).toBeLessThan(1000);
+    expect(renderMarkdown('```txt\n:::aside 文字\n::: \n```')).not.toContain('<aside');
+  });
   it('builds stable unique heading anchors without collecting fenced or escaped headings', () => {
     const markdown = '## 重复\n\n## **重复**\n\n### 重复-2\n\n> ## 重复\n\n```md\n# 围栏内\n```\n\n<h2>原始 HTML</h2>';
     const rendered = renderArticleMarkdown(markdown);
@@ -129,5 +147,23 @@ describe('article Markdown', () => {
     expect(Array.from(articleExcerpt('字'.repeat(181)))).toHaveLength(181);
     expect(articleExcerpt('字'.repeat(181))).toMatch(/…$/);
     expect(articleExcerpt('你好😀')).toBe('你好😀');
+  });
+
+  it.each([
+    ['```css\n#NOW { color: red; }\n```\n\n这是正文摘要。', '这是正文摘要。'],
+    ['正文之前\n\n~~~~html\n</pre><p>代码内容</p>\n~~~\n仍在代码块内\n~~~~\n\n正文之后', '正文之前 正文之后'],
+    ['正文\n\n```ts\nconst unfinished = true;', '正文'],
+    ['```js\nconsole.log("only code");\n```', ''],
+    ['使用 `#NOW` 选择器。', '使用 #NOW 选择器。'],
+  ])('omits fenced code from excerpts while preserving prose and inline code: %s', (markdown, expected) => {
+    expect(articleExcerpt(markdown)).toBe(expected);
+  });
+});
+describe('code filenames', () => {
+  it('keeps filename metadata out of copied code and escapes attribute text', () => {
+    const source = '```ts title="src/my file.ts"\n  const value = 1;\n\tvalue++;\n```';
+    expect(renderMarkdown(source)).toBe('<pre><code class="language-ts" data-filename="src/my file.ts">  const value = 1;\n\tvalue++;\n</code></pre>');
+    expect(renderMarkdown('~~~js filename="<script>&"\nrun();\n~~~')).toContain('data-filename="&lt;script&gt;&amp;"');
+    expect(articleExcerpt('摘要\n\n' + source)).toBe('摘要');
   });
 });

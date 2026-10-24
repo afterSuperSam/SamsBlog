@@ -33,6 +33,7 @@ const feedUrl = new URL('/rss.xml', siteConfig.siteUrl).href;
       const feedback = dialog.querySelector<HTMLElement>('[data-rss-feedback]')!;
       clearTimeout(copyTimer);
       copy.disabled = true;
+      copy.dataset.copyState = 'pending'; copyLabel.textContent = '复制中…';
       try {
         await navigator.clipboard.writeText(address.value);
         copy.dataset.copyState = 'success'; copyLabel.textContent = '复制成功';
@@ -40,7 +41,7 @@ const feedUrl = new URL('/rss.xml', siteConfig.siteUrl).href;
         copyTimer = setTimeout(() => { delete copy.dataset.copyState; copyLabel.textContent = '复制地址'; }, siteConfig.articleReading.copyFeedbackMilliseconds);
       } catch (error) {
         console.warn('RSS clipboard write failed', error);
-        delete copy.dataset.copyState; copyLabel.textContent = '复制地址';
+        copy.dataset.copyState = 'error'; copyLabel.textContent = '复制失败';
         address.focus(); address.select();
         animateContentHeight(feedback, () => { feedback.textContent = '请复制上方已选中的订阅地址'; feedback.dataset.state = 'error'; });
       } finally { copy.disabled = false; }

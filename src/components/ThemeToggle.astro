@@ -16,6 +16,7 @@
   let changing = false;
   const updateLabel = () => toggle?.setAttribute('aria-label', `切换到${root.dataset.theme === 'dark' ? '浅色' : '深色'}主题`);
   updateLabel();
+  window.addEventListener('pageshow', (event) => { if (event.persisted) updateLabel(); });
   toggle?.addEventListener('click', async () => {
     if (changing) return;
     const next = root.dataset.theme === 'dark' ? 'light' : 'dark';

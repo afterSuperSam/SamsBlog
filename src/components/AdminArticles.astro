@@ -1,30 +1,51 @@
 ---
 import { listArticles } from '../lib/articles';
+import { listArticleDrafts } from '../lib/article-drafts';
+import AdminDrawer from './AdminDrawer.astro';
+import AdminMedia from './AdminMedia.astro';
 import { serverConfig } from '../config/server';
+import { siteConfig } from '../config/site';
 import ThemeSelect from './ThemeSelect.astro';
+import ArticleCard from './ArticleCard.astro';
+import { articleCardLayouts, articleContentTypes } from '../lib/article-catalog';
 import '../styles/articles.css';
 import '../styles/admin-articles.css';
 
-const articles = listArticles({ includeDeleted: true });
+const articles = listArticles({ includeDeleted: true, includeDrafts: true });
+const drafts = listArticleDrafts();
+const deletedDrafts = listArticleDrafts(true).filter((draft) => draft.deletedAt);
 const active = articles.filter((article) => !article.deletedAt);
 const deleted = articles.filter((article) => article.deletedAt);
+const availableTags = [...new Set(active.flatMap((article) => article.tags))].sort((first, second) => first.localeCompare(second, 'zh-CN'));
 const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
 ---
 
-<section class="admin-panel admin-articles" id="articles" data-admin-articles>
-  <header class="admin-panel__heading"><div><span>ARTICLES</span><h2>文章</h2></div><p>写下想法，保存即公开。删除的文章可在下方恢复。</p></header>
+<section class="admin-panel admin-articles" id="articles" data-admin-articles data-autosave-delay={serverConfig.articleAutosaveMilliseconds}>
+  <header class="admin-panel__heading"><div><span>CONTENT</span><h2>内容</h2></div><button class="media-button" type="button" data-new-article>＋ 写点内容</button></header>
+  <AdminDrawer id="article-editor-drawer" title="内容编辑" wide>
   <form method="post" class="article-editor" data-article-editor novalidate>
-    <header class="article-editor__heading"><h3 data-editor-heading>写一篇文章</h3><button type="button" data-new-article>＋ 新文章</button></header>
+    <header class="article-editor__heading"><h3 data-editor-heading>写点内容</h3><span data-draft-status role="status">修改后自动保存为草稿</span></header>
     <input type="hidden" name="id" />
     <div class="article-editor__fields">
       <label class="article-editor__title"><span>题目</span><input name="title" maxlength={serverConfig.articleTitleMaxLength} required autocomplete="off" /></label>
       <ThemeSelect name="source" label="来源" options={[{value:'original',label:'原创'},{value:'repost',label:'搬运'}]} />
       <ThemeSelect name="category" label="分类" options={[{value:'discussion',label:'杂谈'},{value:'journal',label:'日志'}]} />
+      <label class="article-editor__cover"><span>摘要 · 可选</span><textarea name="summary" rows="2" maxlength={serverConfig.articleSummaryMaxLength} placeholder="留空时从正文提取摘要"></textarea></label>
+      <div class="article-editor__layout"><ThemeSelect name="contentType" label="内容形式" options={[...articleContentTypes]} /><div data-article-layout><ThemeSelect name="cardLayout" label="卡片布局" options={[...articleCardLayouts]} /></div><small>首页与内容页同步使用所选版式。</small></div>
+      <label class="article-editor__cover" data-external-field hidden><span>外部链接地址</span><input name="externalUrl" type="url" inputmode="url" autocomplete="off" placeholder="https://…" /></label>
       <label class="article-editor__cover"><span>首图链接 · 可选</span><input name="coverUrl" type="url" inputmode="url" autocomplete="off" placeholder="https://…" /></label>
       <div class="article-editor__media"><button type="button" class="media-button" data-upload-media="cover"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m-5 5 5-5 5 5M5 16v4h14v-4" /></svg>上传首图</button><a class="media-button" href="#media">从媒体库选择</a></div>
       <label data-repost-field hidden><span>原作者 · 可选</span><input name="originalAuthor" maxlength={serverConfig.articleTitleMaxLength} autocomplete="off" /></label>
       <label class="article-editor__cover" data-repost-field hidden><span>原文链接 · 可选</span><input name="originalUrl" type="url" inputmode="url" autocomplete="off" placeholder="https://…" /></label>
     </div>
+    <fieldset class="article-editor__tags">
+      <legend>标签 · 可选</legend>
+      <div class="article-editor__tag-selected" data-selected-tags aria-label="已选标签"></div>
+      <div class="article-editor__tag-input"><label class="sr-only" for="article-tag-input">新标签</label><input id="article-tag-input" name="tagInput" autocomplete="off" maxlength={siteConfig.articles.tagMaximumLength * 2 + 1} placeholder="输入标签，按回车添加" aria-describedby="article-tag-help article-tag-feedback" /><button type="button" data-add-tag>＋ 添加</button></div>
+      <small id="article-tag-help">每篇最多 {siteConfig.articles.maximumTags} 个；点击已选标签可移除。</small>
+      {availableTags.length > 0 && <div class="article-editor__tag-options" aria-label="选择已有标签">{availableTags.map((tag) => <button type="button" data-existing-tag={tag} aria-pressed="false"># {tag}</button>)}</div>}
+      <p class="form-status" id="article-tag-feedback" role="status" data-tag-feedback></p>
+    </fieldset>
     <div class="article-editor__workspace">
       <div class="article-editor__writing">
         <label for="article-markdown">正文 · Markdown</label>
@@ -34,45 +55,67 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
           <button type="button" data-markdown="italic">斜体</button>
           <button type="button" data-markdown="list">列表</button>
           <button type="button" data-markdown="quote">引用</button>
+          <button type="button" data-markdown="details">展开解释</button>
+          <button type="button" data-markdown="aside">旁注</button>
           <button type="button" data-markdown="link">链接</button>
           <button type="button" data-markdown="image">图片</button>
           <button type="button" class="media-button" data-upload-media="body"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m-5 5 5-5 5 5M5 16v4h14v-4" /></svg>上传图片</button>
           <button type="button" data-markdown="code">代码</button>
         </div>
         <textarea id="article-markdown" name="content" rows="18" maxlength={serverConfig.articleContentMaxLength} required spellcheck="false" autocomplete="off" aria-describedby="article-editor-help"></textarea>
-        <small id="article-editor-help">支持 Markdown；图片可填写网址、上传本地文件，或从媒体库插入。</small>
+        <small id="article-editor-help">支持 Markdown；“展开解释”和“旁注”可包住选中的文字。图片支持网址、上传或从媒体库插入。</small>
       </div>
-      <section class="article-editor__preview" aria-label="文章实时预览">
-        <span>实时预览</span>
-        <img data-preview-cover alt="文章首图预览" hidden referrerpolicy="no-referrer" />
-        <h3 data-preview-title hidden></h3>
-        <div class="article-prose" data-article-preview><p class="article-editor__empty">写下正文后，预览会出现在这里。</p></div>
+      <section class="article-editor__preview" aria-label="文章实时预览" data-preview-shell>
+        <header class="article-preview__toolbar"><span>实时预览</span><div role="group" aria-label="预览方式"><button type="button" data-preview-mode="reading" aria-pressed="true" aria-controls="article-preview-reading">阅读页</button><button type="button" data-preview-mode="home" aria-pressed="false" aria-controls="article-preview-home">首页卡片</button></div></header>
+        <article class="article-reading article-preview__reading" id="article-preview-reading" data-preview-reading>
+          <header class="article-reading__heading">
+            <div class="article-tags"><span data-preview-source>原创</span><span data-preview-category>杂谈</span></div>
+            <h2 class="article-reading__title" data-preview-title>文章题目</h2>
+            <div class="article-keywords" data-preview-tags hidden></div>
+            <div class="article-reading__dates"><span>写于 <time data-preview-created>待发布</time></span><span>编辑于 <time data-preview-updated>待发布</time></span></div>
+            <p class="article-reading__source" data-preview-attribution hidden><span data-preview-author></span><a target="_blank" rel="noopener noreferrer">阅读原文 ↗</a></p>
+            <p class="article-reading__source" data-preview-external hidden><a target="_blank" rel="noopener noreferrer">打开推荐链接 ↗</a></p>
+          </header>
+          <img class="article-reading__cover" data-preview-cover alt="文章首图预览" hidden referrerpolicy="no-referrer" />
+          <details class="article-toc" data-preview-toc hidden><summary>文章目录 <span></span></summary><nav aria-label="预览文章目录"><ol></ol></nav></details>
+          <div class="article-prose" data-article-preview><p class="article-editor__empty">写下正文后，预览会出现在这里。</p></div>
+        </article>
+        <div class="article-preview__home" id="article-preview-home" data-preview-home hidden>
+          <ArticleCard preview article={{ id: 0, title: '', content: '', coverUrl: '', cardLayout: 'left', contentType: 'article', externalUrl: '', source: 'original', category: 'discussion', tags: [], createdAt: '', updatedAt: '' }} />
+        </div>
       </section>
     </div>
-    <footer class="article-editor__footer"><span data-editor-dates>保存后记录创建与编辑时间</span><button class="admin-create" type="submit" disabled>保存并公开</button></footer>
+    <footer class="article-editor__footer"><span data-editor-dates>草稿仅自己可见</span><button type="button" data-save-draft>保存草稿</button><button class="media-button" type="submit" disabled>发布</button></footer>
     <p class="form-status" role="status" aria-live="polite" data-article-feedback></p>
+    <details class="article-editor__library"><summary>从媒体库选择图片</summary><AdminMedia /></details>
   </form>
-  <div class="article-management-list" aria-label="已公开文章">
-    <h3>已公开 · {active.length} 篇</h3>
-    {active.length === 0 && <p class="admin-empty">还没有文章，从上方开始写吧。</p>}
+  </AdminDrawer>
+  {drafts.filter((draft) => !draft.articleId).length > 0 && <div class="article-management-list"><h3>未发布草稿</h3>{drafts.filter((draft) => !draft.articleId).map((draft) => <article class="article-management-item"><div><h4>{String(draft.payload.title || '未命名草稿')}</h4><small>自动保存于 {dateLabel(draft.savedAt)}</small></div><div class="article-management-actions"><button type="button" data-edit-article data-draft={JSON.stringify(draft)} data-article={JSON.stringify(draft.payload)}>继续写</button><button type="button" data-delete-draft={JSON.stringify({ draftId: draft.draftId, revision: draft.revision })}>删除草稿</button></div></article>)}</div>}
+  <div class="article-management-list" aria-label="已公开内容">
+    <h3>全部内容 · {active.length} 条</h3>
+    {active.length === 0 && <p class="admin-empty">还没有内容，从上方开始写吧。</p>}
     {active.map((article) => <article class="article-management-item">
-      <div><h4><a href={`/articles/${article.id}`}>{article.title}</a></h4><p>{article.source === 'original' ? '原创' : '搬运'} · {article.category === 'discussion' ? '杂谈' : '日志'}</p><small>创建 {dateLabel(article.createdAt)} · 编辑 {dateLabel(article.updatedAt)}</small></div>
-      <div class="article-management-actions"><button type="button" data-edit-article data-article={JSON.stringify(article)}>编辑</button><button type="button" data-remove-article={article.id}>删除</button></div>
+      <div><h4>{article.publicationStatus === 'published' ? <a href={`/articles/${article.id}`}>{article.title}</a> : article.title}</h4><p>{articleContentTypes.find((type) => type.value === article.contentType)?.label} · {article.source === 'original' ? '原创' : '搬运'} · {article.category === 'discussion' ? '杂谈' : '日志'}</p>{article.tags.length > 0 && <div class="article-keywords">{article.tags.map((tag) => <span># {tag}</span>)}</div>}<small>创建 {dateLabel(article.createdAt)} · 编辑 {dateLabel(article.updatedAt)}</small></div>
+      <div class="article-management-actions"><span class="admin-publication-status">{article.publicationStatus === 'draft' ? '草稿' : '已公开'}{drafts.some((draft) => draft.articleId === article.id) ? ' · 有未发布修改' : ''}</span><button type="button" data-edit-article data-article={JSON.stringify(article)} data-draft={JSON.stringify(drafts.find((draft) => draft.articleId === article.id) || null)}>编辑</button>{article.publicationStatus === 'published' && <button type="button" data-withdraw-article={article.id}>撤回草稿</button>}<button type="button" data-remove-article={article.id}>删除</button></div>
     </article>)}
   </div>
-  <details class="article-management-deleted"><summary>已删除 · {deleted.length} 篇</summary>
-    {deleted.length === 0 && <p class="admin-empty">没有已删除的文章。</p>}
-    {deleted.map((article) => <article class="article-management-item"><div><h4>{article.title}</h4><small>删除于 {dateLabel(article.deletedAt!)}</small></div><button type="button" data-restore-article={article.id}>恢复公开</button></article>)}
+  <details class="article-management-deleted"><summary>已删除 · {deleted.length + deletedDrafts.length} 条</summary>
+    {deleted.length + deletedDrafts.length === 0 && <p class="admin-empty">没有已删除的内容。</p>}
+    {deletedDrafts.map((draft) => <article class="article-management-item"><div><h4>{String(draft.payload.title || '未命名草稿')}</h4><small>草稿 · 删除于 {dateLabel(draft.deletedAt!)}</small></div><button type="button" data-restore-draft={JSON.stringify({ draftId: draft.draftId, revision: draft.revision })}>恢复</button></article>)}
+    {deleted.map((article) => <article class="article-management-item"><div><h4>{article.title}</h4><small>删除于 {dateLabel(article.deletedAt!)}</small></div><button type="button" data-restore-article={article.id}>恢复</button></article>)}
   </details>
   <p class="form-status" role="status" aria-live="polite" data-article-list-feedback></p>
 </section>
 
 <script>
-  import { renderMarkdown } from '../lib/markdown';
+  import { createArticlePreview } from '../lib/article-preview';
   import type { ArticleRecord } from '../lib/articles';
   import { confirmAdminAction, confirmAdminDiscard, prepareAdminNavigation, registerAdminDraft } from '../lib/admin-dialog';
   import { requestJson } from '../lib/client-request';
   import { animateContentHeight } from '../lib/motion';
+  import { parseArticleTags } from '../lib/article-catalog';
+  import { openAdminDrawer } from '../lib/admin-drawers';
+  import type { ArticleDraft } from '../lib/article-drafts';
 
   // 编辑器与阅读页共用安全渲染，后台只维护当前一篇文章。
   const root = document.querySelector<HTMLElement>('[data-admin-articles]');
@@ -80,41 +123,94 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
   if (root && editor) {
     const title = editor.elements.namedItem('title') as HTMLInputElement;
     const content = editor.elements.namedItem('content') as HTMLTextAreaElement;
+    const manualSummary = editor.elements.namedItem('summary') as HTMLTextAreaElement;
+    const drawer = root.querySelector<HTMLDialogElement>('#article-editor-drawer')!;
+    const draftStatus = editor.querySelector<HTMLElement>('[data-draft-status]')!;
+    let draftId: string = crypto.randomUUID();
+    let revision = 0;
+    let autosaveTimer: ReturnType<typeof setTimeout> | undefined;
+    let saving: Promise<void> = Promise.resolve();
+    let savedPayload = '';
+    let composing = false;
     const cover = editor.elements.namedItem('coverUrl') as HTMLInputElement;
     const originalAuthor = editor.elements.namedItem('originalAuthor') as HTMLInputElement;
     const originalUrl = editor.elements.namedItem('originalUrl') as HTMLInputElement;
     const id = editor.elements.namedItem('id') as HTMLInputElement;
     const source = editor.elements.namedItem('source') as HTMLSelectElement;
     const category = editor.elements.namedItem('category') as HTMLSelectElement;
-    const preview = editor.querySelector<HTMLElement>('[data-article-preview]')!;
-    const previewTitle = editor.querySelector<HTMLElement>('[data-preview-title]')!;
-    const previewCover = editor.querySelector<HTMLImageElement>('[data-preview-cover]')!;
+    const cardLayout = editor.elements.namedItem('cardLayout') as HTMLSelectElement;
+    const contentType = editor.elements.namedItem('contentType') as HTMLSelectElement;
+    const externalUrl = editor.elements.namedItem('externalUrl') as HTMLInputElement;
+    const updateArticlePreview = createArticlePreview(editor);
+    let articleDates = { createdAt: '', updatedAt: '' };
     const feedback = editor.querySelector<HTMLElement>('[data-article-feedback]')!;
     const heading = editor.querySelector<HTMLElement>('[data-editor-heading]')!;
     const dates = editor.querySelector<HTMLElement>('[data-editor-dates]')!;
     const listFeedback = root.querySelector<HTMLElement>('[data-article-list-feedback]')!;
-    const markSaved = registerAdminDraft(root, () => JSON.stringify([id.value, title.value, content.value, cover.value, originalAuthor.value, originalUrl.value, source.value, category.value]));
-    let renderedContent: string | undefined;
-    const updatePreview = () => {
-      editor.querySelectorAll<HTMLElement>('[data-repost-field]').forEach((field) => { field.hidden = source.value !== 'repost'; });
-      previewTitle.textContent = title.value;
-      previewTitle.hidden = !title.value;
-      if (renderedContent !== content.value) {
-        preview.innerHTML = content.value.trim() ? renderMarkdown(content.value) : '<p class="article-editor__empty">写下正文后，预览会出现在这里。</p>';
-        renderedContent = content.value;
-      }
+    const tagInput = editor.elements.namedItem('tagInput') as HTMLInputElement;
+    const selectedTags = editor.querySelector<HTMLElement>('[data-selected-tags]')!;
+    const tagFeedback = editor.querySelector<HTMLElement>('[data-tag-feedback]')!;
+    const tagOptions = [...editor.querySelectorAll<HTMLButtonElement>('[data-existing-tag]')];
+    let tags: string[] = [];
+    const markSaved = registerAdminDraft(root, () => JSON.stringify([id.value, title.value, content.value, manualSummary.value, cover.value, originalAuthor.value, originalUrl.value, source.value, category.value, cardLayout.value, contentType.value, externalUrl.value, tags, tagInput.value]));
+    const renderTags = () => {
+      selectedTags.replaceChildren(...tags.map((tag) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = `# ${tag} ×`;
+        button.setAttribute('aria-label', `移除标签 ${tag}`);
+        button.addEventListener('click', () => {
+          if (root.getAttribute('aria-busy') === 'true') return;
+          tags = tags.filter((value) => value !== tag);
+          renderTags();
+          tagInput.focus();
+        });
+        return button;
+      }));
+      tagOptions.forEach((button) => button.setAttribute('aria-pressed', String(tags.some((tag) => tag.toLocaleLowerCase() === button.dataset.existingTag!.toLocaleLowerCase()))));
+      tagFeedback.textContent = '';
+      tagInput.removeAttribute('aria-invalid');
+      updatePreview();
+    };
+    const addTags = (value: string) => {
+      if (root.getAttribute('aria-busy') === 'true') return false;
       try {
-        if (!cover.value.trim()) throw new Error('Empty cover URL');
-        const url = new URL(cover.value, location.origin);
-        if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new Error('Unsupported cover URL');
-        if (previewCover.getAttribute('src') !== url.href) previewCover.src = url.href;
-        previewCover.hidden = false;
-      } catch {
-        previewCover.hidden = true;
-        previewCover.removeAttribute('src');
+        tags = parseArticleTags([...tags, ...value.split(/[,，]/).map((tag) => tag.trim()).filter(Boolean)]);
+        renderTags();
+        return true;
+      } catch (error) {
+        if (!(error instanceof Error)) throw error;
+        animateContentHeight(tagFeedback, () => { tagFeedback.textContent = error.message; tagFeedback.dataset.state = 'error'; });
+        tagInput.setAttribute('aria-invalid', 'true');
+        tagInput.focus();
+        return false;
       }
     };
-    previewCover.addEventListener('error', () => { previewCover.hidden = true; });
+    const commitTags = () => { if (!addTags(tagInput.value)) return false; tagInput.value = ''; return true; };
+    editor.querySelector('[data-add-tag]')?.addEventListener('click', () => { commitTags(); tagInput.focus(); });
+    tagInput.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' || event.isComposing) return;
+      event.preventDefault();
+      commitTags();
+    });
+    tagOptions.forEach((button) => button.addEventListener('click', () => {
+      if (root.getAttribute('aria-busy') === 'true') return;
+      if (button.getAttribute('aria-pressed') === 'true') {
+        tags = tags.filter((tag) => tag.toLocaleLowerCase() !== button.dataset.existingTag!.toLocaleLowerCase());
+        renderTags();
+      } else addTags(button.dataset.existingTag!);
+    }));
+    const updatePreview = () => {
+      editor.querySelectorAll<HTMLElement>('[data-repost-field]').forEach((field) => { field.hidden = source.value !== 'repost'; });
+      editor.querySelector<HTMLElement>('[data-external-field]')!.hidden = contentType.value !== 'link';
+      editor.querySelector<HTMLElement>('[data-article-layout]')!.hidden = contentType.value !== 'article';
+      externalUrl.required = contentType.value === 'link';
+      updateArticlePreview({ title: title.value, content: content.value, summary: manualSummary.value, coverUrl: cover.value,
+        source: source.value as ArticleRecord['source'], category: category.value as ArticleRecord['category'],
+        cardLayout: cardLayout.value as ArticleRecord['cardLayout'], contentType: contentType.value as ArticleRecord['contentType'], externalUrl: externalUrl.value, tags,
+        originalAuthor: originalAuthor.value, originalUrl: originalUrl.value, ...articleDates });
+    };
+    updatePreview();
     editor.addEventListener('input', updatePreview);
     editor.addEventListener('change', updatePreview);
     editor.addEventListener('media-select', (event) => {
@@ -128,41 +224,66 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
       }
       updatePreview();
     });
-    const mayDiscard = () => confirmAdminDiscard(root);
+    const mayDiscard = async () => {
+      clearTimeout(autosaveTimer);
+      try { await saving; } catch { /* 保存失败仍交由现有未保存确认框处理。 */ }
+      return confirmAdminDiscard(root);
+    };
     root.querySelector('[data-new-article]')?.addEventListener('click', async () => {
       if (!await mayDiscard() || root.getAttribute('aria-busy') === 'true') return;
       editor.reset();
       id.value = '';
-      heading.textContent = '写一篇文章';
-      dates.textContent = '保存后记录创建与编辑时间';
+      draftId = crypto.randomUUID(); revision = 0; savedPayload = ''; clearTimeout(autosaveTimer);
+      articleDates = { createdAt: '', updatedAt: '' };
+      tags = [];
+      renderTags();
+      heading.textContent = '写点内容';
+      dates.textContent = '发布后记录创建与编辑时间';
       animateContentHeight(feedback, () => { feedback.textContent = ''; });
       markSaved();
       updatePreview();
+      openAdminDrawer(drawer);
       title.focus();
     });
     root.querySelectorAll<HTMLButtonElement>('[data-edit-article]').forEach((button) => button.addEventListener('click', async () => {
       if (!await mayDiscard() || root.getAttribute('aria-busy') === 'true') return;
-      const article = JSON.parse(button.dataset.article || '{}') as ArticleRecord;
-      id.value = String(article.id);
+      const draft = JSON.parse(button.dataset.draft || 'null') as ArticleDraft | null;
+      const article = { ...JSON.parse(button.dataset.article || '{}'), ...draft?.payload } as ArticleRecord;
+      draftId = draft?.draftId || crypto.randomUUID(); revision = draft?.revision || 0; clearTimeout(autosaveTimer);
+      id.value = article.id ? String(article.id) : '';
       title.value = article.title;
       content.value = article.content;
+      manualSummary.value = article.summary || '';
       cover.value = article.coverUrl;
       originalAuthor.value = article.originalAuthor;
       originalUrl.value = article.originalUrl;
       source.value = article.source;
       category.value = article.category;
+      cardLayout.value = article.cardLayout;
+      contentType.value = article.contentType;
+      externalUrl.value = article.externalUrl;
+      articleDates = { createdAt: article.createdAt || '', updatedAt: article.updatedAt || '' };
+      tags = [...article.tags];
+      tagInput.value = '';
+      renderTags();
       source.dispatchEvent(new Event('change', { bubbles:true }));
       category.dispatchEvent(new Event('change', { bubbles:true }));
-      heading.textContent = '编辑文章';
-      dates.textContent = `创建 ${new Date(article.createdAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })} · 编辑 ${new Date(article.updatedAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`;
+      cardLayout.dispatchEvent(new Event('change', { bubbles:true }));
+      contentType.dispatchEvent(new Event('change', { bubbles:true }));
+      heading.textContent = '编辑内容';
+      dates.textContent = article.createdAt ? `创建 ${new Date(article.createdAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })} · 编辑 ${new Date(article.updatedAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}` : '发布后记录创建与编辑时间';
       animateContentHeight(feedback, () => { feedback.textContent = ''; });
       markSaved();
       updatePreview();
+      savedPayload = JSON.stringify(payload());
+      draftStatus.textContent = draft ? '已恢复自动保存的草稿' : '修改后自动保存为草稿';
+      openAdminDrawer(drawer);
       title.focus();
     }));
     const wrappers: Record<string, [string, string]> = {
       heading: ['\n## ', '\n'], bold: ['**', '**'], italic: ['*', '*'], list: ['\n- ', '\n'], quote: ['\n> ', '\n'],
       link: ['[', '](https://)'], image: ['![', '](https://)'], code: ['\n```\n', '\n```\n'],
+      details: ['\n:::details 补充解释\n', '\n:::\n'], aside: ['\n:::aside 旁注\n', '\n:::\n'],
     };
     editor.querySelectorAll<HTMLButtonElement>('[data-markdown]').forEach((button) => button.addEventListener('click', () => {
       const [prefix, suffix] = wrappers[button.dataset.markdown || ''];
@@ -176,6 +297,42 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
     const request = async (method: string, payload: unknown) => {
       await requestJson('/api/admin/articles.json', method, payload, '文章服务暂时不可用，请稍后重试。');
     };
+    const payload = () => ({ title: title.value, coverUrl: cover.value, summary: manualSummary.value, tags,
+      originalAuthor: originalAuthor.value, originalUrl: originalUrl.value, source: source.value, category: category.value,
+      cardLayout: cardLayout.value, contentType: contentType.value, externalUrl: externalUrl.value, content: content.value,
+      updatedAt: articleDates.updatedAt, ...(id.value ? { id: Number(id.value) } : {}) });
+    const saveDraft = () => {
+      clearTimeout(autosaveTimer);
+      saving = saving.catch(() => undefined).then(async () => {
+        const value = payload();
+        const snapshot = JSON.stringify(value);
+        if (snapshot === savedPayload && revision) return;
+        draftStatus.textContent = '正在保存草稿…';
+        editor.dataset.autosaveBusy = 'true';
+        const result = await requestJson('/api/admin/articles.json', 'POST', { ...value, action: 'draft', draftId, revision }, '草稿暂时无法保存，输入仍保留。').finally(() => { delete editor.dataset.autosaveBusy; }) as { draft: ArticleDraft };
+        revision = result.draft.revision;
+        savedPayload = snapshot;
+        if (JSON.stringify(payload()) === snapshot && !tagInput.value) markSaved();
+        draftStatus.textContent = `草稿已保存 · ${new Date(result.draft.savedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`;
+      });
+      return saving;
+    };
+    const saveFeedback = (error: unknown) => { draftStatus.textContent = error instanceof Error ? error.message : '草稿保存失败，输入仍保留'; };
+    const scheduleSave = () => {
+      clearTimeout(autosaveTimer);
+      if (composing || !drawer.open || root.getAttribute('aria-busy') === 'true') return;
+      autosaveTimer = setTimeout(() => { void saveDraft().catch(saveFeedback); }, Number(root.dataset.autosaveDelay));
+    };
+    editor.addEventListener('input', scheduleSave);
+    editor.addEventListener('change', scheduleSave);
+    editor.addEventListener('media-select', scheduleSave);
+    editor.querySelectorAll<HTMLAnchorElement>('a[href="#media"]').forEach((link) => link.addEventListener('click', () => { const details = editor.querySelector<HTMLDetailsElement>('details'); if (details) details.open = true; }));
+    editor.addEventListener('click', (event) => { if ((event.target as Element).closest('[data-markdown],[data-add-tag],[data-selected-tags],[data-existing-tag]')) scheduleSave(); });
+    editor.addEventListener('compositionstart', () => { composing = true; clearTimeout(autosaveTimer); });
+    editor.addEventListener('compositionend', () => { composing = false; scheduleSave(); });
+    editor.querySelector('[data-save-draft]')?.addEventListener('click', () => { if (commitTags()) void saveDraft().catch(saveFeedback); });
+    window.addEventListener('pagehide', () => clearTimeout(autosaveTimer));
+    drawer.addEventListener('close', () => { clearTimeout(autosaveTimer); if (revision) window.location.reload(); });
     const perform = async (status: HTMLElement, action: () => Promise<void>, savesDraft = false) => {
       if (root.getAttribute('aria-busy') === 'true') return;
       const release = await prepareAdminNavigation(savesDraft ? root : undefined);
@@ -202,19 +359,30 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
     editor.addEventListener('submit', (event) => {
       event.preventDefault();
       if (root.getAttribute('aria-busy') === 'true') return;
-      const invalid = !title.value.trim() ? title : !content.value.trim() ? content : undefined;
+      const invalid = !title.value.trim() ? title : !content.value.trim() ? content : contentType.value === 'link' && (!externalUrl.value.trim() || !externalUrl.validity.valid) ? externalUrl : undefined;
       if (invalid) {
         animateContentHeight(feedback, () => {
-          feedback.textContent = invalid === title ? '请填写文章题目。' : '请填写文章正文。';
+          feedback.textContent = invalid === title ? '请填写题目。' : invalid === externalUrl ? '请填写完整的外部链接地址。' : '请填写正文或简短说明。';
           feedback.dataset.state = 'error';
         });
         invalid.focus();
         return;
       }
-      const payload = { title: title.value, coverUrl: cover.value, originalAuthor: originalAuthor.value, originalUrl: originalUrl.value, source: source.value, category: category.value, content: content.value, ...(id.value ? { id: Number(id.value) } : {}) };
-      void perform(feedback, () => request(id.value ? 'PATCH' : 'POST', payload), true);
+      if (!commitTags()) return;
+      void perform(feedback, async () => { await saveDraft(); await request('POST', { action: 'publish', draftId, revision }); }, true);
     });
     editor.querySelector<HTMLButtonElement>('button[type="submit"]')?.removeAttribute('disabled');
+    root.querySelectorAll<HTMLButtonElement>('[data-withdraw-article]').forEach((button) => button.addEventListener('click', async () => {
+      if (!await confirmAdminAction('撤回后将从首页、搜索和 RSS 中隐藏，已有评论会保留。', '撤回草稿')) return;
+      void perform(listFeedback, () => request('PATCH', { id: Number(button.dataset.withdrawArticle), withdraw: true }));
+    }));
+    root.querySelectorAll<HTMLButtonElement>('[data-delete-draft]').forEach((button) => button.addEventListener('click', async () => {
+      if (!await confirmAdminAction('删除这份未发布草稿？之后仍可恢复。', '删除草稿')) return;
+      void perform(listFeedback, () => request('DELETE', JSON.parse(button.dataset.deleteDraft!)));
+    }));
+    root.querySelectorAll<HTMLButtonElement>('[data-restore-draft]').forEach((button) => button.addEventListener('click', () => {
+      void perform(listFeedback, () => request('PATCH', { ...JSON.parse(button.dataset.restoreDraft!), restore: true }));
+    }));
     root.querySelectorAll<HTMLButtonElement>('[data-remove-article],[data-restore-article]').forEach((button) => button.addEventListener('click', async () => {
       if (root.getAttribute('aria-busy') === 'true') return;
       const restore = button.hasAttribute('data-restore-article');

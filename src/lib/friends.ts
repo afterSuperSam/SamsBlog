@@ -1,5 +1,6 @@
 import { getDatabase } from './db';
 import { HttpError } from './http';
+import { serverConfig } from '../config/server';
 
 export interface FriendRecord {
   id: number;
@@ -93,4 +94,40 @@ export function saveFriend(input: FriendInput) {
 export function deleteFriend(id: number) {
   return getDatabase().prepare('UPDATE friends SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL')
     .run(new Date().toISOString(), new Date().toISOString(), id).changes === 1;
+}
+
+export interface FriendApplication extends FriendInput {
+  id: number;
+  email: string;
+  status: 'pending' | 'accepted' | 'declined';
+  createdAt: string;
+}
+
+const applicationColumns = 'id,name,url,description,icon_url AS iconUrl,rss_url AS rssUrl,email,status,created_at AS createdAt';
+
+export function listFriendApplications(): FriendApplication[] {
+  return getDatabase().prepare(`SELECT ${applicationColumns}
+    FROM friend_applications WHERE deleted_at IS NULL ORDER BY (status='pending') DESC,created_at DESC,id DESC`).all() as FriendApplication[];
+}
+
+export function createFriendApplication(input: FriendInput, email: string, fingerprint: string) {
+  const database = getDatabase();
+  return database.transaction(() => {
+    if (database.prepare("SELECT 1 FROM friend_applications WHERE fingerprint_hash=? AND datetime(created_at)>=datetime('now',?) LIMIT 1").get(fingerprint, `-${serverConfig.friendApplicationCooldownSeconds} seconds`)) throw new HttpError(429, '申请已收到，请过一会儿再提交');
+    if (database.prepare('SELECT 1 FROM friends WHERE url=? AND deleted_at IS NULL').get(input.url)
+      || database.prepare("SELECT 1 FROM friend_applications WHERE url=? AND status='pending' AND deleted_at IS NULL").get(input.url)) throw new HttpError(409, '这个站点已加入友链或正在等待处理');
+    const now = new Date().toISOString();
+    return Number(database.prepare(`INSERT INTO friend_applications(name,url,description,icon_url,rss_url,email,fingerprint_hash,created_at,updated_at)
+      VALUES (?,?,?,?,?,?,?,?,?)`).run(input.name,input.url,input.description,input.iconUrl,input.rssUrl,email,fingerprint,now,now).lastInsertRowid);
+  })();
+}
+
+export function reviewFriendApplication(id: number, accepted: boolean, changes: Record<string, unknown>) {
+  const database = getDatabase();
+  return database.transaction(() => {
+    const application = database.prepare(`SELECT ${applicationColumns} FROM friend_applications WHERE id=? AND deleted_at IS NULL`).get(id) as FriendApplication | undefined;
+    if (!application || application.status !== 'pending') throw new HttpError(409, '申请不存在或已经处理，请刷新列表');
+    if (accepted) saveFriend(parseFriendInput({ ...application, ...changes, id: undefined, backgroundUrl: '', visible: true }));
+    database.prepare('UPDATE friend_applications SET status=?,updated_at=? WHERE id=?').run(accepted ? 'accepted' : 'declined', new Date().toISOString(), id);
+  })();
 }

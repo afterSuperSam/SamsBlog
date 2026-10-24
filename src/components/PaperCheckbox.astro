@@ -1,0 +1,12 @@
+---
+interface Props { name?: string; remember?: boolean }
+const { name, remember = false } = Astro.props;
+---
+<label class="paper-checkbox">
+  <input type="checkbox" name={name} data-remember-visitor={remember ? '' : undefined} checked />
+  <svg viewBox="0 0 28 28" aria-hidden="true" fill="none">
+    <path class="paper-checkbox__box" d="M5 4.5 Q14 3 23 4.5 L23.5 23 Q14 24.5 4 23 L4.5 5" />
+    <path class="paper-checkbox__check" d="M7 14.5 Q9 16 11.5 19.5 Q16 12 23 7" pathLength="1" />
+  </svg>
+  <span><slot /></span>
+</label>

@@ -15,13 +15,13 @@ if (root) {
   const empty = root.querySelector<HTMLElement>('[data-media-empty]')!;
   const feedback = root.querySelector<HTMLElement>('[data-media-feedback]')!;
   const fileInput = root.querySelector<HTMLInputElement>('[data-media-file]')!;
-  const editor = document.querySelector<HTMLFormElement>('[data-article-editor]')!;
-  const articleRoot = editor.closest<HTMLElement>('[data-admin-articles]')!;
+  const editor = document.querySelector<HTMLFormElement>('[data-article-editor]');
+  const articleRoot = editor?.closest<HTMLElement>('[data-admin-articles]');
   let selection = 'active';
   let uploadTarget = 'library';
   let uploadButton: HTMLButtonElement | undefined;
   const message = (target: HTMLElement, text: string, state = '') => animateContentHeight(target, () => { target.textContent = text; target.dataset.state = state; });
-  const insert = (media: MediaRecord, target: string) => editor.dispatchEvent(new CustomEvent('media-select', { detail: { url: media.url, name: media.name, target } }));
+  const insert = (media: MediaRecord, target: string) => editor?.dispatchEvent(new CustomEvent('media-select', { detail: { url: media.url, name: media.name, target } }));
   const render = () => {
     const shown = records.filter((media) => Boolean(media.deletedAt) === (selection === 'deleted') && media.name.toLocaleLowerCase().includes(search.value.trim().toLocaleLowerCase()));
     grid.replaceChildren(...shown.map((media) => {
@@ -33,7 +33,10 @@ if (root) {
       card.querySelector<HTMLAnchorElement>('a')!.href = address;
       card.querySelector('h3')!.textContent = media.name;
       card.querySelector('small')!.textContent = `${(media.size / 1024).toLocaleString('zh-CN', { maximumFractionDigits: 1 })} KB · ${new Date(media.createdAt).toLocaleDateString('zh-CN', { timeZone: 'Asia/Shanghai' })}`;
-      card.querySelectorAll<HTMLButtonElement>('[data-media-action]').forEach((button) => { button.hidden = (button.dataset.mediaAction === 'restore') !== Boolean(media.deletedAt); });
+      card.querySelectorAll<HTMLButtonElement>('[data-media-action]').forEach((button) => {
+        const requiresEditor = button.dataset.mediaAction === 'body' || button.dataset.mediaAction === 'cover';
+        button.hidden = (button.dataset.mediaAction === 'restore') !== Boolean(media.deletedAt) || requiresEditor && !editor;
+      });
       return card;
     }));
     empty.hidden = shown.length > 0;
@@ -66,10 +69,12 @@ if (root) {
     if (!file) return;
     const target = uploadTarget;
     const trigger = uploadButton;
-    const status = target === 'library' ? feedback : editor.querySelector<HTMLElement>('[data-article-feedback]')!;
+    const owner = target === 'library' ? root : articleRoot;
+    const status = target === 'library' ? feedback : editor?.querySelector<HTMLElement>('[data-article-feedback]');
+    if (!owner || !status) { message(feedback, '文章编辑器不可用，请在媒体库上传后复制地址。', 'error'); return; }
     if (file.size > maximumBytes || !file.size) { message(status, `请选择不超过 ${maximumBytes / 1024 / 1024} MB 的图片。`, 'error'); return; }
     let uploaded: MediaRecord | undefined;
-    await run(target === 'library' ? root : articleRoot, status, async () => {
+    await run(owner, status, async () => {
       message(status, '正在上传图片…', 'loading');
       const form = new FormData(); form.set('file', file);
       const result = await requestJson<{ error?: string; media: MediaRecord }>('/api/admin/media.json', 'POST', form, '图片上传失败，请稍后重试。');
@@ -98,7 +103,7 @@ if (root) {
       return;
     }
     if (action === 'delete') {
-      if ([editor.elements.namedItem('coverUrl'), editor.elements.namedItem('content')].some((field) => (field as HTMLInputElement).value.includes(media.url))) {
+      if (editor && [editor.elements.namedItem('coverUrl'), editor.elements.namedItem('content')].some((field) => (field as HTMLInputElement).value.includes(media.url))) {
         message(feedback, '当前文章草稿正在使用这张图片，请先移除引用。', 'error'); return;
       }
       if (!await confirmAdminAction('移入回收站后，图片地址将停止公开访问。可以在回收站恢复。', '移入回收站')) return;

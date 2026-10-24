@@ -1,0 +1,122 @@
+---
+import { listSponsors } from '../lib/sponsors';
+import { siteConfig } from '../config/site';
+import AdminDrawer from './AdminDrawer.astro';
+const sponsors = listSponsors();
+---
+
+<section class="admin-panel" id="sponsors" data-admin-sponsors data-records={JSON.stringify(sponsors)}>
+  <header class="admin-panel__heading"><div><span>SUPPORT</span><h2>赞助</h2></div><p>金额为累计赞助金额，保存后自动从高到低展示。</p></header>
+  <button type="button" class="media-button" data-sponsor-new>＋ 新增赞助</button>
+  <div>
+    <AdminDrawer id="sponsor-editor" title="赞助信息">
+    <form method="post" class="admin-sponsor-editor" data-sponsor-form data-draft-owner novalidate>
+      <h3 data-sponsor-editor-title>新增赞助</h3>
+      <label><span>名称</span><input name="name" maxlength={siteConfig.sponsorFields.nameMaximumLength} required aria-describedby="sponsor-feedback" /></label>
+      <label><span>我的世界用户名 · 留空时使用名称</span><input name="minecraftUsername" maxlength="16" pattern="[A-Za-z0-9_]{3,16}" autocomplete="off" aria-describedby="sponsor-feedback" /></label>
+      <label><span>累计金额 · 元</span><input name="amount" type="number" inputmode="decimal" min="0.01" max={siteConfig.sponsorFields.maximumAmount} step="0.01" required aria-describedby="sponsor-feedback" /></label>
+      <div class="admin-sponsor-actions"><button class="media-button" type="submit" disabled data-sponsor-save>新增赞助</button><button class="media-button" type="button" data-sponsor-reset hidden>取消编辑</button></div>
+      <p class="form-status" role="status" data-sponsor-feedback></p>
+    </form>
+    </AdminDrawer>
+    <div class="admin-sponsor-list" data-sponsor-rows>
+      {[...sponsors, null].map((sponsor) => {
+        const Wrapper = sponsor ? 'div' : 'template';
+        return <Wrapper data-sponsor-template={!sponsor ? '' : undefined}>
+          <article class="admin-sponsor-row" data-sponsor-row data-id={sponsor?.id}>
+            <div><strong data-sponsor-name>{sponsor?.name}</strong><small data-sponsor-username>{sponsor?.minecraftUsername || sponsor?.name}</small></div>
+            <span data-sponsor-amount>{sponsor ? `¥${sponsor.amount}` : ''}</span>
+            <div class="admin-sponsor-actions"><button class="media-button" type="button" data-sponsor-edit>编辑</button><button class="media-button" type="button" data-sponsor-delete>删除</button></div>
+          </article>
+        </Wrapper>;
+      })}
+      <p data-sponsor-empty hidden={sponsors.length > 0}>还没有赞助记录。</p>
+    </div>
+  </div>
+  <p class="form-status" id="sponsor-feedback" role="status" aria-live="polite" data-sponsor-feedback></p>
+</section>
+
+<script>
+  import type { SponsorRecord } from '../lib/sponsors';
+  import { beginAdminAction, confirmAdminAction, confirmAdminDiscard, registerAdminDraft } from '../lib/admin-dialog';
+  import { animateContentHeight } from '../lib/motion';
+  import { requestJson } from '../lib/client-request';
+  import { openAdminDrawer } from '../lib/admin-drawers';
+
+  const root = document.querySelector<HTMLElement>('[data-admin-sponsors]');
+  if (root) {
+    let records = JSON.parse(root.dataset.records!) as SponsorRecord[];
+    const form = root.querySelector<HTMLFormElement>('[data-sponsor-form]')!;
+    const rows = root.querySelector<HTMLElement>('[data-sponsor-rows]')!;
+    const template = root.querySelector<HTMLTemplateElement>('[data-sponsor-template]')!;
+    const empty = root.querySelector<HTMLElement>('[data-sponsor-empty]')!;
+    const drawer = root.querySelector<HTMLDialogElement>('#sponsor-editor')!;
+    const resetButton = root.querySelector<HTMLButtonElement>('[data-sponsor-reset]')!;
+    const saveButton = root.querySelector<HTMLButtonElement>('[data-sponsor-save]')!;
+    const field = (name: string) => form.elements.namedItem(name) as HTMLInputElement;
+    const markSaved = registerAdminDraft(form, () => JSON.stringify([...form.elements].filter((item) => item instanceof HTMLInputElement).map((item) => item.value)));
+    const showFeedback = (message: string, state = '') => root.querySelectorAll<HTMLElement>('[data-sponsor-feedback]').forEach((feedback) => animateContentHeight(feedback, () => { feedback.textContent = message; feedback.dataset.state = state; }));
+    const edit = (record?: SponsorRecord) => {
+      form.dataset.id = record ? String(record.id) : '';
+      form.dataset.updatedAt = record?.updatedAt || '';
+      field('name').value = record?.name || '';
+      field('minecraftUsername').value = record?.minecraftUsername || '';
+      field('amount').value = record ? String(record.amount) : '';
+      form.querySelectorAll('[aria-invalid]').forEach((input) => input.removeAttribute('aria-invalid'));
+      form.querySelector('[data-sponsor-editor-title]')!.textContent = record ? '编辑赞助' : '新增赞助';
+      saveButton.textContent = record ? '保存修改' : '新增赞助';
+      resetButton.hidden = !record; markSaved();
+    };
+    const render = () => {
+      rows.replaceChildren(...records.map((record) => {
+        const row = template.content.firstElementChild!.cloneNode(true) as HTMLElement;
+        row.dataset.id = String(record.id);
+        row.querySelector('[data-sponsor-name]')!.textContent = record.name;
+        row.querySelector('[data-sponsor-username]')!.textContent = record.minecraftUsername || record.name;
+        row.querySelector('[data-sponsor-amount]')!.textContent = `¥${record.amount}`;
+        return row;
+      }), empty);
+      empty.hidden = records.length > 0;
+    };
+    const write = async (method: 'POST' | 'PATCH' | 'DELETE', payload: object, onSaved: () => void) => {
+      const release = beginAdminAction(root);
+      if (!release) return;
+      const controls = [...root.querySelectorAll<HTMLInputElement | HTMLButtonElement>('input,button')].filter((control) => !control.disabled);
+      controls.forEach((control) => { control.disabled = true; }); root.setAttribute('aria-busy', 'true');
+      showFeedback(method === 'DELETE' ? '正在删除…' : '正在保存…', 'loading');
+      try {
+        const result = await requestJson<{ sponsors: SponsorRecord[]; error?: string }>('/api/admin/sponsors.json', method, payload, '赞助信息暂时无法保存，请稍后重试。');
+        records = result.sponsors; render(); onSaved();
+        showFeedback(method === 'DELETE' ? '赞助记录已删除。' : '已保存，并按金额重新排序。', 'success');
+      } catch (error) {
+        showFeedback(error instanceof Error ? error.message : '操作失败，请稍后重试。', 'error');
+        console.warn('Sponsor update failed', error);
+      } finally {
+        controls.forEach((control) => { control.disabled = false; }); root.removeAttribute('aria-busy'); release();
+        if (document.activeElement === document.body) field('name').focus({ preventScroll: true });
+      }
+    };
+    resetButton.addEventListener('click', async () => { if (await confirmAdminDiscard(form)) { edit(); field('name').focus(); } });
+    root.querySelector('[data-sponsor-new]')?.addEventListener('click', async () => { if (await confirmAdminDiscard(form)) { edit(); openAdminDrawer(drawer); field('name').focus(); } });
+    rows.addEventListener('click', async (event) => {
+      const button = event.target instanceof Element ? event.target.closest<HTMLButtonElement>('button') : null;
+      const record = records.find((item) => String(item.id) === button?.closest<HTMLElement>('[data-sponsor-row]')?.dataset.id);
+      if (!button || !record || root.getAttribute('aria-busy') === 'true') return;
+      if (button.hasAttribute('data-sponsor-edit')) {
+        if (await confirmAdminDiscard(form)) { edit(record); openAdminDrawer(drawer); field('name').focus(); }
+      } else if (await confirmAdminAction(`删除 ${record.name} 的赞助记录？公开页面将不再展示。`, '删除')) {
+        await write('DELETE', { id: record.id, updatedAt: record.updatedAt }, () => { if (form.dataset.id === String(record.id)) edit(); field('name').focus(); });
+      }
+    });
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const invalid = [...form.querySelectorAll<HTMLInputElement>('input')].find((input) => !input.validity.valid || input.required && !input.value.trim());
+      if (invalid) { invalid.setAttribute('aria-invalid', 'true'); invalid.focus(); showFeedback(`请正确填写${invalid.closest('label')?.querySelector('span')?.textContent}。`, 'error'); return; }
+      await write(form.dataset.id ? 'PATCH' : 'POST', {
+        ...(form.dataset.id ? { id: Number(form.dataset.id), updatedAt: form.dataset.updatedAt } : {}),
+        name: field('name').value, minecraftUsername: field('minecraftUsername').value, amount: Number(field('amount').value),
+      }, () => edit());
+    });
+    saveButton.disabled = false;
+  }
+</script>

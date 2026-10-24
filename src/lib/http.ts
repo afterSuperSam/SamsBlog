@@ -49,6 +49,10 @@ export function readPositiveId(value: unknown) {
   return value;
 }
 
+export function requireSameOrigin(request: Request) {
+  if (request.headers.get('origin') !== new URL(request.url).origin) throw new HttpError(403, '请从本站提交操作');
+}
+
 // API 错误分类与管理鉴权边界
 export function errorResponse(error: unknown) {
   if (error instanceof HttpError) return json({ error: error.message }, error.status);

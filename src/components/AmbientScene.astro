@@ -14,7 +14,7 @@ const constellationSlots = Array.from({ length: siteConfig.effects.constellation
 ---
 
 <div class="ambient-scene" aria-hidden="true" data-ambient-scene data-constellation-config={JSON.stringify(siteConfig.effects.constellation)}>
-  <div class="ambient-halo ambient-halo--blue"></div><div class="ambient-halo ambient-halo--pink"></div>
+  <div class="ambient-atmosphere ambient-atmosphere--blue"><div class="ambient-halo ambient-halo--blue"></div></div><div class="ambient-atmosphere ambient-atmosphere--pink"><div class="ambient-halo ambient-halo--pink"></div></div>
   <div class="ambient-field">
   {[0, 1].map(() => <svg class="ambient-constellation" viewBox="0 0 100 100" preserveAspectRatio="none" data-constellation>
     {constellationSlots.map(() => <path vector-effect="non-scaling-stroke" />)}
@@ -28,8 +28,12 @@ const constellationSlots = Array.from({ length: siteConfig.effects.constellation
 
 <style>
   .ambient-scene{position:fixed;inset:0;overflow:hidden;z-index:2;pointer-events:none;contain:strict}
-  .ambient-halo{--halo-opacity:var(--ambient-halo-opacity);--halo-horizontal-offset:var(--ambient-halo-travel);position:absolute;width:var(--ambient-halo-size);aspect-ratio:1;border-radius:50%;opacity:var(--halo-opacity);background:radial-gradient(circle,color-mix(in srgb,var(--glow-blue) 75%,transparent),transparent 67%);animation:halo-drift var(--ambient-halo-duration) ease-in-out infinite alternate}
-  .ambient-halo--blue{left:-22%;top:22%}.ambient-halo--pink{--halo-opacity:var(--ambient-pink-halo-opacity);--halo-horizontal-offset:calc(var(--ambient-halo-travel) * -1);width:var(--ambient-pink-halo-size);right:-12%;bottom:-18%;background:radial-gradient(circle,var(--glow-pink),transparent 67%);animation-duration:var(--ambient-pink-halo-duration);animation-delay:-14s;animation-direction:alternate-reverse}
+  .ambient-atmosphere{position:absolute;inset:0;opacity:var(--ambient-rest-strength);transition:opacity var(--ambient-shift-duration) var(--ease-out)}
+  :global(.home-page[data-home-atmosphere="blue"]) .ambient-atmosphere--blue,:global(.home-page[data-home-atmosphere="pink"]) .ambient-atmosphere--pink{opacity:1}
+  :global(.home-page[data-home-atmosphere="blue"]) .ambient-atmosphere--pink,:global(.home-page[data-home-atmosphere="pink"]) .ambient-atmosphere--blue{opacity:var(--ambient-quiet-strength)}
+  :global(.motion-paused) .ambient-atmosphere{transition:none}
+  .ambient-halo{--halo-opacity:calc(var(--ambient-halo-opacity) / var(--ambient-rest-strength));--halo-horizontal-offset:var(--ambient-halo-travel);position:absolute;width:var(--ambient-halo-size);aspect-ratio:1;border-radius:50%;opacity:var(--halo-opacity);background:radial-gradient(circle,color-mix(in srgb,var(--glow-blue) 75%,transparent),transparent 67%);animation:halo-drift var(--ambient-halo-duration) ease-in-out infinite alternate}
+  .ambient-halo--blue{left:-22%;top:22%}.ambient-halo--pink{--halo-opacity:calc(var(--ambient-pink-halo-opacity) / var(--ambient-rest-strength));--halo-horizontal-offset:calc(var(--ambient-halo-travel) * -1);width:var(--ambient-pink-halo-size);right:-12%;bottom:-18%;background:radial-gradient(circle,var(--glow-pink),transparent 67%);animation-duration:var(--ambient-pink-halo-duration);animation-delay:-14s;animation-direction:alternate-reverse}
   .ambient-mote{position:absolute;left:var(--mote-left);top:var(--mote-top);translate:-50% -50%;width:4px;height:4px;border-radius:50%;background:var(--summer-blue);opacity:.4;animation:constellation-twinkle var(--mote-duration,var(--motion-drift)) ease-in-out infinite alternate;animation-delay:var(--mote-delay,0s)}
   .ambient-mote:nth-of-type(3n){width:7px;height:7px;background:var(--summer-pink);border-radius:1px;rotate:45deg}
   .ambient-mote:nth-of-type(5n){width:11px;height:11px;background:var(--summer-orange);clip-path:polygon(50% 0,60% 38%,100% 50%,60% 62%,50% 100%,40% 62%,0 50%,40% 38%);border-radius:0}
@@ -45,7 +49,7 @@ const constellationSlots = Array.from({ length: siteConfig.effects.constellation
   :global(.click-spark){position:fixed;z-index:150;width:6px;height:6px;border-radius:1px;background:var(--summer-orange);pointer-events:none;animation:click-scatter .55s var(--ease-out) both}
   @keyframes click-scatter{from{opacity:.9;transform:translate(-50%,-50%) scale(1)}to{opacity:0;transform:translate(calc(-50% + var(--spark-x)),calc(-50% + var(--spark-y))) rotate(100deg) scale(.2)}}
   @media(max-width:720px){.ambient-mote--desktop{display:none}.ambient-halo{width:80vw}.ambient-halo--pink{width:110vw;right:-35%;bottom:-8%}}
-  @media(prefers-reduced-motion:reduce){.ambient-scene *{animation:none!important}.ambient-scene{opacity:.35}:global(.click-spark){display:none}}
+  @media(prefers-reduced-motion:reduce){.ambient-scene *{animation:none!important}.ambient-atmosphere{transition:none}.ambient-scene{opacity:.35}:global(.click-spark){display:none}}
 </style>
 
 <script>
@@ -156,8 +160,11 @@ const constellationSlots = Array.from({ length: siteConfig.effects.constellation
   window.addEventListener('resize', scheduleConstellationScroll);
   compactViewport.addEventListener('change', syncConstellations);
   let paused = false;
-  try { paused = localStorage.getItem('samsblog-motion') === 'paused'; }
-  catch (error) { console.warn('Motion preference unavailable', error); }
+  const readMotionPreference = () => {
+    try { paused = localStorage.getItem('samsblog-motion') === 'paused'; }
+    catch (error) { console.warn('Motion preference unavailable', error); }
+  };
+  readMotionPreference();
   const syncMotion = () => {
     const disabled = paused || reducedMotion.matches;
     document.documentElement.classList.toggle('motion-paused', disabled);
@@ -184,6 +191,12 @@ const constellationSlots = Array.from({ length: siteConfig.effects.constellation
   };
   document.addEventListener('visibilitychange', () => { syncVisibility(); syncConstellations(); });
   syncVisibility();
+  window.addEventListener('pageshow', (event) => {
+    if (!event.persisted) return;
+    readMotionPreference();
+    syncMotion();
+    syncVisibility();
+  });
   // 点击才生成短暂火花，动画结束即移除，不保持空转渲染循环
   document.addEventListener('click', (event) => {
     if (paused || reducedMotion.matches || !motionButton || event.detail === 0 || !(event.target instanceof Element) || !event.target.closest('.button,.project-list a')) return;
