@@ -1,7 +1,7 @@
 import { confirmAdminDiscard } from './admin-dialog';
-import { animateMotion } from './motion';
+import { animateMotion, parseCssTimeMilliseconds } from './motion';
 
-const duration = (name: string) => Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name));
+const durationMilliseconds = (name: string) => parseCssTimeMilliseconds(getComputedStyle(document.documentElement).getPropertyValue(name));
 
 // 抽屉统一管理进入、退出和焦点，表单本身继续由各业务组件维护。
 export function openAdminDrawer(dialog: HTMLDialogElement) {
@@ -10,7 +10,7 @@ export function openAdminDrawer(dialog: HTMLDialogElement) {
   const focusScope = dialog.closest<HTMLElement>('.admin-panel');
   dialog.showModal();
   document.documentElement.classList.add('admin-drawer-open');
-  animateMotion(dialog, [{ opacity: 0, translate: '48px 0' }, { opacity: 1, translate: '0 0' }], { duration: duration('--motion-spring-duration'), easing: getComputedStyle(dialog).getPropertyValue('--ease-out').trim() });
+  animateMotion(dialog, [{ opacity: 0, translate: '48px 0' }, { opacity: 1, translate: '0 0' }], { duration: durationMilliseconds('--motion-spring-duration'), easing: getComputedStyle(dialog).getPropertyValue('--ease-out').trim() });
   dialog.addEventListener('close', () => {
     if (!document.querySelector('[data-admin-drawer][open]')) document.documentElement.classList.remove('admin-drawer-open');
     const target = focus?.isConnected ? focus : [...focusScope?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') || []]
@@ -24,7 +24,7 @@ async function closeDrawer(dialog: HTMLDialogElement) {
   const owner = dialog.closest<HTMLElement>('[data-admin-articles],[data-admin-projects]') || dialog.querySelector<HTMLElement>('[data-draft-owner]');
   if (owner && !await confirmAdminDiscard(owner)) return;
   dialog.dataset.closing = '';
-  const animation = animateMotion(dialog, [{ opacity: 1, translate: '0 0' }, { opacity: 0, translate: '32px 0' }], { duration: duration('--motion-feedback-duration'), easing: getComputedStyle(dialog).getPropertyValue('--ease-out').trim() });
+  const animation = animateMotion(dialog, [{ opacity: 1, translate: '0 0' }, { opacity: 0, translate: '32px 0' }], { duration: durationMilliseconds('--motion-feedback-duration'), easing: getComputedStyle(dialog).getPropertyValue('--ease-out').trim() });
   if (animation) await animation.finished.catch(() => undefined);
   dialog.close();
   delete dialog.dataset.closing;

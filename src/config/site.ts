@@ -21,7 +21,7 @@ export const siteConfig = {
   ],
   sponsorPresentation: { twoColumnMinimumCount: 6, avatarSizePixels: 64, avatarBaseUrl: 'https://minotar.net/helm/', avatarTimeoutMilliseconds: 4000, avatarPreloadMarginPixels: 240 },
   sponsorFields: { nameMaximumLength: 60, maximumAmount: 1000000 },
-  articles: { homepageCount: 1, homepageNoteCount: 2, homepageLinkCount: 1, feedCount: 20, cardCount: 3, reorderMilliseconds: 420, maximumTags: 8, tagMaximumLength: 24, searchMaximumLength: 120, searchDelayMilliseconds: 180, searchRevealMilliseconds: 280, searchDismissMilliseconds: 180 },
+  articles: { initialVisibleTagCount: 3, homepageCount: 1, homepageNoteCount: 2, homepageLinkCount: 1, feedCount: 20, cardCount: 3, reorderMilliseconds: 420, maximumTags: 8, tagMaximumLength: 24, searchMaximumLength: 120, searchDelayMilliseconds: 180, searchRevealMilliseconds: 280, searchDismissMilliseconds: 180 },
   articleReading: { positionStorageKey: 'sams-blog-reading-positions', preferenceStorageKey: 'sams-blog-reading-mode', fontPreferenceStorageKey: 'sams-blog-reading-font', positionLimit: 50, positionSaveMilliseconds: 1000, positionMinimumPixels: 240, imageZoomScale: 2, copyFeedbackMilliseconds: 1800, codeCollapsedLines: 16 },
   visitorProfile: { storageKey: 'sams-blog-visitor-profile', nicknameMaximumLength: 24, emailMaximumLength: 254 },
   readingExtras: { historyVisibleCount: 2, quoteMaximumCharacters: 450, quoteWidth: 1080, quoteWordmarkWidth: 210, quoteFontSize: 42, quoteLineHeight: 72, quotePadding: 88, quoteMinimumHeight: 720 },
@@ -83,6 +83,7 @@ if (!Number.isSafeInteger(siteConfig.network.sampleCount) || siteConfig.network.
 }
 
 if (!Object.values(siteConfig.interactions).every((value) => Number.isSafeInteger(value) && value > 0)
+  || !Number.isSafeInteger(siteConfig.articles.initialVisibleTagCount) || siteConfig.articles.initialVisibleTagCount < 1
   || !Number.isSafeInteger(siteConfig.projectPresentation.initialVisibleCount) || siteConfig.projectPresentation.initialVisibleCount < 1
   || !Number.isSafeInteger(siteConfig.friendPresentation.homepageCount) || siteConfig.friendPresentation.homepageCount < 1
   || !Object.values(siteConfig.readingExtras).every((value) => Number.isSafeInteger(value) && value > 0)

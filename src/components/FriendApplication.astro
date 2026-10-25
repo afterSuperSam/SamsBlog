@@ -47,7 +47,7 @@ const allInformation = information.map(({ label, value }) => `${label}：${value
 <script>
   import { siteConfig } from '../config/site';
   import { requestJson } from '../lib/client-request';
-  import { animateMotion, setFeedbackText } from '../lib/motion';
+  import { animateMotion, parseCssTimeMilliseconds, setFeedbackText } from '../lib/motion';
   import { attachPaperCaret } from '../lib/paper-caret';
   const dialog = document.querySelector<HTMLDialogElement>('[data-friend-application]');
   const opener = document.querySelector<HTMLButtonElement>('[data-friend-apply]');
@@ -99,19 +99,19 @@ const allInformation = information.map(({ label, value }) => `${label}：${value
     } catch { feedback.textContent = '本机草稿暂时无法读取，可以重新填写。'; }
     window.addEventListener('pagehide', saveDraft);
     const styles = getComputedStyle(document.documentElement);
-    const duration = (name: string) => Number.parseFloat(styles.getPropertyValue(name));
+    const durationMilliseconds = (name: string) => parseCssTimeMilliseconds(styles.getPropertyValue(name));
     const easing = styles.getPropertyValue('--ease-out').trim();
     opener.addEventListener('click', () => {
       if (dialog.open) return;
       dialog.showModal(); refreshCarets.forEach((refresh) => refresh());
       dialog.querySelector<HTMLButtonElement>('[data-copy-name="全部信息"]')!.focus({ preventScroll: true });
       dialog.querySelector('.friend-application-content')!.scrollTop = 0;
-      animateMotion(dialog, [{ opacity: 0, translate: '0 20px', scale: '.96', filter: 'blur(9px)' }, { opacity: 1, translate: '0 0', scale: '1', filter: 'blur(0)' }], { duration: duration('--motion-reorder-duration'), easing });
+      animateMotion(dialog, [{ opacity: 0, translate: '0 20px', scale: '.96', filter: 'blur(9px)' }, { opacity: 1, translate: '0 0', scale: '1', filter: 'blur(0)' }], { duration: durationMilliseconds('--motion-reorder-duration'), easing });
     });
     const close = async () => {
       if (dialog.hasAttribute('data-closing')) return;
       saveDraft(); dialog.dataset.closing = '';
-      const animation = animateMotion(dialog, [{ opacity: 1, scale: '1', filter: 'blur(0)' }, { opacity: 0, translate: '0 12px', scale: '.98', filter: 'blur(7px)' }], { duration: duration('--motion-disclosure-duration'), easing });
+      const animation = animateMotion(dialog, [{ opacity: 1, scale: '1', filter: 'blur(0)' }, { opacity: 0, translate: '0 12px', scale: '.98', filter: 'blur(7px)' }], { duration: durationMilliseconds('--motion-disclosure-duration'), easing });
       if (animation) await animation.finished.catch(() => undefined);
       dialog.close(); delete dialog.dataset.closing; opener.focus({ preventScroll: true });
     };

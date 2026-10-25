@@ -21,7 +21,7 @@ const noteContentId = preview ? 'article-note-preview' : `article-note-${article
 const dateLabel = articleDateLabel(article.createdAt, article.contentType === 'update');
 ---
 
-<article class:list={['article-card', { 'article-card--cover': showCover }]} data-preview-card={preview ? '' : undefined} data-article-card={!preview ? article.id : undefined} hidden={hidden} data-content-type={article.contentType} data-image-side={article.cardLayout} data-source={article.source} data-category={article.category} data-created={article.createdAt} data-updated={article.updatedAt} data-tags={filterable ? JSON.stringify(article.tags) : undefined}>
+<article class:list={['article-card', { 'article-card--cover': showCover }]} data-preview-card={preview ? '' : undefined} data-article-card={!preview ? article.id : undefined} hidden={hidden} data-content-type={article.contentType} data-image-side={article.cardLayout} data-source={article.source} data-category={article.category} data-created={article.createdAt} data-updated={article.updatedAt} data-tags={filterable ? JSON.stringify(article.tags) : undefined} data-starred={filterable ? String(article.starred) : undefined}>
   <Link class="article-card__link" href={!preview && !inlineContent ? '/articles/' + article.id : undefined}>
     {(showCover || preview) && <div class="article-card__cover" aria-hidden="true" hidden={!showCover}>
       <img class="article-card__glow" src={article.coverUrl || undefined} alt="" loading={preview ? 'eager' : 'lazy'} referrerpolicy="no-referrer" />

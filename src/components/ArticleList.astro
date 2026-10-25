@@ -3,7 +3,7 @@ import { listArticles, listHomepageArticles, type ArticleRecord } from '../lib/a
 import ArticleCard from './ArticleCard.astro';
 import ReadingTrail from './ReadingTrail.astro';
 import { articlePlainText } from '../lib/markdown';
-import { articleMonth, readArticleFilters, matchesArticle, compareArticles, articleFilterParameters, articleContentTypes } from '../lib/article-catalog';
+import { articleMonth, readArticleFilters, matchesArticle, compareArticles, articleFilterParameters, articleContentTypes, rankArticleTags } from '../lib/article-catalog';
 import { siteConfig } from '../config/site';
 import '../styles/articles.css';
 
@@ -29,7 +29,7 @@ if (!featured) {
     archiveMonths.set(month, group);
   }
 }
-const tags = [...new Set(articles.flatMap((article) => article.tags))].sort((first, second) => first.localeCompare(second, 'zh-CN'));
+const tags = rankArticleTags(articles);
 const months = [...new Set(articles.map((article) => articleMonth(article.createdAt)))].sort().reverse();
 const years = [...new Set(months.map((month) => month.slice(0, 4)))];
 const monthLabel = (month: string) => `${month.slice(0, 4)} 年 ${Number(month.slice(5))} 月`;
@@ -46,9 +46,10 @@ const filterGroups = [
     { value: '', label: '全部分类' }, { value: 'discussion', label: '杂谈' }, { value: 'journal', label: '日志' },
   ] },
   { name: 'contentType', label: '形式', options: [{ value: '', label: '全部形式' }, ...articleContentTypes] },
-  ...(tags.length ? [{ name: 'tag', label: '标签', options: [{ value: '', label: '全部标签' }, ...tags.map((tag) => ({ value: tag, label: `# ${tag}` }))] }] : []),
+  { name: 'starred', label: '星标', options: [{ value: '', label: '全部' }, { value: '1', label: '仅星标' }] },
+  ...(tags.length ? [{ name: 'tag', label: '标签', options: [{ value: '', label: '全部标签' }, ...tags.map(({ tag }) => ({ value: tag, label: `# ${tag}` }))] }] : []),
 ];
-const selectedFilters = filterGroups.slice(0, 4).map((group) => group.options.find((option) => option.value === filters[group.name as keyof typeof filters])!.label).join(' · ');
+const selectedFilters = filterGroups.filter((group) => group.name !== 'tag' && (group.name !== 'starred' || filters.starred)).map((group) => group.options.find((option) => option.value === filters[group.name as keyof typeof filters])!.label).join(' · ');
 ---
 
 {(!featured || visibleArticles.length > 0 || supportingGroups.length > 0) && <section class:list={['articles-section', { 'articles-section--featured': featured }]} id={featured ? 'latest-article' : 'articles'} aria-labelledby={featured ? 'latest-article-title' : 'articles-title'} data-article-list={!featured ? '' : undefined}>
@@ -89,7 +90,11 @@ const selectedFilters = filterGroups.slice(0, 4).map((group) => group.options.fi
         <div class="article-filters__body" id="article-filter-groups"><div class="article-filters__groups">
           {filterGroups.map((group) => <fieldset class="article-filters__group">
             <legend>{group.label}</legend>
-            <div class="article-filters__options">{group.options.map((option) => <a href={filterHref(group.name, option.value)} data-filter-name={group.name} data-filter-value={option.value} aria-current={filters[group.name as keyof typeof filters] === option.value ? 'true' : undefined}>{option.label}<span aria-hidden="true">✧</span></a>)}</div>
+            <div class="article-filters__options">{(group.name === 'tag' ? group.options.slice(0, siteConfig.articles.initialVisibleTagCount + 1) : group.options).map((option) => <a href={filterHref(group.name, option.value)} data-filter-name={group.name} data-filter-value={option.value} aria-current={filters[group.name as keyof typeof filters] === option.value ? 'true' : undefined}>{option.label}<span aria-hidden="true">✧</span></a>)}</div>
+            {group.name === 'tag' && group.options.length > siteConfig.articles.initialVisibleTagCount + 1 && <details class="article-filters__more-tags" data-more-tags open={group.options.slice(siteConfig.articles.initialVisibleTagCount + 1).some((option) => option.value === filters.tag)}>
+              <summary class="articles-more article-filters__tags-toggle"><span data-tags-expand>展开其余标签</span><span data-tags-collapse>收起标签</span></summary>
+              <div class="article-filters__options">{group.options.slice(siteConfig.articles.initialVisibleTagCount + 1).map((option) => <a href={filterHref('tag', option.value)} data-filter-name="tag" data-filter-value={option.value} aria-current={filters.tag === option.value ? 'true' : undefined}>{option.label}<span aria-hidden="true">✧</span></a>)}</div>
+            </details>}
           </fieldset>)}
           <fieldset class="article-filters__group article-filters__period">
             <legend>年月</legend>
@@ -177,10 +182,15 @@ const selectedFilters = filterGroups.slice(0, 4).map((group) => group.options.fi
     if (!filters) return;
     const cards = [...grid.querySelectorAll<HTMLElement>('[data-article-card]')].map((element) => ({
       element, id: Number(element.dataset.articleCard), contentType: element.dataset.contentType as CatalogArticle['contentType'], source: element.dataset.source!, category: element.dataset.category!,
-      createdAt: element.dataset.created!, updatedAt: element.dataset.updated!, tags: JSON.parse(element.dataset.tags || '[]') as string[], search: '',
+      createdAt: element.dataset.created!, updatedAt: element.dataset.updated!, tags: JSON.parse(element.dataset.tags || '[]') as string[], search: '', starred: element.dataset.starred === 'true',
     } satisfies CatalogArticle & { element: HTMLElement }));
     const headers = new Map([...grid.querySelectorAll<HTMLElement>('[data-archive-month]')].map((header) => [header.dataset.archiveMonth!, header]));
     const links = [...section.querySelectorAll<HTMLAnchorElement>('[data-filter-name]')];
+    const moreTags = filters.querySelector<HTMLDetailsElement>('[data-more-tags]');
+    moreTags?.querySelector('summary')?.addEventListener('click', (event) => {
+      event.preventDefault();
+      animateContentHeight(moreTags, () => { moreTags.open = !moreTags.open; });
+    });
     const search = section.querySelector<HTMLFormElement>('[data-article-search]')!;
     const query = search.elements.namedItem('q') as HTMLInputElement;
     query.setAttribute('writingsuggestions', 'false');
@@ -330,7 +340,8 @@ const selectedFilters = filterGroups.slice(0, 4).map((group) => group.options.fi
         else link.removeAttribute('aria-current');
         link.href = `/content?${articleFilterParameters({ ...values, [name]: link.dataset.filterValue || '' })}`;
       });
-      setFeedbackText(summary, ['sort', 'source', 'category', 'contentType', 'tag', 'period'].flatMap((name) => {
+      if (moreTags?.querySelector('[aria-current="true"]')) moreTags.open = true;
+      setFeedbackText(summary, ['sort', 'source', 'category', 'contentType', 'starred', 'tag', 'period'].flatMap((name) => {
         const selected = links.find((link) => link.dataset.filterName === name && link.getAttribute('aria-current') === 'true');
         return selected && (name === 'sort' || values[name as keyof typeof values]) ? [selected.childNodes[0].textContent?.trim()] : [];
       }).join(' · '));

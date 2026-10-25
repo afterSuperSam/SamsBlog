@@ -105,8 +105,9 @@
   --article-hover-glow: color-mix(in oklab, var(--glow-blue) 20%, transparent);
   --article-star-color: #d5b575;
   --article-star-highlight: #f0d9a7;
-  --article-star-glow: #d4ae642e;
-  --article-star-duration: 6.8s;
+  --article-star-glow: #d4ae6447;
+  --article-star-glow-peak: #efc47473;
+  --article-star-duration: 5.2s;
   --home-projects-heading: var(--summer-orange);
   --home-articles-heading: var(--summer-blue);
   --home-guestbook-heading: var(--summer-pink);
@@ -287,7 +288,8 @@
   --summer-orange: #995325;
   --article-star-color: #826024;
   --article-star-highlight: #9a702b;
-  --article-star-glow: #bb8e3621;
+  --article-star-glow: #c5963b33;
+  --article-star-glow-peak: #dfad4d66;
   --glow-blue: #81d4e3;
   --glow-pink: #f3abc8;
   --glow-orange: #f1c194;
@@ -468,6 +470,13 @@ main { position:relative; z-index:1; }
 .about-page :is(#contact,#activity,#sponsor){scroll-margin-top:calc(var(--header-height) + 24px)}
 
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
+/* 星标文字和星号共用金色波峰与呼吸，不改变字形和布局。 */
+:is(.article-title--starred,.starred-text){color:var(--article-star-color);text-shadow:0 0 3px var(--article-star-glow)}
+@supports(background-clip:text){:is(.article-title--starred,.starred-text){color:transparent;background-image:radial-gradient(ellipse at center,var(--article-star-highlight) 8%,transparent 58%),linear-gradient(110deg,var(--article-star-color) 25%,var(--article-star-highlight) 48%,var(--article-star-color) 70%);background-size:160% 220%,260% 100%;background-position:125% 75%,100% 50%;background-repeat:no-repeat;background-clip:text;animation:starred-wave var(--article-star-duration) ease-in-out infinite}}
+.article-title--starred a{color:inherit}
+@keyframes starred-wave{0%,100%{background-position:125% 75%,100% 50%;text-shadow:0 0 2px var(--article-star-glow)}25%{background-position:65% 15%,62% 50%;text-shadow:0 0 8px var(--article-star-glow)}50%{background-position:-25% 50%,0% 50%;text-shadow:0 0 14px var(--article-star-glow-peak),0 0 26px var(--article-star-glow)}75%{background-position:65% 90%,62% 50%;text-shadow:0 0 8px var(--article-star-glow)}}
+@media(prefers-reduced-motion:reduce){:is(.article-title--starred,.starred-text){animation:none}}
+@media(forced-colors:active){:is(.article-title--starred,.starred-text){color:CanvasText;background:none;text-shadow:none;animation:none}}
 .form-status .reveal-character{display:inline-block}
 @view-transition{navigation:auto}
 ::view-transition-old(root),::view-transition-new(root){animation:none}

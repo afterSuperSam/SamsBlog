@@ -4,6 +4,16 @@ const preference = matchMedia('(prefers-reduced-motion: reduce)');
 const animations = new Set<Animation>();
 export const motionDisabled = () => preference.matches || document.documentElement.classList.contains('motion-paused');
 
+// CSS 压缩后的秒与毫秒统一交给 Web Animations，缺失时长使用回退值。
+export function parseCssTimeMilliseconds(value: string, fallback = 0): number {
+  const time = value.trim();
+  if (time === '0') return 0;
+  const match = /^(\d*\.?\d+)(ms|s)$/i.exec(time);
+  if (!match) return fallback;
+  const milliseconds = Number(match[1]) * (match[2].toLowerCase() === 's' ? 1000 : 1);
+  return Number.isFinite(milliseconds) ? milliseconds : fallback;
+}
+
 export function animateMotion(target: Element, keyframes: Keyframe[], options: KeyframeAnimationOptions) {
   if (motionDisabled()) return;
   const animation = target.animate(keyframes, options);

@@ -33,6 +33,7 @@ export interface ArticleFilters {
   source: string;
   category: string;
   sort: string;
+  starred: string;
   tag: string;
   period: string;
   q: string;
@@ -48,6 +49,7 @@ export interface CatalogArticle {
   createdAt: string;
   updatedAt: string;
   search: string;
+  starred: boolean;
 }
 
 const normalizeText = (value: string) => value.normalize('NFKC').toLocaleLowerCase('zh-CN');
@@ -75,6 +77,24 @@ export function articleMonth(value: string): string {
   return `${parts.find((part) => part.type === 'year')!.value}-${parts.find((part) => part.type === 'month')!.value}`;
 }
 
+// 每篇内容对同一标签只计一次，筛选栏按使用次数展示常用标签。
+export function rankArticleTags(articles: Pick<CatalogArticle, 'tags'>[]) {
+  const counts = new Map<string, { tag: string; count: number }>();
+  for (const article of articles) {
+    const seen = new Set<string>();
+    for (const tag of article.tags) {
+      const key = normalizeText(tag);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const entry = counts.get(key) || { tag, count: 0 };
+      entry.count += 1;
+      if (tag.localeCompare(entry.tag, 'zh-CN') < 0) entry.tag = tag;
+      counts.set(key, entry);
+    }
+  }
+  return [...counts.values()].sort((first, second) => second.count - first.count || first.tag.localeCompare(second.tag, 'zh-CN'));
+}
+
 export function readArticleFilters(parameters: URLSearchParams): ArticleFilters {
   const select = (name: string, values: string[], fallback = '') => values.includes(parameters.get(name) || '') ? parameters.get(name)! : fallback;
   const period = parameters.get('period') || '';
@@ -83,6 +103,7 @@ export function readArticleFilters(parameters: URLSearchParams): ArticleFilters 
     source: select('source', ['original', 'repost']),
     category: select('category', ['discussion', 'journal']),
     sort: select('sort', ['created-desc', 'created-asc', 'updated-desc', 'updated-asc'], 'created-desc'),
+    starred: select('starred', ['1']),
     tag: (parameters.get('tag') || '').normalize('NFKC').trim().slice(0, siteConfig.articles.tagMaximumLength * 2),
     period: /^\d{4}(?:-(?:0[1-9]|1[0-2]))?$/.test(period) ? period : '',
     q: (parameters.get('q') || '').trim().slice(0, siteConfig.articles.searchMaximumLength),
@@ -94,6 +115,7 @@ export function matchesArticle(article: CatalogArticle, filters: ArticleFilters)
   return (!filters.contentType || article.contentType === filters.contentType)
     && (!filters.source || article.source === filters.source)
     && (!filters.category || article.category === filters.category)
+    && (!filters.starred || article.starred)
     && (!filters.tag || article.tags.some((tag) => normalizeText(tag) === normalizeText(filters.tag)))
     && (!filters.period || articleMonth(article.createdAt).startsWith(filters.period))
     && (!filters.q || normalizeText(article.search).includes(normalizeText(filters.q)));

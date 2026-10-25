@@ -1,10 +1,29 @@
 import { describe, expect, it } from 'vitest';
-import { articleMonth, readArticleFilters, parseArticleTags, matchesArticle, compareArticles, articleFilterParameters, type CatalogArticle } from '../src/lib/article-catalog';
+import { articleMonth, readArticleFilters, parseArticleTags, matchesArticle, compareArticles, articleFilterParameters, rankArticleTags, type CatalogArticle } from '../src/lib/article-catalog';
 import { siteConfig } from '../src/config/site';
 
-const article: CatalogArticle = { id: 1, contentType: 'article', source: 'original', category: 'journal', tags: ['TinyML', '日常'], createdAt: '2026-09-30T16:05:00Z', updatedAt: '2026-10-24T00:00:00Z', search: 'TinyML 实验 上海的日常记录' };
+const article: CatalogArticle = { id: 1, contentType: 'article', source: 'original', category: 'journal', tags: ['TinyML', '日常'], createdAt: '2026-09-30T16:05:00Z', updatedAt: '2026-10-24T00:00:00Z', search: 'TinyML 实验 上海的日常记录', starred: false };
 
 describe('article tags and catalog', () => {
+  it('ranks tags by article count, counts equivalent tags once and breaks ties consistently', () => {
+    const articles = [{ tags: ['A', 'Ａ', 'D'] }, { tags: ['B', 'D', 'C'] }, { tags: ['B', 'D'] }];
+    const tags = rankArticleTags(articles);
+    expect(tags.map(({ tag, count }) => [tag.normalize('NFKC'), count])).toEqual([['D', 3], ['B', 2], ['A', 1], ['C', 1]]);
+    expect(tags.slice(0, siteConfig.articles.initialVisibleTagCount)).toHaveLength(3);
+    expect(rankArticleTags([...articles].reverse())).toEqual(tags);
+    expect(rankArticleTags([])).toEqual([]);
+  });
+
+  it('combines starred filtering with tags, search and archive state in shareable URLs', () => {
+    const filters = readArticleFilters(new URLSearchParams('starred=1&tag=TinyML&q=日常&view=archive&period=2026-10&sort=created-asc'));
+    expect(matchesArticle(article, filters)).toBe(false);
+    expect(matchesArticle({ ...article, starred: true }, filters)).toBe(true);
+    expect(matchesArticle({ ...article, starred: true, tags: ['其他'] }, filters)).toBe(false);
+    expect(readArticleFilters(articleFilterParameters(filters))).toEqual(filters);
+    expect(articleFilterParameters(filters).get('starred')).toBe('1');
+    expect(readArticleFilters(new URLSearchParams('starred=invalid')).starred).toBe('');
+    expect(matchesArticle(article, readArticleFilters(new URLSearchParams()))).toBe(true);
+  });
   it('combines content type with existing filters and preserves it in shared URLs', () => {
     const filters = readArticleFilters(new URLSearchParams('contentType=note&category=journal&view=archive'));
     expect(matchesArticle(article, filters)).toBe(false);

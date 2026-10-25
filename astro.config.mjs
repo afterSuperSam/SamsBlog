@@ -39,6 +39,7 @@ export default defineConfig({
   },
   markdown: { syntaxHighlight: false },
   vite: {
+    optimizeDeps: { include: ['three'] },
     build: {
       cssMinify: 'lightningcss',
     },

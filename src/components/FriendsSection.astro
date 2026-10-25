@@ -31,8 +31,8 @@ const friendStatusTimeout = Math.ceil(allFriends.length / serverConfig.friendSta
           <span class="friend-card__icon"><b>{friend.name.slice(0, 1)}</b><img src={friend.iconUrl} alt="" loading="lazy" referrerpolicy="no-referrer" data-friend-icon /></span>
           <div class="friend-card__body">
             <div class="friend-card__heading">
-              <a class="friend-card__copy" href={friend.url} target="_blank" rel="noopener noreferrer"><strong>{friend.name}</strong></a>
-              {friend.starred && <span class="friend-card__star" role="img" aria-label="星标友链">★</span>}
+              <a class="friend-card__copy" href={friend.url} target="_blank" rel="noopener noreferrer"><strong class:list={{ 'starred-text': friend.starred }}>{friend.name}</strong></a>
+              {friend.starred && <span class="friend-card__star starred-text" role="img" aria-label="星标友链">★</span>}
               {friend.rssUrl && <>
                 <time class="friend-card__date" data-feed-date datetime={friend.latest?.publishedAt || undefined} hidden={!friend.latest?.publishedAt}>{friend.latest?.publishedAt && new Date(friend.latest.publishedAt).toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' })}</time>
                 <a class="friend-card__rss" href={friend.rssUrl} target="_blank" rel="noopener noreferrer" aria-label={`订阅 ${friend.name} 的 RSS`}>

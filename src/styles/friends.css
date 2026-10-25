@@ -19,7 +19,7 @@
 .friend-card__body{min-width:0}.friend-card__heading{display:flex;flex-wrap:wrap;align-items:center;gap:0 7px}.friend-card__copy{min-width:0;overflow-wrap:anywhere}.friend-card__copy strong{font:700 21px/1.35 var(--display)}.friend-card__description{display:block;color:var(--text-soft);font:var(--font-size-body)/1.4 var(--playful);overflow-wrap:anywhere}.friend-card__footer>em{color:var(--friend-accent,var(--summer-blue));font:400 var(--font-size-small)/1.4 var(--playful);font-style:normal}
 .friend-card__copy::after{position:absolute;inset:0;border-radius:22px;content:""}
 .friend-card__copy:focus-visible{outline:0}
-.friend-card__star{color:var(--article-star-color);font-size:var(--font-size-small);line-height:1;pointer-events:none}
+.friend-card__star{font-size:var(--font-size-small);line-height:1;pointer-events:none}
 .friend-card__footer{pointer-events:none}
 .friend-card__footer{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:2px 12px;min-width:0}
 .friend-card__footer>em{min-width:0;overflow-wrap:anywhere}
