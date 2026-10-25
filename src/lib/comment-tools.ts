@@ -1,4 +1,5 @@
 import { siteConfig } from '../config/site';
+import { animateMotion } from './motion';
 
 const discussion = siteConfig.discussion;
 
@@ -43,11 +44,36 @@ export function initializeCommentInput(form: HTMLFormElement, textarea: HTMLText
   const hint = document.createElement('span');
   hint.className = 'comment-input-hint';
   hint.textContent = 'Ctrl + Enter 发送 · Enter 换行';
+  summary.append(hint);
   const notice = document.createElement('span');
   notice.className = 'comment-input-notice';
   notice.setAttribute('role', 'status');
-  tools.append(picker, hint, notice);
+  tools.append(picker, notice);
   (textarea.closest('label') || textarea).after(tools);
+
+  let pickerExpanded = false;
+  let pickerRevision = 0;
+  let pickerAnimation: Animation | undefined;
+  let contentAnimation: Animation | undefined;
+  const setPickerOpen = (expanded: boolean) => {
+    const revision = ++pickerRevision;
+    pickerExpanded = expanded; picker.dataset.expanded = String(expanded);
+    if (!picker.open && !expanded) { renderEmoticons(); return; }
+    const height = picker.getBoundingClientRect().height;
+    const opacity = picker.open ? getComputedStyle(groups).opacity : '0';
+    pickerAnimation?.cancel(); contentAnimation?.cancel();
+    picker.open = true; groups.inert = !expanded;
+    const options = { duration: siteConfig.interactions.feedbackResizeMilliseconds, easing: getComputedStyle(document.documentElement).getPropertyValue('--ease-out').trim() };
+    pickerAnimation = animateMotion(picker, [{ height: `${height}px` }, { height: `${expanded ? picker.scrollHeight : summary.offsetHeight}px` }], options);
+    contentAnimation = animateMotion(groups, [{ opacity }, { opacity: expanded ? 1 : 0 }], options);
+    const settle = () => {
+      if (revision !== pickerRevision) return;
+      picker.open = expanded;
+      if (!expanded) renderEmoticons();
+    };
+    if (pickerAnimation) void pickerAnimation.finished.then(settle, settle); else settle();
+  };
+  summary.addEventListener('click', (event) => { event.preventDefault(); setPickerOpen(!pickerExpanded); }, options);
 
   const rememberSelection = () => {
     selectionStart = textarea.selectionStart;
@@ -109,8 +135,7 @@ export function initializeCommentInput(form: HTMLFormElement, textarea: HTMLText
             catch (error) { storageAvailable = false; console.warn('Comment emoticon storage write failed', error); }
           }
           if (!storageAvailable) notice.textContent = '当前浏览器无法保存最近使用记录。';
-          picker.open = false;
-          renderEmoticons();
+          setPickerOpen(false);
         }, options);
         choices.append(button);
       });
@@ -145,5 +170,5 @@ export function initializeCommentInput(form: HTMLFormElement, textarea: HTMLText
   });
   observer?.observe(textarea);
   resize();
-  return { resize, insertText, destroy: () => { controller.abort(); observer?.disconnect(); tools.remove(); Object.assign(textarea.style, originalStyle); } };
+  return { resize, insertText, destroy: () => { pickerRevision++; pickerAnimation?.cancel(); contentAnimation?.cancel(); controller.abort(); observer?.disconnect(); tools.remove(); Object.assign(textarea.style, originalStyle); } };
 }

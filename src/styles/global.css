@@ -72,6 +72,7 @@
   --paper-extra-height: 30px;
   --message-wall-fade: 120px;
   --message-wall-blur: 6px;
+  --message-signature-offset: 4px;
   --paper-label-duration: 650ms;
   --article-search-font-size: clamp(1.08rem,1.4vw,1.2rem);
   --article-search-width: 260px;
@@ -117,6 +118,7 @@
   --project-title-glow-wide: color-mix(in oklab, var(--glow-blue) 38%, transparent);
   --project-number-gap: 24px;
   --friend-rss-duration: 560ms;
+  --friend-updates-inset: clamp(16px,2vw,28px);
   --friend-focus-scale: 1.045;
   --friend-focus-duration: 560ms;
   --friend-hover-light-strength: 12%;

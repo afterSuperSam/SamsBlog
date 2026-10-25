@@ -3,6 +3,9 @@ import { initializeCommentInput, insertCommentText, parseRecentEmoticons } from 
 import { siteConfig } from '../src/config/site';
 import { isLongMessage, renderCommentList } from '../src/lib/comment-rendering';
 import type { MessageRecord } from '../src/lib/db';
+import { animateMotion } from '../src/lib/motion';
+
+vi.mock('../src/lib/motion', () => ({ animateMotion: vi.fn() }));
 
 class ElementStub extends EventTarget {
   constructor(public tagName = 'div') { super(); }
@@ -25,6 +28,8 @@ class ElementStub extends EventTarget {
   rows = 2;
   clientWidth = 300;
   scrollHeight = 60;
+  offsetHeight = 44;
+  getBoundingClientRect() { return { height: this.open ? 260 : 44 }; }
   after = vi.fn();
   remove = vi.fn();
   requestSubmit = vi.fn();
@@ -48,7 +53,7 @@ function fixture() {
   documentStub.createElement = () => new ElementStub();
   vi.stubGlobal('document', documentStub);
   vi.stubGlobal('window', new ElementStub());
-  vi.stubGlobal('getComputedStyle', () => ({ lineHeight: '20px', fontSize: '16px', paddingTop: '10px', paddingBottom: '10px', borderTopWidth: '1px', borderBottomWidth: '1px', boxSizing: 'border-box', minHeight: '0px' }));
+  vi.stubGlobal('getComputedStyle', () => ({ opacity: '1', getPropertyValue: () => 'cubic-bezier(.22,1,.36,1)', lineHeight: '20px', fontSize: '16px', paddingTop: '10px', paddingBottom: '10px', borderTopWidth: '1px', borderBottomWidth: '1px', boxSizing: 'border-box', minHeight: '0px' }));
   const storage = { getItem: vi.fn(() => null as string | null), setItem: vi.fn() };
   vi.stubGlobal('localStorage', storage);
   const form = new ElementStub();
@@ -64,7 +69,7 @@ function key(target: ElementStub, type: string, properties: Record<string, unkno
   return event;
 }
 
-afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.mocked(animateMotion).mockReset(); });
 
 describe('comment list refresh', () => {
   it('uses trusted owner identity, folds long replies, retains quotes and reveals the submitted reply', () => {
@@ -108,6 +113,42 @@ describe('comment text insertion and local emoticons', () => {
 });
 
 describe('shared comment input', () => {
+  it('keeps closing content visible until the animation ends and ignores stale reversals', async () => {
+    const { textarea, initialize } = fixture();
+    const helper = initialize();
+    const picker = (textarea.after.mock.calls[0][0] as ElementStub).children[0];
+    const summary = picker.children[0];
+    const pending: Array<{ finish: () => void }> = [];
+    vi.mocked(animateMotion).mockImplementation((element) => {
+      if (element !== picker as unknown as Element) return;
+      let finish!: () => void; let cancel!: () => void;
+      const finished = new Promise<void>((resolve, reject) => { finish = resolve; cancel = () => reject(new Error('cancelled')); });
+      pending.push({ finish });
+      return { finished, cancel } as unknown as Animation;
+    });
+    const click = () => summary.dispatchEvent(new Event('click', { cancelable: true }));
+    click(); click();
+    expect(picker.open).toBe(true);
+    expect(picker.dataset.expanded).toBe('false');
+    pending[1].finish(); await Promise.resolve();
+    expect(picker.open).toBe(false);
+    click(); click(); click();
+    await Promise.resolve();
+    expect(picker.open).toBe(true);
+    pending[4].finish(); await Promise.resolve();
+    expect(picker.open).toBe(true);
+    helper.destroy();
+  });
+  it('opens and closes immediately when motion is disabled', () => {
+    const { textarea, initialize } = fixture();
+    const helper = initialize();
+    const picker = (textarea.after.mock.calls[0][0] as ElementStub).children[0];
+    picker.children[0].dispatchEvent(new Event('click', { cancelable: true }));
+    expect(picker.open).toBe(true);
+    picker.children[0].dispatchEvent(new Event('click', { cancelable: true }));
+    expect(picker.open).toBe(false);
+    helper.destroy();
+  });
   it('expands to eight lines, scrolls above the cap, and shrinks after deletion', () => {
     const { textarea, initialize } = fixture();
     const helper = initialize();

@@ -24,7 +24,11 @@ export const siteConfig = {
   articles: { initialVisibleTagCount: 3, homepageCount: 1, homepageNoteCount: 2, homepageLinkCount: 1, feedCount: 20, cardCount: 3, reorderMilliseconds: 420, maximumTags: 8, tagMaximumLength: 24, searchMaximumLength: 120, searchDelayMilliseconds: 180, searchRevealMilliseconds: 280, searchDismissMilliseconds: 180 },
   articleReading: { positionStorageKey: 'sams-blog-reading-positions', preferenceStorageKey: 'sams-blog-reading-mode', fontPreferenceStorageKey: 'sams-blog-reading-font', typographyStorageKey: 'sams-blog-reading-typography', fontSizeMinimum: 18, fontSizeMaximum: 26, fontSizeDefault: 20, fontSizeStep: 2, imageLoadTimeoutMilliseconds: 15000, positionLimit: 50, positionSaveMilliseconds: 1000, positionMinimumPixels: 240, imageZoomScale: 2, copyFeedbackMilliseconds: 1800, codeCollapsedLines: 16 },
   visitorProfile: { storageKey: 'sams-blog-visitor-profile', nicknameMaximumLength: 24, emailMaximumLength: 254 },
-  discussion: { textareaMaximumLines: 8, visibleReplyCount: 3, collapsedContentCharacters: 180, quoteMaximumCharacters: 180, recentEmoticonLimit: 6, recentEmoticonStorageKey: 'sams-blog-recent-emoticons', emoticons: ['(≧▽≦)', '(｡･ω･｡)ﾉ♡', '(๑•̀ㅂ•́)و✧', '(つ≧▽≦)つ', '(´･ω･`)', '(￣▽￣)ノ', '(｡•́︿•̀｡)', '( ˘▽˘)っ♨'] },
+  discussion: { textareaMaximumLines: 8, visibleReplyCount: 3, collapsedContentCharacters: 180, quoteMaximumCharacters: 180, recentEmoticonLimit: 6, recentEmoticonStorageKey: 'sams-blog-recent-emoticons', emoticons: [
+    '(≧▽≦)', '(｡･ω･｡)ﾉ♡', '(๑•̀ㅂ•́)و✧', '(つ≧▽≦)つ', '(´･ω･`)', '(￣▽￣)ノ', '(｡•́︿•̀｡)', '( ˘▽˘)っ♨',
+    '٩(ˊᗜˋ*)و', '(ﾉ◕ヮ◕)ﾉ*:･ﾟ✧', '(｡♥‿♥｡)', '(〃▽〃)', '(•̀ᴗ•́)و', 'ヾ(≧▽≦*)o', '(。-ω-)zzz', '(づ｡◕‿‿◕｡)づ',
+    '(っ•̀ω•́)っ✎', '(๑•́ ₃ •̀๑)', '(｡•̀ᴗ-)✧', '(´；ω；`)', '(*￣︶￣)', '(๑´ㅂ`๑)', '(๑•̀ω•́)ノ', '(ง •̀_•́)ง',
+  ] },
   readingExtras: { historyVisibleCount: 2, quoteMaximumCharacters: 450, quoteWidth: 1080, quoteWordmarkWidth: 210, quoteFontSize: 42, quoteLineHeight: 72, quotePadding: 88, quoteMinimumHeight: 720 },
   interactions: { feedbackResizeMilliseconds: 260, themeRevealMilliseconds: 760, keyboardInsetPixels: 18, requestTimeoutMilliseconds: 15000, tooltipDismissMilliseconds: 160, tooltipRevealMilliseconds: 180, receiptDurationMilliseconds: 1440 },
   projectPresentation: { initialVisibleCount: 4 },
