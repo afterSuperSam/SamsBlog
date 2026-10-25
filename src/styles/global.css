@@ -72,7 +72,7 @@
   --paper-extra-height: 30px;
   --message-wall-fade: 120px;
   --message-wall-blur: 6px;
-  --message-signature-offset: 4px;
+  --message-signature-offset: 7px;
   --paper-label-duration: 650ms;
   --article-search-font-size: clamp(1.08rem,1.4vw,1.2rem);
   --article-search-width: 260px;

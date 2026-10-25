@@ -26,8 +26,7 @@ export const siteConfig = {
   visitorProfile: { storageKey: 'sams-blog-visitor-profile', nicknameMaximumLength: 24, emailMaximumLength: 254 },
   discussion: { textareaMaximumLines: 8, visibleReplyCount: 3, collapsedContentCharacters: 180, quoteMaximumCharacters: 180, recentEmoticonLimit: 6, recentEmoticonStorageKey: 'sams-blog-recent-emoticons', emoticons: [
     '(≧▽≦)', '(｡･ω･｡)ﾉ♡', '(๑•̀ㅂ•́)و✧', '(つ≧▽≦)つ', '(´･ω･`)', '(￣▽￣)ノ', '(｡•́︿•̀｡)', '( ˘▽˘)っ♨',
-    '٩(ˊᗜˋ*)و', '(ﾉ◕ヮ◕)ﾉ*:･ﾟ✧', '(｡♥‿♥｡)', '(〃▽〃)', '(•̀ᴗ•́)و', 'ヾ(≧▽≦*)o', '(。-ω-)zzz', '(づ｡◕‿‿◕｡)づ',
-    '(っ•̀ω•́)っ✎', '(๑•́ ₃ •̀๑)', '(｡•̀ᴗ-)✧', '(´；ω；`)', '(*￣︶￣)', '(๑´ㅂ`๑)', '(๑•̀ω•́)ノ', '(ง •̀_•́)ง',
+    '٩(ˊᗜˋ*)و', '(ﾉ◕ヮ◕)ﾉ*:･ﾟ✧',
   ] },
   readingExtras: { historyVisibleCount: 2, quoteMaximumCharacters: 450, quoteWidth: 1080, quoteWordmarkWidth: 210, quoteFontSize: 42, quoteLineHeight: 72, quotePadding: 88, quoteMinimumHeight: 720 },
   interactions: { feedbackResizeMilliseconds: 260, themeRevealMilliseconds: 760, keyboardInsetPixels: 18, requestTimeoutMilliseconds: 15000, tooltipDismissMilliseconds: 160, tooltipRevealMilliseconds: 180, receiptDurationMilliseconds: 1440 },

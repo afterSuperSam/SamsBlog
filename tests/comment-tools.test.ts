@@ -224,7 +224,7 @@ describe('shared comment input', () => {
     const picker = tools.children[0];
     const groups = picker.children[1];
     const featured = groups.children[1].children[1];
-    featured.children[6].dispatchEvent(new Event('click'));
+    featured.children[0].dispatchEvent(new Event('click'));
     expect(textarea.value).toBe(siteConfig.discussion.emoticons[6]);
     expect(JSON.parse(storage.setItem.mock.calls[0][1])).toEqual([siteConfig.discussion.emoticons[6], ...siteConfig.discussion.emoticons.slice(0, 5)]);
     expect(picker.open).toBe(false);

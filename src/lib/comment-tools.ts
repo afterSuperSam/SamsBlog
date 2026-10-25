@@ -41,10 +41,6 @@ export function initializeCommentInput(form: HTMLFormElement, textarea: HTMLText
   const groups = document.createElement('div');
   groups.className = 'comment-emoticon-groups';
   picker.append(summary, groups);
-  const hint = document.createElement('span');
-  hint.className = 'comment-input-hint';
-  hint.textContent = 'Ctrl + Enter 发送 · Enter 换行';
-  summary.append(hint);
   const notice = document.createElement('span');
   notice.className = 'comment-input-notice';
   notice.setAttribute('role', 'status');
@@ -143,7 +139,7 @@ export function initializeCommentInput(form: HTMLFormElement, textarea: HTMLText
       groups.append(group);
     };
     appendGroup('最近使用', recent);
-    appendGroup('精选', discussion.emoticons);
+    appendGroup('精选', discussion.emoticons.filter((emoticon) => !recent.includes(emoticon)));
   };
   renderEmoticons();
   ['input', 'select', 'keyup', 'click'].forEach((event) => textarea.addEventListener(event, rememberSelection, options));
