@@ -1,0 +1,12 @@
+---
+import { siteConfig } from '../config/site';
+import { isLongMessage } from '../lib/comment-rendering';
+const { content } = Astro.props as { content: string };
+const maximum = siteConfig.discussion.collapsedContentCharacters;
+const collapsed = isLongMessage(content);
+const preview = Array.from(content).slice(0, maximum).join('');
+---
+{collapsed ? <details class="message-collapse" data-message-fold>
+  <summary><span class="message-collapse__preview">{preview}</span><span class="message-collapse__closed">展开全文</span><span class="message-collapse__opened">收起全文</span></summary>
+  <p data-comment-text>{content}</p>
+</details> : <p data-comment-text>{content}</p>}

@@ -501,7 +501,7 @@ describe('project settings and automatically refreshed feeds', () => {
   });
 
   it('publishes complete formatted RSS content without expanding cross-site summaries', async () => {
-    const content = `# 完整正文\n\n${'正文内容'.repeat(80)}\n\n**这是文章最后一段**\n\n[站内](/about?a=1&b=2)\n\n![正文图片](/images/body.webp)\n\n<script>alert(1)</script>`;
+    const content = `# 完整正文\n\n${'正文内容'.repeat(80)}\n\n**这是文章最后一段**\n\n[站内](/about?a=1&b=2)\n\n![正文图片](/images/body.webp)\n\n<script>alert(1)</script>\n\n:::spoiler 后续情节\n不要直接展示的结局\n:::`;
     const id = saveArticle({ ...input, content });
     const feed = await (getRss({} as APIContext) as Response).text();
     expect(feed).toContain('&lt;h1&gt;完整正文&lt;/h1&gt;');
@@ -515,6 +515,8 @@ describe('project settings and automatically refreshed feeds', () => {
     expect(feed).toContain('<link>https://blog.moesam.com/</link>');
     expect(feed).not.toContain('localhost');
     const item = feed.split('<item>').find((item) => item.includes(`/articles/${id}</link>`))!;
+    expect(item).not.toContain('不要直接展示的结局');
+    expect(item).toContain('剧透内容，请到原文主动揭开。');
     expect(item.match(/<description>(.*?)<\/description>/s)?.[1]).toMatch(/…$/);
     expect(item.match(/<description>(.*?)<\/description>/s)?.[1]).not.toContain('这是文章最后一段');
     expect(item.match(/<content:encoded>(.*?)<\/content:encoded>/s)?.[1]).toContain('这是文章最后一段');

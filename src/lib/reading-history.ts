@@ -1,5 +1,16 @@
 import { siteConfig } from '../config/site';
 
+export function parseReadingTypography(raw: string | null): { fontSize: number; spacing: 'standard' | 'relaxed' } {
+  const configuration = siteConfig.articleReading;
+  let value: unknown;
+  try { value = raw ? JSON.parse(raw) : null; }
+  catch (error) { if (!(error instanceof SyntaxError)) throw error; }
+  const record = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  const fontSize = typeof record.fontSize === 'number' && Number.isSafeInteger(record.fontSize) && record.fontSize >= configuration.fontSizeMinimum && record.fontSize <= configuration.fontSizeMaximum
+    && (record.fontSize - configuration.fontSizeMinimum) % configuration.fontSizeStep === 0 ? record.fontSize : configuration.fontSizeDefault;
+  return { fontSize, spacing: record.spacing === 'relaxed' ? 'relaxed' : 'standard' };
+}
+
 export interface ReadingPosition {
   version: string; progress: number; heading: string; offset: number; updatedAt: number;
   title?: string; visitedAt?: number;

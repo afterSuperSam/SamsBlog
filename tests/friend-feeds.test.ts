@@ -101,6 +101,21 @@ describe('bounded RSS and Atom parsing', () => {
 });
 
 describe('pinned feed requests and persistent caching', () => {
+  it('builds a public cached timeline with recent dates first and source links', async () => {
+    const { getCachedFriendFeeds } = await import('../src/lib/friend-feeds');
+    const entries = [
+      { id: 1, rssUrl: 'https://a.example/feed', name: '甲', url: 'https://a.example/' },
+      { id: 2, rssUrl: 'https://b.example/feed', name: '乙', url: 'https://b.example/' },
+      { id: 3, rssUrl: 'https://c.example/feed', name: '丙', url: 'https://c.example/' },
+    ];
+    friends(entries);
+    const insert = mocks.database.prepare('INSERT INTO friend_feed_cache(friend_id,rss_url,title,entry_url,published_at,checked_at) VALUES (?,?,?,?,?,?)');
+    entries.forEach((entry, index) => insert.run(entry.id, entry.rssUrl, `文章${entry.id}`, `${entry.url}post`, [null, '2026-10-24T00:00:00Z', '2026-10-25T00:00:00Z'][index], '2026-10-25T01:00:00Z'));
+    expect(getCachedFriendFeeds().map(({ id, sourceName, sourceUrl }) => [id, sourceName, sourceUrl])).toEqual([[3, '丙', 'https://c.example/'], [2, '乙', 'https://b.example/'], [1, '甲', 'https://a.example/']]);
+    mocks.listFriends.mockReturnValue([entries[0]]);
+    expect(getCachedFriendFeeds()).toHaveLength(1);
+    expect(mocks.request).not.toHaveBeenCalled();
+  });
   it('shares requests, pins validated DNS, caches dates and never blocks synchronous cache reads', async () => {
     const { getCachedFriendFeed, getFriendFeeds } = await import('../src/lib/friend-feeds');
     expect(getCachedFriendFeed(1, 'https://example.com/feed.xml')).toBeNull();

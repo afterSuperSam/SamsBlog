@@ -3,6 +3,9 @@ import { listPublishedMessages } from '../lib/db';
 import { replyNotificationsConfigured } from '../lib/reply-notifications';
 import PaperCheckbox from './PaperCheckbox.astro';
 import FriendApplication from './FriendApplication.astro';
+import MessageBody from './MessageBody.astro';
+import MessageReplies from './MessageReplies.astro';
+import MessageSignature from './MessageSignature.astro';
 import '../styles/guestbook.css';
 
 const messages = listPublishedMessages();
@@ -10,6 +13,7 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
 ---
 
 <section class="home-guestbook" id="guestbook">
+  <MessageSignature />
   <div class="shell" data-reveal>
     <header class="home-guestbook__header">
       <div><span>GUESTBOOK</span><h2>留言纸条</h2></div>
@@ -75,10 +79,8 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
               <li class="message-item" data-reveal>
                 <div class="message-item__note">
                   <header><b>{message.nickname}</b><time datetime={message.createdAt}>{dateFormatter.format(new Date(message.createdAt))}</time></header>
-                  <p>{message.content}</p>
-                  {message.replies?.map((reply) => (
-                    <blockquote class="message-reply"><b>{reply.nickname}</b><p>{reply.content}</p></blockquote>
-                  ))}
+                  <MessageBody content={message.content} />
+                  <MessageReplies replies={message.replies} parentId={message.id} />
                 </div>
               </li>
             ))}
@@ -96,10 +98,12 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
   import { siteConfig } from '../config/site';
   import { requestJson } from '../lib/client-request';
   import { rememberVisitor } from '../lib/visitor-profile';
+  import { initializeCommentInput } from '../lib/comment-tools';
   const form = document.querySelector<HTMLFormElement>('[data-message-form]');
   const visitor = form ? rememberVisitor(form) : undefined;
   const nickname = form?.querySelector<HTMLInputElement>('input[name="nickname"]');
   const textarea = form?.querySelector<HTMLTextAreaElement>('textarea[name="content"]');
+  const inputTools = form && textarea ? initializeCommentInput(form, textarea) : undefined;
   const counter = form?.querySelector<HTMLElement>('[data-message-count]');
   const status = form?.querySelector<HTMLElement>('[data-form-status]');
   const messageScroll = document.querySelector<HTMLElement>('[data-message-scroll]');
@@ -239,6 +243,7 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
         field.dispatchEvent(new Event('input', { bubbles: true }));
       });
       if (counter) counter.textContent = String(Array.from(textarea?.value || '').length);
+      inputTools?.resize();
       showStatus(result.message || '留言已送出。', 'success');
       if (!textarea?.value) await showReceipt();
     } catch (error) {

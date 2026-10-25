@@ -1,6 +1,7 @@
+import { initializeArticleImageViewer } from './article-image-viewer';
 import { siteConfig } from '../config/site';
 import { motionDisabled } from './motion';
-import { readReadingHistory, saveReadingHistory, measureReadingChapters, type ReadingPosition } from './reading-history';
+import { readReadingHistory, saveReadingHistory, measureReadingChapters, parseReadingTypography, type ReadingPosition } from './reading-history';
 import { initializeReadingExtras } from './reading-extras';
 
 const root = document.querySelector<HTMLElement>('[data-article-reading]');
@@ -38,6 +39,30 @@ if (root && prose) {
     try { localStorage.setItem(configuration.fontPreferenceStorageKey, enabled ? 'default' : 'handwritten'); }
     catch (error) { console.warn('Reading font preference save failed', error); status.textContent = '本机无法保存字体设置，本次切换仍然有效。'; }
   });
+
+  let typography = parseReadingTypography(null);
+  try { typography = parseReadingTypography(localStorage.getItem(configuration.typographyStorageKey)); }
+  catch (error) { console.warn('Reading typography unavailable', error); }
+  const sizeButtons = [...root.querySelectorAll<HTMLButtonElement>('[data-reading-size]')];
+  const spacingButtons = [...root.querySelectorAll<HTMLButtonElement>('[data-reading-spacing]')];
+  const applyTypography = () => {
+    document.documentElement.style.setProperty('--reader-font-size', `${typography.fontSize / 16}rem`);
+    document.documentElement.dataset.readingSpacing = typography.spacing;
+    root.querySelector<HTMLOutputElement>('[data-reading-size-label]')!.textContent = `${typography.fontSize}px`;
+    sizeButtons.forEach((button) => { button.disabled = button.dataset.readingSize === 'increase' ? typography.fontSize >= configuration.fontSizeMaximum : typography.fontSize <= configuration.fontSizeMinimum; });
+    spacingButtons.forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.readingSpacing === typography.spacing)));
+  };
+  const saveTypography = () => {
+    applyTypography();
+    try { localStorage.setItem(configuration.typographyStorageKey, JSON.stringify(typography)); }
+    catch (error) { console.warn('Reading typography save failed', error); status.textContent = '本机无法保存排版设置，本次调整仍然有效。'; }
+  };
+  sizeButtons.forEach((button) => button.addEventListener('click', () => {
+    typography.fontSize = Math.max(configuration.fontSizeMinimum, Math.min(configuration.fontSizeMaximum, typography.fontSize + (button.dataset.readingSize === 'increase' ? 1 : -1) * configuration.fontSizeStep));
+    saveTypography();
+  }));
+  spacingButtons.forEach((button) => button.addEventListener('click', () => { typography.spacing = button.dataset.readingSpacing === 'relaxed' ? 'relaxed' : 'standard'; saveTypography(); }));
+  applyTypography();
 
   // 位置只在读者主动选择后恢复，不接管目录锚点或浏览器返回滚动。
   const positions = readReadingHistory;
@@ -225,57 +250,5 @@ if (root && prose) {
     });
   });
 
-  // 原生模态对话框处理焦点与 Escape，图片区域保留系统触摸缩放。
-  const dialog = document.querySelector<HTMLDialogElement>('[data-article-image-dialog]')!;
-  const fullImage = dialog.querySelector<HTMLImageElement>('[data-image-full]')!;
-  const viewport = dialog.querySelector<HTMLElement>('[data-image-viewport]')!;
-  const zoom = dialog.querySelector<HTMLButtonElement>('[data-image-zoom]')!;
-  let imageTrigger: HTMLElement | undefined;
-  let previousOverflow = '';
-  const resetZoom = () => {
-    fullImage.style.removeProperty('width'); dialog.classList.remove('is-zoomed');
-    zoom.setAttribute('aria-pressed', 'false'); zoom.textContent = '放大图片';
-    viewport.scrollTo(0, 0);
-  };
-  prose.querySelectorAll<HTMLImageElement>('img').forEach((image) => {
-    const link = image.closest<HTMLAnchorElement>('a');
-    // 外部目标和多图链接保留原始导航，只有明确的单图链接参与放大。
-    if (link && (link.querySelectorAll('img').length !== 1 || ![image.src, image.currentSrc].includes(link.href))) return;
-    const trigger = link || document.createElement('button');
-    if (!link) {
-      (trigger as HTMLButtonElement).type = 'button';
-      trigger.className = 'article-image-trigger';
-      image.before(trigger); trigger.append(image);
-    }
-    if (!link || link.querySelector('img') === image) trigger.setAttribute('aria-label', `放大图片：${image.alt || '正文图片'}`);
-    trigger.setAttribute('aria-haspopup', 'dialog');
-    trigger.addEventListener('click', (event) => {
-      if (link && event instanceof MouseEvent && (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)) return;
-      event.preventDefault();
-      imageTrigger = trigger;
-      fullImage.src = image.currentSrc || image.src; fullImage.alt = image.alt;
-      dialog.querySelector<HTMLElement>('[data-image-caption]')!.textContent = image.alt;
-      resetZoom();
-      previousOverflow = document.body.style.overflow;
-      document.body.style.overflow = 'hidden';
-      dialog.showModal();
-    });
-  });
-  zoom.addEventListener('click', () => {
-    if (dialog.classList.contains('is-zoomed')) { resetZoom(); return; }
-    fullImage.style.width = `${Math.max(fullImage.getBoundingClientRect().width, viewport.clientWidth) * configuration.imageZoomScale}px`;
-    dialog.classList.add('is-zoomed'); zoom.setAttribute('aria-pressed', 'true'); zoom.textContent = '适应屏幕';
-  });
-  dialog.querySelector('[data-image-close]')!.addEventListener('click', () => dialog.close());
-  let backdropPressed = false;
-  dialog.addEventListener('pointerdown', (event) => { backdropPressed = event.target === dialog || event.target === viewport; });
-  dialog.addEventListener('click', (event) => {
-    if (backdropPressed && (event.target === dialog || event.target === viewport)) dialog.close();
-    backdropPressed = false;
-  });
-  dialog.addEventListener('close', () => {
-    document.body.style.overflow = previousOverflow;
-    imageTrigger?.focus({ preventScroll: true });
-    fullImage.removeAttribute('src'); resetZoom();
-  });
+  initializeArticleImageViewer(prose, document.querySelector<HTMLDialogElement>('[data-article-image-dialog]')!);
 }

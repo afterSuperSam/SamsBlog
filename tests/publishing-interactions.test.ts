@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import type { APIContext, APIRoute } from 'astro';
-import { getDatabase, createMessage, listPublishedMessages, listAllMessages, updateMessageStatus } from '../src/lib/db';
+import { getDatabase, createMessage, createAdminReply, deleteMessage, listPublishedMessages, listAllMessages, updateMessageStatus } from '../src/lib/db';
 import { saveArticle, withdrawArticle } from '../src/lib/articles';
 import { recordPageView, getArticleAnalytics, hashVisitorToken } from '../src/lib/stats';
 import { createAdminSession } from '../src/lib/admin-auth';
@@ -13,6 +13,7 @@ import { POST as react } from '../src/pages/api/articles/reactions.json';
 import { POST as apply } from '../src/pages/api/friends/applications.json';
 import { PATCH as review } from '../src/pages/api/admin/applications.json';
 import { parseVisitorProfile } from '../src/lib/visitor-profile';
+import { siteConfig } from '../src/config/site';
 
 vi.mock('../src/lib/reply-notifications', async (original) => ({ ...await original<object>(), replyNotificationsConfigured: false, queueReplyNotification: vi.fn() }));
 beforeAll(async () => { vi.stubEnv('BLOG_DATA_DIR', await mkdtemp(path.join(tmpdir(), 'samsblog-publishing-'))); });
@@ -55,6 +56,70 @@ describe('article conversation boundaries', () => {
     expect((await call(getComments, `/api/guestbook/messages.json?articleId=${first}`, undefined, undefined, 'GET')).status).toBe(404);
     expect(listAllMessages().some((message) => message.id === parent)).toBe(true);
     expect((await call(postComment, '/api/guestbook/messages.json', { articleId: second, nickname: '访客', content: '测试' }, undefined, 'POST', 'https://other.example')).status).toBe(403);
+  });
+  it('quotes exact root or reply text without changing the root thread or trusting an owner nickname', async () => {
+    const articleId = saveArticle(content);
+    const parentId = createMessage({ articleId, nickname: '原作者', content: '评论原文中的连续片段。', fingerprintHash: 'quote-root' });
+    const ownerReply = createAdminReply(parentId, '站长回复中的原话');
+    const response = await call(postComment, '/api/guestbook/messages.json', {
+      articleId, parentId, quoteMessageId: ownerReply, quoteContent: '回复中的原话',
+      nickname: 'Sam', content: '引用站长的回复', isAdmin: true, quoteNickname: '伪造昵称',
+    });
+    expect(response.status).toBe(201);
+    const { id } = await response.json();
+    const thread = listPublishedMessages(60, articleId).find((message) => message.id === parentId)!;
+    expect(thread).toMatchObject({ quoteMessageId: null, quoteContent: '', quoteNickname: '' });
+    expect(thread.replies?.find((reply) => reply.id === ownerReply)?.isAdmin).toBe(true);
+    expect(thread.replies?.find((reply) => reply.id === id)).toMatchObject({
+      parentId, quoteMessageId: ownerReply, quoteContent: '回复中的原话', quoteNickname: 'SuperSam', isAdmin: false,
+    });
+    expect((await call(postComment, '/api/guestbook/messages.json', {
+      articleId, parentId, quoteMessageId: parentId, quoteContent: '连续片段', nickname: '另一访客', content: '引用根评论',
+    })).status).toBe(201);
+  });
+  it('rejects fabricated, oversized, malformed, cross-article and non-public quote sources', async () => {
+    const articleId = saveArticle(content); const otherArticle = saveArticle(content);
+    const parentId = createMessage({ articleId, nickname: '原作者', content: `连续原文${'😀'.repeat(siteConfig.discussion.quoteMaximumCharacters + 1)}`, fingerprintHash: 'quote-validation' });
+    const other = createMessage({ articleId: otherArticle, nickname: '其他作者', content: '连续原文', fingerprintHash: 'quote-other' });
+    const hidden = createMessage({ articleId, nickname: '隐藏作者', content: '连续原文', fingerprintHash: 'quote-hidden' });
+    updateMessageStatus(hidden, 'hidden');
+    const payload = { articleId, parentId, quoteMessageId: parentId, quoteContent: '连续原文', nickname: '测试访客', content: '引用验证' };
+    for (const quote of [
+      { quoteContent: '连续伪造原文' }, { quoteContent: '原文连续' }, { quoteContent: '' }, { quoteContent: ' ' },
+      { quoteContent: '\u0000' }, { quoteContent: 12 }, { quoteMessageId: null }, { quoteMessageId: '1' },
+      { quoteContent: '😀'.repeat(siteConfig.discussion.quoteMaximumCharacters + 1) }, { parentId: null },
+    ]) {
+      expect((await call(postComment, '/api/guestbook/messages.json', { ...payload, ...quote })).status).toBe(400);
+    }
+    expect((await call(postComment, '/api/guestbook/messages.json', { ...payload, articleId: null })).status).toBe(404);
+    for (const quoteMessageId of [other, hidden, 999999]) {
+      expect((await call(postComment, '/api/guestbook/messages.json', { ...payload, quoteMessageId })).status).toBe(404);
+    }
+    expect((await call(postComment, '/api/guestbook/messages.json', {
+      ...payload, quoteContent: '😀'.repeat(siteConfig.discussion.quoteMaximumCharacters),
+    })).status).toBe(201);
+    expect(() => getDatabase().prepare("UPDATE messages SET quote_message_id = ?, quote_content = '' WHERE id = ?").run(parentId, other)).toThrow();
+  });
+  it('removes quote snapshots when their source or source thread becomes private or deleted', async () => {
+    const articleId = saveArticle(content);
+    const sourceRoot = createMessage({ articleId, nickname: '引用作者', content: '独有的引用根原话', fingerprintHash: 'quote-privacy-root' });
+    const sourceReply = createMessage({ articleId, parentId: sourceRoot, nickname: '回复作者', content: '独有的引用回复原话', fingerprintHash: 'quote-privacy-reply' });
+    const targetRoot = createMessage({ articleId, nickname: '回应作者', content: '保留公开的另一线程', fingerprintHash: 'quote-privacy-target' });
+    const quoted = createMessage({ articleId, parentId: targetRoot, quoteMessageId: sourceReply, quoteContent: '引用回复原话', nickname: '回应访客', content: '引用后的回应', fingerprintHash: 'quote-privacy-quote' });
+    const readQuote = () => listPublishedMessages(60, articleId).find((message) => message.id === targetRoot)?.replies?.find((message) => message.id === quoted);
+    expect(readQuote()).toMatchObject({ quoteMessageId: sourceReply, quoteContent: '引用回复原话', quoteNickname: '回复作者' });
+    updateMessageStatus(sourceRoot, 'hidden');
+    expect(readQuote()).toMatchObject({ quoteMessageId: null, quoteContent: '', quoteNickname: '' });
+    expect(() => createMessage({ articleId, parentId: targetRoot, quoteMessageId: sourceReply, quoteContent: '引用回复原话', nickname: '测试访客', content: '隐藏后引用', fingerprintHash: 'quote-hidden-thread' })).toThrow('引用的评论不存在');
+    updateMessageStatus(sourceRoot, 'published');
+    updateMessageStatus(sourceReply, 'hidden');
+    expect(readQuote()).toMatchObject({ quoteMessageId: null, quoteContent: '', quoteNickname: '' });
+    updateMessageStatus(sourceReply, 'published');
+    deleteMessage(sourceReply);
+    const response = await call(getComments, `/api/guestbook/messages.json?articleId=${articleId}`, undefined, undefined, 'GET');
+    const serialized = await response.text();
+    expect(serialized).not.toContain('引用回复原话');
+    expect(readQuote()).toMatchObject({ quoteMessageId: null, quoteContent: '', quoteNickname: '' });
   });
 });
 

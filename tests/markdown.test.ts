@@ -2,6 +2,21 @@ import { describe, expect, it } from 'vitest';
 import { articleExcerpt, renderArticleMarkdown, renderMarkdown } from '../src/lib/markdown';
 
 describe('article Markdown', () => {
+  it('conceals spoiler blocks natively and excludes hidden headings from the directory', () => {
+    const markdown = '## 开头\n:::spoiler 结局\n## 秘密标题\n\n<script>bad()</script>\n\n:::details 更多\n### 第二个秘密\n:::\n:::\n## 之后';
+    const rendered = renderArticleMarkdown(markdown);
+    expect(rendered.html).toContain('<details class="article-explanation article-spoiler">');
+    expect(rendered.html).not.toContain(' open');
+    expect(rendered.html).toContain('&lt;script&gt;bad()&lt;/script&gt;');
+    expect(rendered.headings.map((heading) => heading.text)).toEqual(['开头', '之后']);
+    expect(articleExcerpt(markdown)).not.toContain('秘密');
+    expect(renderMarkdown(markdown, 'https://example.com/articles/1', { concealSpoilers: true })).not.toContain('秘密');
+    expect(renderMarkdown('```md\n:::spoiler 语法示例\n秘密\n:::\n```')).not.toContain('article-spoiler');
+  });
+  it('conceals nested spoilers in lists, quotes and explanations for subscription readers', () => {
+    const markdown = '- 外层\n  :::spoiler 提示\n  secret-list\n  :::\n\n> :::spoiler 提示\n> secret-quote\n> :::\n\n:::details 展开\n:::spoiler 提示\nsecret-detail\n:::\n:::';
+    expect(renderMarkdown(markdown, undefined, { concealSpoilers: true })).not.toContain('secret');
+  });
   it('renders safe expandable explanations and margin notes, keeping nested fences intact', () => {
     const rendered = renderArticleMarkdown('正文\n:::details 为什么\n说明 **内容**\n\n:::aside 提醒\n[链接](/articles/1)\n:::\n\n```txt\n:::\n```\n\n## 一节\n:::\n\n结束');
     expect(rendered.html).toContain('<details class="article-explanation"><summary>为什么</summary>');

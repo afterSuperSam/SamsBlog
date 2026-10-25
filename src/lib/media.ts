@@ -16,6 +16,15 @@ export interface MediaRecord {
   createdAt: string;
   deletedAt: string | null;
   url: string;
+  references?: MediaReference[];
+}
+export interface MediaReference {
+  articleId: number | null;
+  draftId?: string;
+  title: string;
+  location: 'body' | 'cover';
+  deleted: boolean;
+  filename: string;
 }
 const filenamePattern = /^[a-f0-9]{64}\.(?:jpg|png|webp|gif)$/;
 const directory = () => path.resolve(process.env.BLOG_DATA_DIR || 'data', 'uploads');
@@ -41,7 +50,26 @@ export function referencedMediaFilenames(content: string, coverUrl = '') {
 }
 
 export function listMedia() {
-  return (getDatabase().prepare(`${select} ORDER BY created_at DESC, id DESC`).all() as MediaRecord[]).map(withUrl);
+  const database = getDatabase();
+  const records = (database.prepare(`${select} ORDER BY created_at DESC, id DESC`).all() as MediaRecord[]).map(withUrl);
+  const references = new Map<string, MediaReference[]>();
+  const collect = (content: string, coverUrl: string, reference: Omit<MediaReference, 'location' | 'filename'>) => {
+    for (const [location, filenames] of [['body', referencedMediaFilenames(content)], ['cover', referencedMediaFilenames('', coverUrl)]] as const) {
+      for (const filename of filenames) {
+        const items = references.get(filename) || [];
+        items.push({ ...reference, location, filename });
+        references.set(filename, items);
+      }
+    }
+  };
+  const articles = database.prepare('SELECT id,title,content,cover_url AS coverUrl,deleted_at AS deletedAt FROM blog_articles').all() as Array<{ id: number; title: string; content: string; coverUrl: string; deletedAt: string | null }>;
+  for (const article of articles) collect(article.content, article.coverUrl, { articleId: article.id, title: article.title, deleted: Boolean(article.deletedAt) });
+  const drafts = database.prepare('SELECT id,article_id AS articleId,payload,deleted_at AS deletedAt FROM blog_article_drafts').all() as Array<{ id: string; articleId: number | null; payload: string; deletedAt: string | null }>;
+  for (const draft of drafts) {
+    const payload = JSON.parse(draft.payload) as { content?: string; coverUrl?: string; title?: string };
+    collect(payload.content || '', payload.coverUrl || '', { articleId: draft.articleId, draftId: draft.id, title: payload.title || '未命名草稿', deleted: Boolean(draft.deletedAt) || Boolean(articles.find((article) => article.id === draft.articleId)?.deletedAt) });
+  }
+  return records.map((record) => ({ ...record, references: references.get(record.filename) || [] }));
 }
 
 export function getMedia(filename: string, includeDeleted = false) {

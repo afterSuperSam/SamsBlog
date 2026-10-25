@@ -56,8 +56,8 @@
   --article-code-font: ui-monospace, "Cascadia Code", Consolas, monospace;
   --article-body-font-size: clamp(1.1875rem,1.1rem + .2vw,1.25rem);
   --article-control-font-size: clamp(1.0625rem,1rem + .15vw,1.125rem);
-  --article-reading-font-size: clamp(1.25rem,2vw,1.375rem);
-  --article-reading-line-height: 2.15;
+  --article-line-height-standard: 1.9;
+  --article-line-height-relaxed: 2.2;
   --article-reading-ambient-opacity: .12;
   --article-reading-background-opacity: .015;
   --article-cover-ratio: 16 / 9;

@@ -12,6 +12,9 @@ export interface MessageRecord {
   articleId?: number | null;
   isAdmin?: boolean;
   parentId: number | null;
+  quoteMessageId: number | null;
+  quoteContent: string;
+  quoteNickname: string;
   nickname: string;
   content: string;
   status: MessageStatus;
@@ -337,6 +340,13 @@ export function getDatabase() {
         connection.exec('ALTER TABLE friends ADD COLUMN starred INTEGER NOT NULL DEFAULT 0 CHECK(starred IN (0,1))');
         connection.prepare('INSERT INTO schema_migrations (id,applied_at) VALUES (?,?)').run('20261025-friend-starred', new Date().toISOString());
       }
+      if (!appliedMigrations.has('20261025-message-quotes')) {
+        connection.exec(`ALTER TABLE messages ADD COLUMN quote_message_id INTEGER REFERENCES messages(id);
+          ALTER TABLE messages ADD COLUMN quote_content TEXT NOT NULL DEFAULT ''
+          CHECK((quote_message_id IS NULL AND quote_content = '') OR (quote_message_id IS NOT NULL
+            AND length(quote_content) BETWEEN 1 AND 500 AND instr(quote_content, char(0)) = 0))`);
+        connection.prepare('INSERT INTO schema_migrations (id,applied_at) VALUES (?,?)').run('20261025-message-quotes', new Date().toISOString());
+      }
       connection.exec('CREATE UNIQUE INDEX IF NOT EXISTS friends_active_url_idx ON friends(url) WHERE deleted_at IS NULL');
       connection.exec('CREATE INDEX IF NOT EXISTS blog_articles_type_created_idx ON blog_articles(content_type, created_at DESC, id DESC) WHERE deleted_at IS NULL');
       connection.exec('CREATE INDEX IF NOT EXISTS friends_public_idx ON friends(visible, created_at ASC)');
@@ -374,6 +384,9 @@ function mapRow(row: Record<string, unknown>): MessageRecord {
     articleId: row.article_id == null ? null : Number(row.article_id),
     isAdmin: Boolean(row.is_admin),
     parentId: row.parent_id == null ? null : Number(row.parent_id),
+    quoteMessageId: row.quote_message_id == null ? null : Number(row.quote_message_id),
+    quoteContent: String(row.quote_content || ''),
+    quoteNickname: String(row.quote_nickname || ''),
     nickname: String(row.nickname),
     content: String(row.content),
     status: String(row.status) as MessageStatus,
@@ -383,18 +396,29 @@ function mapRow(row: Record<string, unknown>): MessageRecord {
 
 // 先截取根留言，再查询对应回复，避免窗口截断父子关系
 function listMessageThreads(limit: number, publishedOnly: boolean, articleId: number | null = null) {
-  const visibility = publishedOnly ? "AND status = 'published'" : '';
-  const scope = publishedOnly ? 'AND article_id IS ?' : '';
+  const visibility = publishedOnly ? "AND messages.status = 'published'" : '';
+  const scope = publishedOnly ? 'AND messages.article_id IS ?' : '';
   const parameters = publishedOnly ? [articleId, limit] : [limit];
-  const roots = getDatabase().prepare(`SELECT id, article_id, parent_id, nickname, content, status, created_at, fingerprint_hash = 'admin' AS is_admin
-    FROM messages WHERE parent_id IS NULL AND deleted_at IS NULL ${visibility} ${scope}
-    ORDER BY created_at DESC, id DESC LIMIT ?`).all(...parameters) as Record<string, unknown>[];
+  // 引用随原评论公开状态解析，原文或其根线程隐藏后不再返回引用快照。
+  const selection = `SELECT messages.id, messages.article_id, messages.parent_id, messages.nickname, messages.content,
+    messages.status, messages.created_at, messages.fingerprint_hash = 'admin' AS is_admin,
+    quote.id AS quote_message_id, CASE WHEN quote.fingerprint_hash = 'admin' THEN 'SuperSam' ELSE COALESCE(quote.nickname, '') END AS quote_nickname,
+    CASE WHEN quote.id IS NOT NULL THEN messages.quote_content ELSE '' END AS quote_content
+    FROM messages LEFT JOIN messages AS quote ON quote.id = messages.quote_message_id
+      AND messages.article_id IS NOT NULL AND quote.article_id = messages.article_id
+      AND quote.deleted_at IS NULL AND quote.status = 'published' AND instr(quote.content, messages.quote_content) > 0
+      AND (quote.parent_id IS NULL OR EXISTS (SELECT 1 FROM messages AS quote_root
+        WHERE quote_root.id = quote.parent_id AND quote_root.parent_id IS NULL
+          AND quote_root.article_id = quote.article_id AND quote_root.deleted_at IS NULL AND quote_root.status = 'published'))`;
+  const roots = getDatabase().prepare(`${selection}
+    WHERE messages.parent_id IS NULL AND messages.deleted_at IS NULL ${visibility} ${scope}
+    ORDER BY messages.created_at DESC, messages.id DESC LIMIT ?`).all(...parameters) as Record<string, unknown>[];
   if (roots.length === 0) return [];
-  const replies = getDatabase().prepare(`SELECT id, article_id, parent_id, nickname, content, status, created_at, fingerprint_hash = 'admin' AS is_admin
-    FROM messages WHERE deleted_at IS NULL ${visibility} AND parent_id IN (
+  const replies = getDatabase().prepare(`${selection}
+    WHERE messages.deleted_at IS NULL ${visibility} AND messages.parent_id IN (
       SELECT id FROM messages WHERE parent_id IS NULL AND deleted_at IS NULL ${visibility} ${scope}
       ORDER BY created_at DESC, id DESC LIMIT ?
-    ) ORDER BY created_at ASC, id ASC`).all(...parameters) as Record<string, unknown>[];
+    ) ORDER BY messages.created_at ASC, messages.id ASC`).all(...parameters) as Record<string, unknown>[];
   return [...roots, ...replies].map(mapRow);
 }
 
@@ -421,6 +445,8 @@ export function hasRecentSubmission(fingerprintHash: string, seconds = serverCon
 export function createMessage(input: {
   parentId?: number | null;
   articleId?: number | null;
+  quoteMessageId?: number | null;
+  quoteContent?: string;
   email?: string;
   notifyReply?: boolean;
   nickname: string;
@@ -433,10 +459,25 @@ export function createMessage(input: {
     const parent = getDatabase().prepare(`SELECT id FROM messages WHERE id = ? AND article_id IS ? AND parent_id IS NULL AND deleted_at IS NULL AND status = 'published'`).get(input.parentId, articleId);
     if (!parent) throw new HttpError(404, '回复的留言不存在');
   }
+  const quoteMessageId = input.quoteMessageId ?? null;
+  const quoteContent = input.quoteContent ?? '';
+  if (quoteMessageId !== null || quoteContent !== '') {
+    if (!articleId || !input.parentId || !Number.isSafeInteger(quoteMessageId) || Number(quoteMessageId) < 1
+      || !quoteContent.trim() || quoteContent.includes('\u0000') || Array.from(quoteContent).length > siteConfig.discussion.quoteMaximumCharacters) {
+      throw new HttpError(400, `引用需要选择原评论中的 1–${siteConfig.discussion.quoteMaximumCharacters} 个字符并作为回复提交`);
+    }
+    const source = getDatabase().prepare(`SELECT source.content FROM messages AS source
+      WHERE source.id = ? AND source.article_id = ? AND source.status = 'published' AND source.deleted_at IS NULL
+        AND (source.parent_id IS NULL OR EXISTS (SELECT 1 FROM messages AS root
+          WHERE root.id = source.parent_id AND root.parent_id IS NULL AND root.article_id = source.article_id
+            AND root.status = 'published' AND root.deleted_at IS NULL))`).get(quoteMessageId, articleId) as { content: string } | undefined;
+    if (!source) throw new HttpError(404, '引用的评论不存在');
+    if (!source.content.includes(quoteContent)) throw new HttpError(400, '引用内容必须来自所选评论原文');
+  }
   const result = getDatabase()
-    .prepare(`INSERT INTO messages (parent_id, article_id, nickname, content, fingerprint_hash, status, email, notify_reply)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
-    .run(input.parentId || null, articleId, input.nickname, input.content, input.fingerprintHash, articleId ? 'published' : 'pending', input.email || '', Number(Boolean(input.email && input.notifyReply)));
+    .prepare(`INSERT INTO messages (parent_id, article_id, nickname, content, fingerprint_hash, status, email, notify_reply, quote_message_id, quote_content)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(input.parentId || null, articleId, input.nickname, input.content, input.fingerprintHash, articleId ? 'published' : 'pending', input.email || '', Number(Boolean(input.email && input.notifyReply)), quoteMessageId, quoteContent);
   return Number(result.lastInsertRowid);
 }
 

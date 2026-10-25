@@ -22,12 +22,13 @@ export const siteConfig = {
   sponsorPresentation: { twoColumnMinimumCount: 6, avatarSizePixels: 64, avatarBaseUrl: 'https://minotar.net/helm/', avatarTimeoutMilliseconds: 4000, avatarPreloadMarginPixels: 240 },
   sponsorFields: { nameMaximumLength: 60, maximumAmount: 1000000 },
   articles: { initialVisibleTagCount: 3, homepageCount: 1, homepageNoteCount: 2, homepageLinkCount: 1, feedCount: 20, cardCount: 3, reorderMilliseconds: 420, maximumTags: 8, tagMaximumLength: 24, searchMaximumLength: 120, searchDelayMilliseconds: 180, searchRevealMilliseconds: 280, searchDismissMilliseconds: 180 },
-  articleReading: { positionStorageKey: 'sams-blog-reading-positions', preferenceStorageKey: 'sams-blog-reading-mode', fontPreferenceStorageKey: 'sams-blog-reading-font', positionLimit: 50, positionSaveMilliseconds: 1000, positionMinimumPixels: 240, imageZoomScale: 2, copyFeedbackMilliseconds: 1800, codeCollapsedLines: 16 },
+  articleReading: { positionStorageKey: 'sams-blog-reading-positions', preferenceStorageKey: 'sams-blog-reading-mode', fontPreferenceStorageKey: 'sams-blog-reading-font', typographyStorageKey: 'sams-blog-reading-typography', fontSizeMinimum: 18, fontSizeMaximum: 26, fontSizeDefault: 20, fontSizeStep: 2, imageLoadTimeoutMilliseconds: 15000, positionLimit: 50, positionSaveMilliseconds: 1000, positionMinimumPixels: 240, imageZoomScale: 2, copyFeedbackMilliseconds: 1800, codeCollapsedLines: 16 },
   visitorProfile: { storageKey: 'sams-blog-visitor-profile', nicknameMaximumLength: 24, emailMaximumLength: 254 },
+  discussion: { textareaMaximumLines: 8, visibleReplyCount: 3, collapsedContentCharacters: 180, quoteMaximumCharacters: 180, recentEmoticonLimit: 6, recentEmoticonStorageKey: 'sams-blog-recent-emoticons', emoticons: ['(≧▽≦)', '(｡･ω･｡)ﾉ♡', '(๑•̀ㅂ•́)و✧', '(つ≧▽≦)つ', '(´･ω･`)', '(￣▽￣)ノ', '(｡•́︿•̀｡)', '( ˘▽˘)っ♨'] },
   readingExtras: { historyVisibleCount: 2, quoteMaximumCharacters: 450, quoteWidth: 1080, quoteWordmarkWidth: 210, quoteFontSize: 42, quoteLineHeight: 72, quotePadding: 88, quoteMinimumHeight: 720 },
   interactions: { feedbackResizeMilliseconds: 260, themeRevealMilliseconds: 760, keyboardInsetPixels: 18, requestTimeoutMilliseconds: 15000, tooltipDismissMilliseconds: 160, tooltipRevealMilliseconds: 180, receiptDurationMilliseconds: 1440 },
   projectPresentation: { initialVisibleCount: 4 },
-  friendPresentation: { homepageCount: 6 },
+  friendPresentation: { homepageCount: 6, feedVisibleCount: 6 },
   friendApplications: {
     draftStorageKey: 'sams-blog-friend-application', ownerName: 'SuperSam', iconUrl: '/media/brand/logo.jpg',
     backgroundUrl: '/uploads/2dc4ab1565c204e969aaab5618e9354cc21fdb690cef6788d5c453d8fe132edb.webp',
@@ -85,13 +86,26 @@ if (!Number.isSafeInteger(siteConfig.network.sampleCount) || siteConfig.network.
 if (!Object.values(siteConfig.interactions).every((value) => Number.isSafeInteger(value) && value > 0)
   || !Number.isSafeInteger(siteConfig.articles.initialVisibleTagCount) || siteConfig.articles.initialVisibleTagCount < 1
   || !Number.isSafeInteger(siteConfig.projectPresentation.initialVisibleCount) || siteConfig.projectPresentation.initialVisibleCount < 1
-  || !Number.isSafeInteger(siteConfig.friendPresentation.homepageCount) || siteConfig.friendPresentation.homepageCount < 1
+  || !Object.values(siteConfig.friendPresentation).every((value) => Number.isSafeInteger(value) && value > 0)
   || !Object.values(siteConfig.readingExtras).every((value) => Number.isSafeInteger(value) && value > 0)
   || ![siteConfig.articleReading.positionLimit, siteConfig.articleReading.positionSaveMilliseconds, siteConfig.articleReading.positionMinimumPixels, siteConfig.articleReading.imageZoomScale, siteConfig.articleReading.copyFeedbackMilliseconds, siteConfig.articleReading.codeCollapsedLines, siteConfig.visitorProfile.nicknameMaximumLength, siteConfig.visitorProfile.emailMaximumLength].every((value) => Number.isSafeInteger(value) && value > 0)
   || !siteConfig.visitorProfile.storageKey || !siteConfig.friendApplications.draftStorageKey
   || !siteConfig.articleReading.positionStorageKey || !siteConfig.articleReading.preferenceStorageKey || !siteConfig.articleReading.fontPreferenceStorageKey) {
   throw new Error('Invalid interaction configuration');
 }
+
+if (![siteConfig.discussion.textareaMaximumLines, siteConfig.discussion.visibleReplyCount, siteConfig.discussion.collapsedContentCharacters, siteConfig.discussion.quoteMaximumCharacters, siteConfig.discussion.recentEmoticonLimit].every((value) => Number.isSafeInteger(value) && value > 0)
+  || siteConfig.discussion.textareaMaximumLines > 20 || siteConfig.discussion.quoteMaximumCharacters > 500
+  || siteConfig.discussion.recentEmoticonLimit > 20 || !siteConfig.discussion.recentEmoticonStorageKey
+  || !siteConfig.discussion.emoticons.length || siteConfig.discussion.emoticons.some((value) => !value.trim() || value.length > 40)) {
+  throw new Error('Invalid discussion configuration');
+}
+
+const reading = siteConfig.articleReading;
+if (![reading.fontSizeMinimum, reading.fontSizeMaximum, reading.fontSizeDefault, reading.fontSizeStep, reading.imageLoadTimeoutMilliseconds].every((value) => Number.isSafeInteger(value) && value > 0)
+  || reading.fontSizeMinimum < 14 || reading.fontSizeMaximum > 36 || reading.fontSizeMinimum > reading.fontSizeDefault || reading.fontSizeDefault > reading.fontSizeMaximum
+  || (reading.fontSizeDefault - reading.fontSizeMinimum) % reading.fontSizeStep || (reading.fontSizeMaximum - reading.fontSizeMinimum) % reading.fontSizeStep
+  || !reading.typographyStorageKey) throw new Error('Invalid reading typography configuration');
 
 const statistics = siteConfig.statistics;
 const terrain = siteConfig.projectTerrain;

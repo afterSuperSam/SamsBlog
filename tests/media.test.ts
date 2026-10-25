@@ -12,6 +12,8 @@ import { GET as getRss } from '../src/pages/rss.xml';
 import { serverConfig } from '../src/config/server';
 import { siteConfig } from '../src/config/site';
 import { renderMarkdown } from '../src/lib/markdown';
+import { updateEditorInsertion } from '../src/lib/editor-insertion';
+import { mediaReferenceUrl, parseMediaReference, mediaReferenceSelection } from '../src/lib/media-reference';
 
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6u1sAAAAASUVORK5CYII=', 'base64');
 const file = () => new File([png], '../图片<script>.png', { type: 'image/png' });
@@ -128,5 +130,97 @@ describe('authenticated image storage and media management', () => {
       .run(filename, '本站背景.webp', 'image/webp', 1, new Date().toISOString());
     expect((await mutation(DELETE, 'DELETE', { id: Number(inserted.lastInsertRowid) })).status).toBe(409);
     expect(getMedia(filename)?.deletedAt).toBeNull();
+  });
+
+  it('lists article and draft reference locations including encoded and deleted references', async () => {
+    const media = await saveMedia(file());
+    const content = `![引用](/uploads/%${media.filename.charCodeAt(0).toString(16)}${media.filename.slice(1)})`;
+    const articleId = saveArticle({ title: '媒体位置', content, coverUrl: media.url, source: 'original', category: 'journal' });
+    getDatabase().prepare('INSERT INTO blog_article_drafts(id,article_id,payload,revision,updated_at,deleted_at) VALUES (?,NULL,?,1,?,?)')
+      .run('reference-location-fixture', JSON.stringify({ title: '删除草稿', content, coverUrl: '' }), new Date().toISOString(), new Date().toISOString());
+    const references = listMedia().find((record) => record.id === media.id)!.references;
+    expect(references).toEqual(expect.arrayContaining([
+      expect.objectContaining({ articleId, title: '媒体位置', location: 'cover', deleted: false }),
+      expect.objectContaining({ articleId, title: '媒体位置', location: 'body', deleted: false }),
+      expect.objectContaining({ draftId: 'reference-location-fixture', title: '删除草稿', location: 'body', deleted: true }),
+    ]));
+    getDatabase().prepare('DELETE FROM blog_article_drafts WHERE id=?').run('reference-location-fixture');
+    getDatabase().prepare('DELETE FROM blog_articles WHERE id=?').run(articleId);
+  });
+});
+
+describe('image insertion while continuing to edit', () => {
+  it('uses the actual selection when typing into repeated text', () => {
+    const insertion = { value: 'aaaa', start: 2, end: 2 };
+    updateEditorInsertion(insertion, 'aaaaa', { value: 'aaaa', start: 0, end: 0, inputType: 'insertText' });
+    expect([insertion.start, insertion.end]).toEqual([3, 3]);
+    updateEditorInsertion(insertion, 'aaaaaa', { value: 'aaaaa', start: 5, end: 5, inputType: 'insertText' });
+    expect([insertion.start, insertion.end]).toEqual([3, 3]);
+  });
+  it('tracks deletion before and after an anchor in repeated text', () => {
+    const backward = { value: 'aaaa', start: 3, end: 3 };
+    updateEditorInsertion(backward, 'aaa', { value: 'aaaa', start: 1, end: 1, inputType: 'deleteContentBackward' });
+    expect([backward.start, backward.end]).toEqual([2, 2]);
+    const forward = { value: 'aaaa', start: 1, end: 1 };
+    updateEditorInsertion(forward, 'aaa', { value: 'aaaa', start: 3, end: 3, inputType: 'deleteContentForward' });
+    expect([forward.start, forward.end]).toEqual([1, 1]);
+  });
+  it('preserves replacement input inside the original selection', () => {
+    const insertion = { value: 'aaaaaa', start: 2, end: 4 };
+    updateEditorInsertion(insertion, 'aaa汉字aa', { value: 'aaaaaa', start: 3, end: 4, inputType: 'insertCompositionText' });
+    expect(insertion.start).toBe(insertion.end);
+    expect(insertion.value.slice(0, insertion.start) + 'IMAGE' + insertion.value.slice(insertion.end)).toContain('汉字');
+  });
+  it('tracks typing before the paste position and ignores typing after it', () => {
+    const insertion = { value: 'before selected after', start: 7, end: 15 };
+    updateEditorInsertion(insertion, 'new before selected after');
+    expect([insertion.start, insertion.end]).toEqual([11, 19]);
+    updateEditorInsertion(insertion, 'new before selected after more');
+    expect([insertion.start, insertion.end]).toEqual([11, 19]);
+  });
+  it('preserves new content when the original selection is edited or deleted', () => {
+    const insertion = { value: 'before selected after', start: 7, end: 15 };
+    updateEditorInsertion(insertion, 'before replacement after');
+    expect(insertion.start).toBe(insertion.end);
+    const result = insertion.value.slice(0, insertion.start) + 'IMAGE' + insertion.value.slice(insertion.end);
+    expect(result).toContain('replacement');
+    expect(result).toContain('after');
+  });
+  it('tracks consecutive edits at an empty insertion position', () => {
+    const insertion = { value: 'AB', start: 1, end: 1 };
+    updateEditorInsertion(insertion, 'AxB');
+    updateEditorInsertion(insertion, 'AxyB');
+    expect([insertion.start, insertion.end]).toEqual([3, 3]);
+  });
+});
+
+describe('media reference navigation', () => {
+  const filename = `${'a'.repeat(64)}.png`;
+  it('locates literal and encoded media references without selecting unrelated text', () => {
+    for (const address of [filename, `%61${filename.slice(1)}`]) {
+      const content = `文字\n![图片](/uploads/${address})`;
+      const [start, end] = mediaReferenceSelection(content, filename);
+      expect(content.slice(start, end)).toBe(address);
+    }
+    expect(mediaReferenceSelection('这篇草稿已经移除图片', filename)).toEqual([0, 0]);
+  });
+  it('round-trips article and draft editor locations from the standalone media page', () => {
+    for (const reference of [
+      { articleId: 14, filename, location: 'cover' as const },
+      { articleId: null, draftId: '5d346907-9106-463b-9dfa-d50193323c70', filename, location: 'body' as const },
+    ]) {
+      const address = new URL(mediaReferenceUrl(reference), 'https://blog.example.com');
+      expect(address.pathname).toBe('/admin/articles');
+      expect(parseMediaReference(address.searchParams)).toEqual({ draftId: undefined, ...reference });
+    }
+  });
+  it('rejects arbitrary paths, absent identifiers and malformed editor targets', () => {
+    for (const parameters of [
+      new URLSearchParams({ media: '../secret', location: 'body', article: '1' }),
+      new URLSearchParams({ media: filename, location: 'body' }),
+      new URLSearchParams({ media: filename, location: 'title', article: '1' }),
+      new URLSearchParams({ media: filename, location: 'cover', article: '-1' }),
+      new URLSearchParams({ media: filename, location: 'cover', draft: 'invalid' }),
+    ]) expect(parseMediaReference(parameters)).toBeNull();
   });
 });

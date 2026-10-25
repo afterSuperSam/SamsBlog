@@ -2,6 +2,7 @@ import type { MediaRecord } from './media';
 import { beginAdminAction, confirmAdminAction } from './admin-dialog';
 import { requestJson } from './client-request';
 import { animateContentHeight } from './motion';
+import { mediaReferenceUrl } from './media-reference';
 
 // 上传、回收站与编辑器选择共用一份媒体列表，不刷新正在编辑的文章。
 const root = document.querySelector<HTMLElement>('[data-admin-media]');
@@ -33,6 +34,22 @@ if (root) {
       card.querySelector<HTMLAnchorElement>('a')!.href = address;
       card.querySelector('h3')!.textContent = media.name;
       card.querySelector('small')!.textContent = `${(media.size / 1024).toLocaleString('zh-CN', { maximumFractionDigits: 1 })} KB · ${new Date(media.createdAt).toLocaleDateString('zh-CN', { timeZone: 'Asia/Shanghai' })}`;
+      const references = card.querySelector<HTMLElement>('[data-media-references]')!;
+      references.replaceChildren(...(media.references || []).map((reference) => {
+        const link = document.createElement('a');
+        link.textContent = `${reference.deleted ? '已删除 · ' : ''}${reference.draftId ? '草稿' : '文章'}「${reference.title}」· ${reference.location === 'cover' ? '首图' : '正文'}`;
+        if (reference.deleted) {
+          link.setAttribute('aria-disabled', 'true'); link.textContent += '（恢复后可编辑）';
+        } else {
+          link.href = mediaReferenceUrl(reference);
+          link.addEventListener('click', (event) => {
+            if (!editor || event.button || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+            event.preventDefault(); editor.dispatchEvent(new CustomEvent('media-reference', { detail: reference }));
+          });
+        }
+        return link;
+      }));
+      if (!references.childElementCount) references.textContent = '暂无文章或草稿引用';
       card.querySelectorAll<HTMLButtonElement>('[data-media-action]').forEach((button) => {
         const requiresEditor = button.dataset.mediaAction === 'body' || button.dataset.mediaAction === 'cover';
         button.hidden = (button.dataset.mediaAction === 'restore') !== Boolean(media.deletedAt) || requiresEditor && !editor;
@@ -48,6 +65,16 @@ if (root) {
     render();
   }));
   search.addEventListener('input', render);
+  document.addEventListener('media-uploaded', (event) => {
+    const media = (event as CustomEvent<MediaRecord>).detail;
+    records = [media, ...records.filter((record) => record.id !== media.id)]; render();
+  });
+  document.addEventListener('media-references-refresh', async () => {
+    try {
+      const result = await requestJson<{ error?: string; media: MediaRecord[] }>('/api/admin/media.json', 'GET', undefined, '媒体引用暂时无法刷新，请稍后重载后台。');
+      records = result.media; render();
+    } catch (error) { message(feedback, error instanceof Error ? error.message : '媒体引用暂时无法刷新。', 'error'); }
+  });
   document.querySelectorAll<HTMLButtonElement>('[data-upload-media]').forEach((button) => button.addEventListener('click', () => {
     uploadTarget = button.dataset.uploadMedia!;
     uploadButton = button;

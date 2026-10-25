@@ -3,6 +3,23 @@
 .friends-section__header{display:flex;align-items:end;justify-content:space-between;gap:12px 24px;margin-bottom:22px;flex-wrap:wrap}.friends-section .section-title{font-size:clamp(32px,4vw,48px)}
 .friends-section .section-kicker{color:var(--home-friends-heading)}
 .friend-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px 18px}
+.friends-layout--featured{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(240px,1fr);gap:clamp(24px,3vw,48px);align-items:start}
+.friends-layout--featured .friend-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+.friends-layout--featured:not(:has(.friend-updates:not([hidden]))){grid-template-columns:minmax(0,1fr)}
+.friend-updates[hidden]{display:none}.friend-updates{min-width:0;padding:5px 0}
+.friend-updates h3{margin:0 0 12px;color:var(--summer-blue);font:400 20px/1.5 var(--playful)}
+.friend-updates ol{list-style:none;padding:0;margin:0;display:grid;gap:14px}
+.friend-updates li{min-width:0;position:relative}
+.friend-update__title{display:flex;align-items:baseline;gap:8px;width:fit-content;max-width:100%;color:var(--text);font:400 var(--font-size-body)/1.45 var(--playful);overflow-wrap:anywhere;transition:color var(--motion-feedback-duration) var(--ease-out),text-shadow var(--motion-feedback-duration) var(--ease-out)}
+.friend-update__title span{flex:none;color:var(--summer-blue);transition:transform var(--motion-feedback-duration) var(--ease-out)}
+.friend-update__title:is(:hover,:focus-visible){color:var(--summer-blue);text-shadow:0 0 16px color-mix(in srgb,var(--glow-blue) 24%,transparent)}
+.friend-update__meta{display:flex;flex-wrap:wrap;gap:2px 14px;color:var(--muted);font:400 var(--font-size-small)/1.5 var(--playful)}
+.friend-update__meta a{color:var(--text-soft);transition:color var(--motion-feedback-duration) var(--ease-out)}
+.friend-update__meta a:is(:hover,:focus-visible){color:var(--summer-pink)}
+.friend-updates a:focus-visible{outline:2px solid var(--summer-blue);outline-offset:4px;border-radius:4px}
+@media(max-width:960px){.friends-layout--featured{grid-template-columns:minmax(0,1fr);gap:28px}.friend-updates ol{grid-template-columns:repeat(2,minmax(0,1fr));gap:18px 24px}}
+@media(max-width:620px){.friends-layout--featured .friend-grid,.friend-updates ol{grid-template-columns:minmax(0,1fr)}}
+@media(hover:hover) and (pointer:fine) and (prefers-reduced-motion:no-preference){:root:not(.motion-paused) .friend-update__title:hover span{transform:translate(2px,-2px)}}
 .friend-card [hidden]{display:none}
 .friend-card{position:relative;display:grid;grid-template-columns:46px minmax(0,1fr);gap:3px 12px;align-items:center;padding:10px 14px;border-radius:22px;overflow:hidden;isolation:isolate;background:transparent;color:var(--text);transition:transform var(--friend-focus-duration) var(--ease-out),box-shadow .5s var(--ease-out)}
 .friend-card__background{position:absolute;inset:0;z-index:0;width:100%;height:100%;border-radius:inherit;object-fit:cover;opacity:var(--friend-background-opacity);filter:blur(var(--friend-background-blur));mask-image:var(--friend-edge-mask);pointer-events:none}

@@ -2,11 +2,16 @@
 import { listPublishedMessages } from '../lib/db';
 import { replyNotificationsConfigured } from '../lib/reply-notifications';
 import PaperCheckbox from './PaperCheckbox.astro';
+import MessageBody from './MessageBody.astro';
+import MessageReplies from './MessageReplies.astro';
+import MessageSignature from './MessageSignature.astro';
+import '../styles/guestbook.css';
 const { articleId } = Astro.props as { articleId: number };
 const messages = listPublishedMessages(60, articleId);
 const dateLabel = (date: string) => new Date(date).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 ---
 <section class="article-discussion" id="comments" data-article-discussion data-article-id={articleId} aria-labelledby="comments-title">
+  <MessageSignature />
   <header class="article-discussion__heading">
     <div><span class="section-kicker">COMMENTS</span><h2 id="comments-title">留下几句话</h2></div>
     <div class="article-discussion__actions">
@@ -16,8 +21,9 @@ const dateLabel = (date: string) => new Date(date).toLocaleString('zh-CN', { tim
   </header>
   <form method="post" class="article-comment-form" data-article-comment novalidate>
     <div class="article-comment-form__heading"><span data-comment-target>写给这篇文章</span><button type="button" data-cancel-comment-reply hidden>取消回复</button></div>
+    <blockquote class="comment-quote" data-comment-quote hidden><b data-comment-quote-name></b><p data-comment-quote-content></p></blockquote>
     <label><span>怎么称呼</span><input name="nickname" minlength="2" maxlength="48" required autocomplete="off" /></label>
-    <label class="article-comment-form__body"><span>想说的话</span><textarea name="content" rows="3" minlength="2" maxlength="1000" required></textarea></label>
+    <label class="article-comment-form__body"><span>想说的话</span><textarea name="content" rows="3" minlength="2" maxlength="1000" data-character-maximum="500" required></textarea></label>
     <label><span>邮箱 · 可选，不公开</span><input name="email" type="text" inputmode="email" maxlength="254" autocomplete="off" /></label>
     <div class="visitor-preferences">
       {replyNotificationsConfigured && <PaperCheckbox name="notifyReply">收到回复邮件通知</PaperCheckbox>}
@@ -28,7 +34,7 @@ const dateLabel = (date: string) => new Date(date).toLocaleString('zh-CN', { tim
     <footer><button type="submit" class="articles-more" disabled>发表</button></footer>
     <p class="form-status" data-comment-feedback role="status" aria-live="polite"></p>
   </form>
-  <div class="article-comments" data-comment-list>{messages.map((message) => <article class="article-comment" id={`comment-${message.id}`}><header><b>{message.nickname}</b><time datetime={message.createdAt}>{dateLabel(message.createdAt)}</time><button type="button" data-comment-reply={message.id} data-comment-name={message.nickname}>回复</button></header><p>{message.content}</p>{message.replies?.map((reply) => <div class:list={['article-comment__reply', { 'is-owner': reply.isAdmin }]}><b>{reply.isAdmin ? 'Sam' : reply.nickname}</b><p>{reply.content}</p></div>)}</article>)}</div>
+  <div class="article-comments" data-comment-list>{messages.map((message) => <article class="article-comment" id={`comment-${message.id}`} data-message-id={message.id} data-comment-root={message.id} data-message-name={message.nickname}><header><b>{message.nickname}</b><time datetime={message.createdAt}>{dateLabel(message.createdAt)}</time><button type="button" data-comment-reply={message.id} data-comment-message={message.id} data-comment-name={message.nickname}>回复</button></header><MessageBody content={message.content} /><MessageReplies replies={message.replies} parentId={message.id} interactive /></article>)}</div>
   <p class="article-comments-empty" data-comments-empty hidden={messages.length > 0}>还没有评论，写下第一句话吧。</p>
   <noscript><p>发表评论和表态需要启用 JavaScript。</p></noscript>
 </section>
@@ -37,6 +43,9 @@ const dateLabel = (date: string) => new Date(date).toLocaleString('zh-CN', { tim
   import { setFeedbackText } from '../lib/motion';
   import { attachPaperCaret } from '../lib/paper-caret';
   import { rememberVisitor } from '../lib/visitor-profile';
+  import { initializeCommentInput } from '../lib/comment-tools';
+  import { renderCommentList } from '../lib/comment-rendering';
+  import { siteConfig } from '../config/site';
   import type { MessageRecord } from '../lib/db';
   const root = document.querySelector<HTMLElement>('[data-article-discussion]');
   if (root) {
@@ -48,6 +57,11 @@ const dateLabel = (date: string) => new Date(date).toLocaleString('zh-CN', { tim
     const target = root.querySelector<HTMLElement>('[data-comment-target]')!;
     const cancel = root.querySelector<HTMLButtonElement>('[data-cancel-comment-reply]')!;
     const content = field('content') as HTMLTextAreaElement;
+    const inputTools = initializeCommentInput(form, content);
+    const quoteBox = root.querySelector<HTMLElement>('[data-comment-quote]')!;
+    let quoteMessageId: number | null = null;
+    let quoteContent = '';
+    let selectedQuote: { id: number; text: string } | undefined;
     let parentId: number | null = null;
     let composing = false;
     const refreshCaret = attachPaperCaret(content);
@@ -55,44 +69,53 @@ const dateLabel = (date: string) => new Date(date).toLocaleString('zh-CN', { tim
     attachPaperCaret(field('email') as HTMLInputElement);
     content.addEventListener('compositionstart', () => { composing = true; });
     content.addEventListener('compositionend', () => { composing = false; });
-    const resetReply = () => { parentId = null; target.textContent = '写给这篇文章'; cancel.hidden = true; };
+    const resetReply = () => { parentId = null; quoteMessageId = null; quoteContent = ''; selectedQuote = undefined; quoteBox.hidden = true; target.textContent = '写给这篇文章'; cancel.hidden = true; };
     cancel.addEventListener('click', resetReply);
+    document.addEventListener('selectionchange', () => {
+      const selection = window.getSelection();
+      const anchor = selection?.anchorNode;
+      const text = (anchor instanceof Element ? anchor : anchor?.parentElement)?.closest<HTMLElement>('[data-comment-text]');
+      const message = text?.closest<HTMLElement>('[data-message-id]');
+      const selected = selection?.toString().trim() || '';
+      selectedQuote = message && root.contains(message) && selection?.focusNode && text?.contains(selection.focusNode)
+        && selected && Array.from(selected).length <= siteConfig.discussion.quoteMaximumCharacters ? { id: Number(message.dataset.messageId), text: selected } : undefined;
+      root.querySelectorAll<HTMLButtonElement>('[data-comment-message]').forEach((button) => { button.textContent = selectedQuote?.id === Number(button.dataset.commentMessage) ? '引用回复' : '回复'; });
+    });
+    root.addEventListener('pointerdown', (event) => {
+      const button = event.target instanceof Element ? event.target.closest<HTMLButtonElement>('[data-comment-message]') : null;
+      if (selectedQuote && Number(button?.dataset.commentMessage) === selectedQuote.id) event.preventDefault();
+    });
     root.addEventListener('click', (event) => {
       const button = (event.target as Element).closest<HTMLButtonElement>('[data-comment-reply]');
       if (!button) return;
       parentId = Number(button.dataset.commentReply); target.textContent = `回复 ${button.dataset.commentName}`; cancel.hidden = false;
+      const quote = selectedQuote?.id === Number(button.dataset.commentMessage) ? selectedQuote : undefined;
+      quoteMessageId = quote?.id ?? null; quoteContent = quote?.text || ''; quoteBox.hidden = !quote;
+      quoteBox.querySelector<HTMLElement>('[data-comment-quote-name]')!.textContent = quote ? `引用 ${button.dataset.commentName}` : '';
+      quoteBox.querySelector<HTMLElement>('[data-comment-quote-content]')!.textContent = quoteContent;
       content.focus(); form.scrollIntoView({ block: 'nearest' });
     });
-    const renderMessages = (messages: MessageRecord[]) => {
-      const list = root.querySelector<HTMLElement>('[data-comment-list]')!;
-      list.replaceChildren(...messages.map((message) => {
-        const article = document.createElement('article'); article.className = 'article-comment'; article.id = `comment-${message.id}`;
-        const header = document.createElement('header'); const name = document.createElement('b'); name.textContent = message.nickname;
-        const date = document.createElement('time'); date.dateTime = message.createdAt; date.textContent = new Date(message.createdAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-        const reply = document.createElement('button'); reply.type = 'button'; reply.textContent = '回复'; reply.dataset.commentReply = String(message.id); reply.dataset.commentName = message.nickname;
-        const copy = document.createElement('p'); copy.textContent = message.content; header.append(name, date, reply); article.append(header, copy);
-        for (const item of message.replies || []) { const row = document.createElement('div'); row.className = `article-comment__reply${item.isAdmin ? ' is-owner' : ''}`; const author = document.createElement('b'); author.textContent = item.isAdmin ? 'Sam' : item.nickname; const text = document.createElement('p'); text.textContent = item.content; row.append(author, text); article.append(row); }
-        return article;
-      }));
-      root.querySelector<HTMLElement>('[data-comments-empty]')!.hidden = messages.length > 0;
-    };
     const submit = form.querySelector<HTMLButtonElement>('button[type="submit"]')!;
     form.addEventListener('submit', async (event) => {
       event.preventDefault(); if (submit.disabled || composing) return;
       const email = field('email')!.value.trim();
       const notifyReply = Boolean((field('notifyReply') as HTMLInputElement)?.checked && email);
-      const body = { articleId, parentId, nickname: field('nickname')!.value.trim(), content: content.value.trim(), email: notifyReply ? email : '', notifyReply, website: field('website')!.value };
+      const body = { articleId, parentId, quoteMessageId, quoteContent, nickname: field('nickname')!.value.trim(), content: content.value.trim(), email: notifyReply ? email : '', notifyReply, website: field('website')!.value };
       const invalidName = [...body.nickname].length < 2 || [...body.nickname].length > 24;
       if (invalidName || [...body.content].length < 2 || [...body.content].length > 500) { setFeedbackText(feedback, invalidName ? '称呼需要 2–24 个字符。' : '评论需要 2–500 个字符。'); (invalidName ? field('nickname')! : content).focus(); return; }
       submit.disabled = true; setFeedbackText(feedback, '正在送出…');
       let posted = false;
       try {
-        await requestJson('/api/guestbook/messages.json', 'POST', body, '评论暂时无法送出，输入仍保留。'); posted = true;
+        const published = await requestJson<{ error?: string; id?: number }>('/api/guestbook/messages.json', 'POST', body, '评论暂时无法送出，输入仍保留。'); posted = true;
         visitor.save();
-        if (!composing && content.value.trim() === body.content) { content.value = ''; refreshCaret(); resetReply(); }
+        if (!composing && content.value.trim() === body.content) {
+          content.value = ''; inputTools.resize(); refreshCaret();
+          if (parentId === body.parentId && quoteMessageId === body.quoteMessageId && quoteContent === body.quoteContent) resetReply();
+        }
         setFeedbackText(feedback, '评论已发表，谢谢你的分享。');
         const result = await requestJson<{ error?: string; messages: MessageRecord[] }>(`/api/guestbook/messages.json?articleId=${articleId}`, 'GET', undefined, '评论已发表，刷新后可查看。');
-        renderMessages(result.messages);
+        renderCommentList(root.querySelector<HTMLElement>('[data-comment-list]')!, result.messages, published.id);
+        root.querySelector<HTMLElement>('[data-comments-empty]')!.hidden = result.messages.length > 0;
       } catch (error) { setFeedbackText(feedback, posted ? '评论已发表，列表暂时无法更新，刷新后可查看。' : error instanceof Error ? error.message : '评论发送失败，输入仍保留。'); }
       finally { submit.disabled = false; }
     });

@@ -31,7 +31,8 @@ const sharingImage = image || '/media/anime/hero/1719656915755.webp';
 ---
 
 <!doctype html>
-<html lang="zh-CN" data-theme="dark" data-reading-font-storage-key={articleMetadata ? siteConfig.articleReading.fontPreferenceStorageKey : undefined}>
+<html lang="zh-CN" data-theme="dark" data-reading-font-storage-key={articleMetadata ? siteConfig.articleReading.fontPreferenceStorageKey : undefined}
+  data-reading-typography={articleMetadata ? JSON.stringify({ storageKey: siteConfig.articleReading.typographyStorageKey, minimum: siteConfig.articleReading.fontSizeMinimum, maximum: siteConfig.articleReading.fontSizeMaximum, step: siteConfig.articleReading.fontSizeStep }) : undefined}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />

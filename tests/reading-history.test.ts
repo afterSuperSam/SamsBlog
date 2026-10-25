@@ -1,8 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { parseReadingHistory, getReadingTrail, measureReadingChapters } from '../src/lib/reading-history';
+import { parseReadingHistory, getReadingTrail, measureReadingChapters, parseReadingTypography } from '../src/lib/reading-history';
 import { siteConfig } from '../src/config/site';
 
 const record = { version: 'v1', progress: .4, heading: 'article-heading-test', offset: 20, updatedAt: 1 };
+
+describe('local reading typography', () => {
+  it('restores bounded sizes and supported spacing, falling back independently', () => {
+    expect(parseReadingTypography('{')).toEqual({ fontSize: 20, spacing: 'standard' });
+    expect(parseReadingTypography(null)).toEqual({ fontSize: 20, spacing: 'standard' });
+    expect(parseReadingTypography('[]')).toEqual({ fontSize: 20, spacing: 'standard' });
+    expect(parseReadingTypography('{"fontSize":26,"spacing":"relaxed"}')).toEqual({ fontSize: 26, spacing: 'relaxed' });
+    for (const fontSize of [17, 19, 99, '22', null]) expect(parseReadingTypography(JSON.stringify({ fontSize, spacing: 'relaxed' }))).toEqual({ fontSize: 20, spacing: 'relaxed' });
+    expect(parseReadingTypography('{"fontSize":22,"spacing":"malformed"}')).toEqual({ fontSize: 22, spacing: 'standard' });
+  });
+});
 
 describe('chapter reading progress', () => {
   it('includes nested sections in their parent length and measures each section independently', () => {

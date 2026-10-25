@@ -1,6 +1,6 @@
 ---
 import { listFriends } from '../lib/friends';
-import { getCachedFriendFeed } from '../lib/friend-feeds';
+import { getCachedFriendFeed, getCachedFriendFeeds } from '../lib/friend-feeds';
 import { serverConfig } from '../config/server';
 import { siteConfig } from '../config/site';
 import '../styles/friends.css';
@@ -16,6 +16,7 @@ const friends = (featured ? allFriends.slice(0, siteConfig.friendPresentation.ho
   hostname: new URL(friend.url).hostname.replace(/^www\./, ''),
 }));
 const friendStatusTimeout = Math.ceil(allFriends.length / serverConfig.friendStatusConcurrency) * serverConfig.friendStatusTimeoutMilliseconds + 2000;
+const updates = featured ? getCachedFriendFeeds().slice(0, siteConfig.friendPresentation.feedVisibleCount) : [];
 ---
 
 <section class="friends-section shell" id="friends" aria-labelledby="friends-title" data-reveal data-status-timeout={friendStatusTimeout}>
@@ -24,6 +25,7 @@ const friendStatusTimeout = Math.ceil(allFriends.length / serverConfig.friendSta
       {featured && <a class="friends-more" href="/about#friends">全部友链<span aria-hidden="true">↗</span></a>}
       {!featured && <FriendApplication />}
     </header>
+    <div class:list={['friends-layout', { 'friends-layout--featured': featured }]}>
     <div class="friend-grid">
       {friends.map((friend) => (
         <article class="friend-card" data-friend-feed={friend.rssUrl ? friend.id : undefined}>
@@ -49,16 +51,28 @@ const friendStatusTimeout = Math.ceil(allFriends.length / serverConfig.friendSta
         </article>
       ))}
     </div>
+    {featured && <aside class="friend-updates" data-friend-updates hidden={!updates.length} aria-labelledby="friend-updates-title">
+      <h3 id="friend-updates-title">朋友最近写下</h3>
+      <ol data-friend-update-list>{updates.map((entry) => <li>
+        <a class="friend-update__title" href={entry.url} target="_blank" rel="noopener noreferrer">{entry.title}<span aria-hidden="true">↗</span></a>
+        <div class="friend-update__meta"><a href={entry.sourceUrl} target="_blank" rel="noopener noreferrer">{entry.sourceName}</a>{entry.publishedAt && <time datetime={entry.publishedAt}>{new Date(entry.publishedAt).toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' })}</time>}</div>
+      </li>)}</ol>
+    </aside>}
+    </div>
   </section>
 
 <script>
-  import type { FriendFeedRecord } from '../lib/friend-feeds';
+  import type { FriendFeedUpdate } from '../lib/friend-feeds';
+  import { siteConfig } from '../config/site';
   const feedCards = [...document.querySelectorAll<HTMLElement>('[data-friend-feed]')];
-  if (feedCards.length) {
+  const updates = document.querySelector<HTMLElement>('[data-friend-updates]');
+  const loadFriendFeeds = async () => {
     const timeout = Number(document.querySelector<HTMLElement>('[data-status-timeout]')?.dataset.statusTimeout) || 7000;
-    void fetch('/api/friends/feeds.json', { signal: AbortSignal.timeout(timeout) }).then(async (response) => {
+    try {
+      const response = await fetch('/api/friends/feeds.json', { signal: AbortSignal.timeout(timeout) });
       if (!response.ok) throw new Error(`Friend feeds returned ${response.status}`);
-      const { feeds } = await response.json() as { feeds: FriendFeedRecord[] };
+      const { feeds } = await response.json() as { feeds: FriendFeedUpdate[] };
+      if (!Array.isArray(feeds)) throw new Error('Invalid friend feed response');
       feedCards.forEach((details) => {
         const entry = feeds.find((feed) => feed.id === Number(details.dataset.friendFeed));
         if (!entry?.title) return;
@@ -69,8 +83,24 @@ const friendStatusTimeout = Math.ceil(allFriends.length / serverConfig.friendSta
         if (hasDate) date.dateTime = entry.publishedAt!;
         else date.removeAttribute('datetime');
       });
-    }).catch((error) => console.warn('Friend feeds unavailable', error));
-  }
+      const list = updates?.querySelector<HTMLOListElement>('[data-friend-update-list]');
+      if (list && updates) {
+        const rows = feeds.slice(0, siteConfig.friendPresentation.feedVisibleCount).flatMap((entry) => {
+          if (!entry.title || !entry.sourceName || !/^https?:\/\//i.test(entry.url) || !/^https?:\/\//i.test(entry.sourceUrl)) return [];
+          const row = document.createElement('li');
+          const title = document.createElement('a'); title.className = 'friend-update__title'; title.href = entry.url; title.target = '_blank'; title.rel = 'noopener noreferrer'; title.textContent = entry.title;
+          const arrow = document.createElement('span'); arrow.setAttribute('aria-hidden', 'true'); arrow.textContent = '↗'; title.append(arrow);
+          const meta = document.createElement('div'); meta.className = 'friend-update__meta';
+          const source = document.createElement('a'); source.href = entry.sourceUrl; source.target = '_blank'; source.rel = 'noopener noreferrer'; source.textContent = entry.sourceName; meta.append(source);
+          if (entry.publishedAt && Number.isFinite(Date.parse(entry.publishedAt))) {
+            const date = document.createElement('time'); date.dateTime = entry.publishedAt; date.textContent = new Date(entry.publishedAt).toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' }); meta.append(date);
+          }
+          row.append(title, meta); return [row];
+        });
+        list.replaceChildren(...rows); updates.hidden = !rows.length;
+      }
+    } catch (error) { console.warn('Friend feeds unavailable', error); }
+  };
   import type { FriendStatus } from '../lib/friend-status';
   document.querySelectorAll<HTMLImageElement>('[data-friend-icon]').forEach((image) => {
     const hideFailedIcon = () => { image.hidden = true; };
@@ -117,15 +147,19 @@ const friendStatusTimeout = Math.ceil(allFriends.length / serverConfig.friendSta
       });
     }
   };
-  if (friendSection && statusNodes.length) {
+  if (friendSection && (statusNodes.length || updates)) {
+    const loadFriends = () => {
+      if (statusNodes.length) void loadFriendStatuses();
+      if (feedCards.length || updates) void loadFriendFeeds();
+    };
     if ('IntersectionObserver' in window) {
       const observer = new IntersectionObserver((entries) => {
         if (!entries.some((entry) => entry.isIntersecting)) return;
         observer.disconnect();
-        void loadFriendStatuses();
+        loadFriends();
       }, { rootMargin: '200px' });
       observer.observe(friendSection);
-    } else void loadFriendStatuses();
+    } else loadFriends();
   }
 
 </script>

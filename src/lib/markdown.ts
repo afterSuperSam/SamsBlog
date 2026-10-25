@@ -127,18 +127,18 @@ const ruleMarker = /^ {0,3}(?:(?:\*\s*){3,}|(?:-\s*){3,}|(?:_\s*){3,})$/;
 const quoteMarker = /^ {0,3}>\s?/;
 
 function startsBlock(line: string): boolean {
-  return !line.trim() || fenceMarker.test(line) || headingMarker.test(line) || ruleMarker.test(line) || quoteMarker.test(line) || listMarker.test(line);
+  return !line.trim() || /^:::(?:details|aside|spoiler)\s+.+$/.test(line) || fenceMarker.test(line) || headingMarker.test(line) || ruleMarker.test(line) || quoteMarker.test(line) || listMarker.test(line);
 }
 
 // 保持单一的浏览器和服务端渲染入口，代码围栏、引用和列表均不接受原始 HTML。
-function renderBlocks(markdown: string, baseUrl?: string, depth = 0): string {
+function renderBlocks(markdown: string, baseUrl?: string, depth = 0, concealSpoilers = false): string {
   if (depth > 16) return `<p>${escapeHtml(markdown)}</p>`;
   const lines = markdown.replace(/\r\n?/g, '\n').replace(/\u0000/g, '').split('\n');
   const result: string[] = [];
   for (let index = 0; index < lines.length;) {
     const line = lines[index];
     if (!line.trim()) { index += 1; continue; }
-    const annotation = line.match(/^:::(details|aside)\s+(.+)$/);
+    const annotation = line.match(/^:::(details|aside|spoiler)\s+(.+)$/);
     if (annotation) {
       const body: string[] = [];
       let closing = index + 1;
@@ -149,16 +149,21 @@ function renderBlocks(markdown: string, baseUrl?: string, depth = 0): string {
         if (marker && !fenced) fenced = marker[1];
         else if (fenced && new RegExp(`^ {0,3}${fenced[0]}{${fenced.length},}\\s*$`).test(lines[closing])) fenced = '';
         else if (!fenced) {
-          if (/^:::(?:details|aside)\s+.+$/.test(lines[closing])) nesting++;
+          if (/^:::(?:details|aside|spoiler)\s+.+$/.test(lines[closing])) nesting++;
           else if (/^:::\s*$/.test(lines[closing]) && --nesting === 0) break;
         }
         body.push(lines[closing]);
       }
       if (!nesting) {
+        if (annotation[1] === 'spoiler' && concealSpoilers) {
+          result.push('<p>剧透内容，请到原文主动揭开。</p>');
+          index = closing + 1;
+          continue;
+        }
         const title = inlineMarkdown(annotation[2], baseUrl, 0, false);
-        const content = renderBlocks(body.join('\n'), baseUrl, depth + 1);
-        result.push(annotation[1] === 'details'
-          ? `<details class="article-explanation"><summary>${title}</summary><div class="article-explanation__body">${content}</div></details>`
+        const content = renderBlocks(body.join('\n'), baseUrl, depth + 1, concealSpoilers);
+        result.push(annotation[1] !== 'aside'
+          ? `<details class="article-explanation${annotation[1] === 'spoiler' ? ' article-spoiler' : ''}"><summary>${annotation[1] === 'spoiler' ? '<span class="article-spoiler__label">剧透 · 点击揭开</span>' : ''}${title}</summary><div class="article-explanation__body">${content}</div></details>`
           : `<aside class="article-aside"><strong class="article-aside__title">${title}</strong>${content}</aside>`);
         index = closing + 1;
         continue;
@@ -185,7 +190,7 @@ function renderBlocks(markdown: string, baseUrl?: string, depth = 0): string {
     if (quoteMarker.test(line)) {
       const body: string[] = [];
       while (index < lines.length && quoteMarker.test(lines[index])) body.push(lines[index++].replace(quoteMarker, ''));
-      result.push(`<blockquote>${renderBlocks(body.join('\n'), baseUrl, depth + 1)}</blockquote>`);
+      result.push(`<blockquote>${renderBlocks(body.join('\n'), baseUrl, depth + 1, concealSpoilers)}</blockquote>`);
       continue;
     }
     const list = line.match(listMarker);
@@ -209,7 +214,7 @@ function renderBlocks(markdown: string, baseUrl?: string, depth = 0): string {
           if (lines[index].length - lines[index].trimStart().length < contentIndentation) break;
           body.push(lines[index++].slice(contentIndentation));
         }
-        let content = renderBlocks(body.join('\n'), baseUrl, depth + 1);
+        let content = renderBlocks(body.join('\n'), baseUrl, depth + 1, concealSpoilers);
         if (content.startsWith('<p>') && content.indexOf('</p>') === content.length - 4) content = content.slice(3, -4);
         items.push(`<li>${content}</li>`);
       }
@@ -225,8 +230,8 @@ function renderBlocks(markdown: string, baseUrl?: string, depth = 0): string {
   return result.join('\n');
 }
 
-export function renderMarkdown(markdown: string, baseUrl?: string): string {
-  return renderBlocks(markdown, baseUrl);
+export function renderMarkdown(markdown: string, baseUrl?: string, options: { concealSpoilers?: boolean } = {}): string {
+  return renderBlocks(markdown, baseUrl, 0, options.concealSpoilers);
 }
 
 export interface ArticleHeading { id: string; level: number; text: string }
@@ -235,7 +240,11 @@ export interface ArticleHeading { id: string; level: number; text: string }
 export function renderArticleMarkdown(markdown: string) {
   const headings: ArticleHeading[] = [];
   const identifiers = new Set<string>();
-  const html = renderMarkdown(markdown).replace(/<h([1-6])>(.*?)<\/h\1>/g, (_, level: string, content: string) => {
+  const spoilerStack: boolean[] = [];
+  const html = renderMarkdown(markdown).replace(/<\/?details\b[^>]*>|<h([1-6])>(.*?)<\/h\1>/g, (match, level: string, content: string) => {
+    if (match.startsWith('<details')) { spoilerStack.push(match.includes('article-spoiler')); return match; }
+    if (match.startsWith('</details')) { spoilerStack.pop(); return match; }
+    if (spoilerStack.includes(true)) return match;
     const text = content.replace(/<img\b[^>]*\balt="([^"]*)"[^>]*>/g, '$1').replace(/<[^>]*>/g, '')
       .replace(/&(amp|lt|gt|quot|#39);/g, (_, entity: string) => ({ amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'" })[entity]!);
     const slug = text.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}_-]+/gu, '-').replace(/^-+|-+$/g, '') || 'section';
@@ -251,7 +260,7 @@ export function renderArticleMarkdown(markdown: string) {
 }
 
 export function articleExcerpt(markdown: string): string {
-  const text = renderMarkdown(markdown)
+  const text = renderMarkdown(markdown, undefined, { concealSpoilers: true })
     .replace(/<pre>[\s\S]*?<\/pre>/g, ' ')
     .replace(/<img\b[^>]*\balt="([^"]*)"[^>]*>/g, '$1')
     .replace(/<[^>]*>/g, ' ')

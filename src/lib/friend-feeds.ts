@@ -4,6 +4,7 @@ import { listFriends } from './friends';
 import { requestFriendResource } from './friend-status';
 
 export interface FriendFeedRecord { id: number; title: string; url: string; publishedAt: string | null; checkedAt: string }
+export interface FriendFeedUpdate extends FriendFeedRecord { sourceName: string; sourceUrl: string }
 interface FeedEntry { title: string; url: string; publishedAt: string | null }
 interface FeedCacheRow { title: string; entry_url: string; published_at: string | null; checked_at: string }
 
@@ -150,6 +151,14 @@ export function getCachedFriendFeed(id: number, rssUrl: string): FriendFeedRecor
   return row?.title && row.entry_url ? { id, title: row.title, url: row.entry_url, publishedAt: row.published_at, checkedAt: row.checked_at } : null;
 }
 
+// 首页动态复用每个公开订阅的最新缓存，不为页面渲染等待外部网络。
+export function getCachedFriendFeeds(): FriendFeedUpdate[] {
+  return listFriends().filter((friend) => friend.rssUrl).flatMap((friend) => {
+    const entry = getCachedFriendFeed(friend.id, friend.rssUrl);
+    return entry ? [{ ...entry, sourceName: friend.name, sourceUrl: friend.url }] : [];
+  }).sort((left, right) => (Date.parse(right.publishedAt || '') || 0) - (Date.parse(left.publishedAt || '') || 0) || left.id - right.id);
+}
+
 async function refreshFriendFeed(friend: { id: number; rssUrl: string }) {
   const previous = cachedRow(friend.id, friend.rssUrl);
   let entry: FeedEntry | null = previous?.title && previous.entry_url ? { title: previous.title, url: previous.entry_url, publishedAt: previous.published_at } : null;
@@ -182,7 +191,7 @@ async function refreshFriendFeed(friend: { id: number; rssUrl: string }) {
 let pending: Promise<void> | undefined;
 
 // 公开接口只刷新后台公开的订阅，成功和失败都受同一缓存期限约束。
-export async function getFriendFeeds(): Promise<FriendFeedRecord[]> {
+export async function getFriendFeeds(): Promise<FriendFeedUpdate[]> {
   if (pending) { await pending; return getFriendFeeds(); }
   const friends = listFriends().filter((friend) => friend.rssUrl);
   const stale = friends.filter((friend) => {
@@ -198,8 +207,5 @@ export async function getFriendFeeds(): Promise<FriendFeedRecord[]> {
     try { await pending; }
     finally { pending = undefined; }
   }
-  return listFriends().filter((friend) => friend.rssUrl).flatMap((friend) => {
-    const entry = getCachedFriendFeed(friend.id, friend.rssUrl);
-    return entry ? [entry] : [];
-  });
+  return getCachedFriendFeeds();
 }

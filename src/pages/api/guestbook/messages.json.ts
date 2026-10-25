@@ -18,6 +18,9 @@ export const POST = route(async ({ request, clientAddress }) => {
   const content = typeof body.content === 'string' ? body.content.trim() : '';
   const parentId = body.parentId == null ? null : readPositiveId(body.parentId);
   const articleId = body.articleId == null ? null : readPositiveId(body.articleId);
+  const quoteMessageId = body.quoteMessageId == null ? null : readPositiveId(body.quoteMessageId);
+  if (body.quoteContent !== undefined && typeof body.quoteContent !== 'string') throw new HttpError(400, '引用内容格式不正确');
+  const quoteContent = typeof body.quoteContent === 'string' ? body.quoteContent : '';
   const email = parseNotificationEmail(body.email);
   if (body.notifyReply !== undefined && typeof body.notifyReply !== 'boolean') throw new HttpError(400, '通知选项不正确');
   // 与 SQLite 的 length 约束统一按 Unicode 码点计数。
@@ -32,7 +35,7 @@ export const POST = route(async ({ request, clientAddress }) => {
   const wantsNotification = body.notifyReply === true && replyNotificationsConfigured;
   if (wantsNotification && !email) throw new HttpError(400, '接收回复通知需要填写邮箱');
   const id = getDatabase().transaction(() => {
-    const createdId = createMessage({ parentId, articleId, nickname, content, fingerprintHash, email: wantsNotification ? email : '', notifyReply: wantsNotification });
+    const createdId = createMessage({ parentId, articleId, quoteMessageId, quoteContent, nickname, content, fingerprintHash, email: wantsNotification ? email : '', notifyReply: wantsNotification });
     if (articleId && parentId) queueReplyNotification(parentId, createdId);
     queueAdminNotification('message', createdId);
     return createdId;

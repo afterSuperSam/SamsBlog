@@ -58,13 +58,14 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
           <button type="button" data-markdown="quote">引用</button>
           <button type="button" data-markdown="details">展开解释</button>
           <button type="button" data-markdown="aside">旁注</button>
+          <button type="button" data-markdown="spoiler">剧透</button>
           <button type="button" data-markdown="link">链接</button>
           <button type="button" data-markdown="image">图片</button>
           <button type="button" class="media-button" data-upload-media="body"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m-5 5 5-5 5 5M5 16v4h14v-4" /></svg>上传图片</button>
           <button type="button" data-markdown="code">代码</button>
         </div>
         <textarea id="article-markdown" name="content" rows="18" maxlength={serverConfig.articleContentMaxLength} required spellcheck="false" autocomplete="off" aria-describedby="article-editor-help"></textarea>
-        <small id="article-editor-help">支持 Markdown；“展开解释”和“旁注”可包住选中的文字。图片支持网址、上传或从媒体库插入。</small>
+        <small id="article-editor-help">支持 Markdown；“展开解释”“旁注”和“剧透”可包住选中的文字。图片支持网址、上传、直接粘贴或从媒体库插入。</small>
       </div>
       <section class="article-editor__preview" aria-label="文章实时预览" data-preview-shell>
         <header class="article-preview__toolbar"><span>实时预览</span><div role="group" aria-label="预览方式"><button type="button" data-preview-mode="reading" aria-pressed="true" aria-controls="article-preview-reading">阅读页</button><button type="button" data-preview-mode="home" aria-pressed="false" aria-controls="article-preview-home">首页卡片</button></div></header>
@@ -117,6 +118,9 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
   import { parseArticleTags } from '../lib/article-catalog';
   import { openAdminDrawer } from '../lib/admin-drawers';
   import type { ArticleDraft } from '../lib/article-drafts';
+  import type { MediaRecord } from '../lib/media';
+  import { updateEditorInsertion, type EditorInsertion, type EditorChange } from '../lib/editor-insertion';
+  import { parseMediaReference, mediaReferenceSelection, type MediaReferenceTarget } from '../lib/media-reference';
 
   // 编辑器与阅读页共用安全渲染，后台只维护当前一篇文章。
   const root = document.querySelector<HTMLElement>('[data-admin-articles]');
@@ -133,7 +137,29 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
     let saving: Promise<void> = Promise.resolve();
     let savedPayload = '';
     let composing = false;
+    const pendingInsertions = new Set<EditorInsertion>();
+    let pendingContentChange: EditorChange | undefined;
+    const compositionWaiters = new Set<() => void>();
+    let pendingUploads = 0;
+    let editorSession = 0;
+    let navigationRevision = 0;
+    const finishComposition = () => {
+      if (composing) return;
+      compositionWaiters.forEach((resolve) => resolve()); compositionWaiters.clear();
+    };
+    const resetEditorSession = () => {
+      editorSession++; pendingUploads = 0; pendingInsertions.clear(); pendingContentChange = undefined;
+      composing = false; finishComposition();
+    };
+    const replaceContent = (text: string, start: number, end: number, selectionMode: SelectionMode = 'end') => {
+      pendingContentChange = { value: content.value, start, end, inputType: 'insertText' };
+      content.setRangeText(text, start, end, selectionMode);
+    };
     const cover = editor.elements.namedItem('coverUrl') as HTMLInputElement;
+    const focusMediaReference = (reference: MediaReferenceTarget) => {
+      if (reference.location === 'cover') cover.focus();
+      else { content.focus(); content.setSelectionRange(...mediaReferenceSelection(content.value, reference.filename)); }
+    };
     const originalAuthor = editor.elements.namedItem('originalAuthor') as HTMLInputElement;
     const originalUrl = editor.elements.namedItem('originalUrl') as HTMLInputElement;
     const id = editor.elements.namedItem('id') as HTMLInputElement;
@@ -215,16 +241,76 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
     updatePreview();
     editor.addEventListener('input', updatePreview);
     editor.addEventListener('change', updatePreview);
+    content.addEventListener('beforeinput', (event) => {
+      pendingContentChange = { value: content.value, start: content.selectionStart, end: content.selectionEnd, inputType: event.inputType };
+    });
+    content.addEventListener('input', () => {
+      pendingInsertions.forEach((insertion) => updateEditorInsertion(insertion, content.value, pendingContentChange));
+      pendingContentChange = undefined;
+    });
+    content.addEventListener('paste', async (event) => {
+      const files = [...event.clipboardData?.items || []].filter((item) => item.kind === 'file' && item.type.startsWith('image/')).map((item) => item.getAsFile()).filter((file): file is File => Boolean(file));
+      if (!files.length || root.getAttribute('aria-busy') === 'true') return;
+      event.preventDefault();
+      const maximumBytes = Number(editor.querySelector<HTMLElement>('[data-admin-media]')?.dataset.maximumBytes);
+      if (files.some((file) => !file.size || file.size > maximumBytes)) {
+        feedback.textContent = `请选择不超过 ${maximumBytes / 1024 / 1024} MB 的图片。`; feedback.dataset.state = 'error'; return;
+      }
+      const identity = editorSession;
+      const insertion: EditorInsertion = { value: content.value, start: content.selectionStart, end: content.selectionEnd };
+      pendingInsertions.add(insertion);
+      pendingUploads++;
+      feedback.textContent = '正在上传剪贴板图片，可以继续编辑…'; feedback.dataset.state = 'loading';
+      const uploaded: MediaRecord[] = [];
+      let failure = '';
+      try {
+        for (const file of files) {
+          try {
+            const form = new FormData(); form.set('file', file);
+            const result = await requestJson<{ error?: string; media: MediaRecord }>('/api/admin/media.json', 'POST', form, '剪贴板图片上传失败，正文仍保留，请重新粘贴重试。');
+            uploaded.push(result.media);
+            document.dispatchEvent(new CustomEvent('media-uploaded', { detail: result.media }));
+          } catch (error) { failure = error instanceof TypeError ? '网络连接失败，正文仍保留，请重新粘贴重试。' : error instanceof Error ? error.message : '图片上传失败，正文仍保留。'; }
+        }
+        if (identity !== editorSession) return;
+        if (uploaded.length) {
+          if (composing) {
+            feedback.textContent = '图片已上传，确认当前输入后插入…';
+            await new Promise<void>((resolve) => compositionWaiters.add(resolve));
+            if (identity !== editorSession) return;
+          }
+          updateEditorInsertion(insertion, content.value);
+          const markdown = uploaded.map((media) => `\n![${media.name.replace(/\.[^.]+$/, '').replace(/[\[\]\\\r\n]/g, '')}](${media.url})\n`).join('');
+          if (content.maxLength >= 0 && content.value.length - (insertion.end - insertion.start) + markdown.length > content.maxLength) failure = '正文已达长度上限，图片已留在媒体库，请缩短正文后插入。';
+          else {
+            const start = content.selectionStart; const end = content.selectionEnd;
+            const difference = markdown.length - (insertion.end - insertion.start);
+            const mapSelection = (position: number) => position <= insertion.start ? position : position >= insertion.end ? position + difference : insertion.start + markdown.length;
+            replaceContent(markdown, insertion.start, insertion.end, 'preserve');
+            content.setSelectionRange(mapSelection(start), mapSelection(end));
+            pendingInsertions.delete(insertion);
+            content.dispatchEvent(new Event('input', { bubbles: true }));
+          }
+        }
+        feedback.textContent = failure || '剪贴板图片已插入，保存文章后公开展示。'; feedback.dataset.state = failure ? 'error' : 'success';
+      } finally { pendingInsertions.delete(insertion); if (identity === editorSession) pendingUploads--; }
+    });
+    editor.addEventListener('submit', (event) => {
+      if (!pendingUploads) return;
+      event.preventDefault(); event.stopImmediatePropagation();
+      feedback.textContent = '图片仍在上传，请完成后再发布。'; feedback.dataset.state = 'error';
+    }, true);
     editor.addEventListener('media-select', (event) => {
       if (root.getAttribute('aria-busy') === 'true') return;
       const { url, name, target } = (event as CustomEvent<{ url: string; name: string; target: string }>).detail;
       if (target === 'cover') { cover.value = url; cover.focus(); }
       else {
         const alternative = name.replace(/\.[^.]+$/, '').replace(/[\[\]\\\r\n]/g, '');
-        content.setRangeText(`\n![${alternative}](${url})\n`, content.selectionStart, content.selectionEnd, 'end');
+        replaceContent(`\n![${alternative}](${url})\n`, content.selectionStart, content.selectionEnd);
         content.focus();
       }
       updatePreview();
+      content.dispatchEvent(new Event('input', { bubbles: true }));
     });
     const mayDiscard = async () => {
       clearTimeout(autosaveTimer);
@@ -232,7 +318,9 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
       return confirmAdminDiscard(root);
     };
     root.querySelector('[data-new-article]')?.addEventListener('click', async () => {
-      if (!await mayDiscard() || root.getAttribute('aria-busy') === 'true') return;
+      const request = ++navigationRevision; const session = editorSession;
+      if (!await mayDiscard() || request !== navigationRevision || session !== editorSession || root.getAttribute('aria-busy') === 'true') return;
+      resetEditorSession();
       editor.reset();
       id.value = '';
       draftId = crypto.randomUUID(); revision = 0; savedPayload = ''; clearTimeout(autosaveTimer);
@@ -248,8 +336,10 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
       openAdminDrawer(drawer);
       title.focus();
     });
-    root.querySelectorAll<HTMLButtonElement>('[data-edit-article]').forEach((button) => button.addEventListener('click', async () => {
-      if (!await mayDiscard() || root.getAttribute('aria-busy') === 'true') return;
+    const openArticle = async (button: HTMLButtonElement, reference?: MediaReferenceTarget, request = ++navigationRevision, session = editorSession) => {
+      if (request !== navigationRevision || session !== editorSession || !await mayDiscard()
+        || request !== navigationRevision || session !== editorSession || root.getAttribute('aria-busy') === 'true') return;
+      resetEditorSession();
       const draft = JSON.parse(button.dataset.draft || 'null') as ArticleDraft | null;
       const article = { ...JSON.parse(button.dataset.article || '{}'), ...draft?.payload } as ArticleRecord;
       articleStarred = article.starred === true;
@@ -282,21 +372,50 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
       savedPayload = JSON.stringify(payload());
       draftStatus.textContent = draft ? '已恢复自动保存的草稿' : '修改后自动保存为草稿';
       openAdminDrawer(drawer);
-      title.focus();
-    }));
+      if (reference) focusMediaReference(reference);
+      else title.focus();
+    };
+    root.querySelectorAll<HTMLButtonElement>('[data-edit-article]').forEach((button) => button.addEventListener('click', () => { void openArticle(button); }));
+    const openMediaReference = async (reference: MediaReferenceTarget) => {
+      const request = ++navigationRevision; const session = editorSession;
+      const current = () => request === navigationRevision && session === editorSession;
+      if (root.getAttribute('aria-busy') === 'true') return;
+      if (reference.draftId === draftId || !reference.draftId && String(reference.articleId) === id.value) {
+        focusMediaReference(reference);
+        return;
+      }
+      try {
+        const result = await requestJson<{ error?: string; articles: ArticleRecord[]; drafts: ArticleDraft[] }>('/api/admin/articles.json', 'GET', undefined, '引用内容暂时无法打开，请稍后重试。');
+        if (!current()) return;
+        const draft = result.drafts.find((item) => !item.deletedAt && (reference.draftId ? item.draftId === reference.draftId : item.articleId === reference.articleId));
+        const article = result.articles.find((item) => item.id === reference.articleId && !item.deletedAt);
+        if ((!draft && !article) || (reference.draftId && !draft) || (draft?.articleId && !article)) throw new Error('引用内容已变化，请刷新媒体库后重试。');
+        const button = document.createElement('button');
+        button.dataset.article = JSON.stringify(article || draft!.payload);
+        button.dataset.draft = JSON.stringify(draft || null);
+        await openArticle(button, reference, request, session);
+      } catch (error) {
+        if (!current()) return;
+        const status = drawer.open ? feedback : listFeedback;
+        status.textContent = error instanceof Error ? error.message : '引用内容暂时无法打开。'; status.dataset.state = 'error';
+      }
+    };
+    editor.addEventListener('media-reference', (event) => { void openMediaReference((event as CustomEvent<MediaReferenceTarget>).detail); });
     const wrappers: Record<string, [string, string]> = {
       heading: ['\n## ', '\n'], bold: ['**', '**'], italic: ['*', '*'], list: ['\n- ', '\n'], quote: ['\n> ', '\n'],
       link: ['[', '](https://)'], image: ['![', '](https://)'], code: ['\n```\n', '\n```\n'],
       details: ['\n:::details 补充解释\n', '\n:::\n'], aside: ['\n:::aside 旁注\n', '\n:::\n'],
+      spoiler: ['\n:::spoiler 提示\n', '\n:::\n'],
     };
     editor.querySelectorAll<HTMLButtonElement>('[data-markdown]').forEach((button) => button.addEventListener('click', () => {
       const [prefix, suffix] = wrappers[button.dataset.markdown || ''];
       const start = content.selectionStart;
-      const selected = content.value.slice(start, content.selectionEnd);
-      content.setRangeText(prefix + selected + suffix, start, content.selectionEnd, 'end');
+      const selected = content.value.slice(start, content.selectionEnd) || (button.dataset.markdown === 'spoiler' ? '内容' : '');
+      replaceContent(prefix + selected + suffix, start, content.selectionEnd);
       content.focus();
       content.setSelectionRange(start + prefix.length, start + prefix.length + selected.length);
       updatePreview();
+      content.dispatchEvent(new Event('input', { bubbles: true }));
     }));
     const request = async (method: string, payload: unknown) => {
       await requestJson('/api/admin/articles.json', method, payload, '文章服务暂时不可用，请稍后重试。');
@@ -318,6 +437,7 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
         savedPayload = snapshot;
         if (JSON.stringify(payload()) === snapshot && !tagInput.value) markSaved();
         draftStatus.textContent = `草稿已保存 · ${new Date(result.draft.savedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`;
+        document.dispatchEvent(new Event('media-references-refresh'));
       });
       return saving;
     };
@@ -333,7 +453,7 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
     editor.querySelectorAll<HTMLAnchorElement>('a[href="#media"]').forEach((link) => link.addEventListener('click', () => { const details = editor.querySelector<HTMLDetailsElement>('details'); if (details) details.open = true; }));
     editor.addEventListener('click', (event) => { if ((event.target as Element).closest('[data-markdown],[data-add-tag],[data-selected-tags],[data-existing-tag]')) scheduleSave(); });
     editor.addEventListener('compositionstart', () => { composing = true; clearTimeout(autosaveTimer); });
-    editor.addEventListener('compositionend', () => { composing = false; scheduleSave(); });
+    editor.addEventListener('compositionend', () => { composing = false; setTimeout(finishComposition, 0); scheduleSave(); });
     editor.querySelector('[data-save-draft]')?.addEventListener('click', () => { if (commitTags()) void saveDraft().catch(saveFeedback); });
     window.addEventListener('pagehide', () => clearTimeout(autosaveTimer));
     drawer.addEventListener('close', () => { clearTimeout(autosaveTimer); if (revision) window.location.reload(); });
@@ -414,5 +534,12 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
       const articleId = Number(restore ? button.dataset.restoreArticle : button.dataset.removeArticle);
       void perform(listFeedback, () => request(restore ? 'PATCH' : 'DELETE', { id: articleId, ...(restore ? { restore: true } : {}) }));
     }));
+    const initialReference = parseMediaReference(new URLSearchParams(location.search));
+    if (initialReference) {
+      const address = new URL(location.href);
+      for (const key of ['media', 'location', 'article', 'draft']) address.searchParams.delete(key);
+      history.replaceState(history.state, '', address.href);
+      void openMediaReference(initialReference);
+    }
   }
 </script>

@@ -45,9 +45,15 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
     </header>
     {article.coverUrl && <img class="article-reading__cover" src={article.coverUrl} alt="文章首图" referrerpolicy="no-referrer" fetchpriority="high" />}
     <div class="article-reading__tools" data-reading-tools hidden>
-      <button type="button" data-reading-mode data-tooltip="调整正文宽度与行距，减淡背景干扰" aria-pressed="false">舒适阅读</button>
+      <button type="button" data-reading-mode data-tooltip="收窄正文宽度，减淡背景干扰" aria-pressed="false">舒适阅读</button>
       <button type="button" data-reading-font data-tooltip="在系统默认字体与本站艺术字体之间切换" aria-pressed="false">使用默认字体</button>
       <button type="button" data-reading-resume data-tooltip="回到这台设备上次读到的位置" hidden>继续阅读</button>
+      <div class="article-typography" role="group" aria-label="正文字号与行距">
+        <button type="button" data-reading-size="decrease" aria-label="缩小正文字号">A−</button>
+        <output data-reading-size-label aria-live="polite">{siteConfig.articleReading.fontSizeDefault}px</output>
+        <button type="button" data-reading-size="increase" aria-label="增大正文字号">A＋</button>
+        <span class="article-typography__spacing" role="group" aria-label="正文行距"><button type="button" data-reading-spacing="standard" aria-pressed="true">标准</button><button type="button" data-reading-spacing="relaxed" aria-pressed="false">宽松</button></span>
+      </div>
       <span class="article-reading__status" role="status" data-reading-status></span>
     </div>
     </div>
@@ -66,6 +72,7 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
   </article>
   <dialog class="article-image-dialog" data-article-image-dialog aria-label="正文图片查看器">
     <div class="article-image-dialog__toolbar"><button type="button" data-image-zoom aria-pressed="false">放大图片</button><button type="button" data-image-close autofocus aria-label="关闭图片查看器">关闭 ×</button></div>
+    <div class="article-image-dialog__state"><span data-image-status role="status" aria-live="polite"></span><button type="button" data-image-retry hidden>重新加载</button></div>
     <div class="article-image-dialog__viewport" data-image-viewport tabindex="0"><img data-image-full alt="" /></div>
     <p data-image-caption></p>
   </dialog>

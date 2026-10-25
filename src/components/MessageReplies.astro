@@ -1,0 +1,16 @@
+---
+import type { MessageRecord } from '../lib/db';
+import { siteConfig } from '../config/site';
+import MessageBody from './MessageBody.astro';
+const { replies = [], parentId, interactive = false, expanded = false } = Astro.props as { replies?: MessageRecord[]; parentId: number; interactive?: boolean; expanded?: boolean };
+const visible = expanded ? replies.length : siteConfig.discussion.visibleReplyCount;
+---
+{[replies.slice(0, visible), replies.slice(visible)].map((group, index) => group.length > 0 && (index === 0 ? <div class="message-replies">
+  {group.map((reply) => <div class:list={['message-reply', { 'is-owner': reply.isAdmin }]} id={`comment-${reply.id}`} data-message-id={reply.id} data-comment-root={parentId} data-message-name={reply.isAdmin ? 'SuperSam' : reply.nickname}>
+    <header>{reply.isAdmin ? <svg class="message-owner-signature" role="img" aria-label="站长 SuperSam"><use href="#message-owner-signature" /></svg> : <b>{reply.nickname}</b>}{interactive && <button type="button" data-comment-reply={parentId} data-comment-message={reply.id} data-comment-name={reply.isAdmin ? 'SuperSam' : reply.nickname}>回复</button>}</header>
+    {reply.quoteContent && <blockquote class="comment-quote"><b>引用 {reply.quoteNickname}</b><p>{reply.quoteContent}</p></blockquote>}
+    <MessageBody content={reply.content} />
+  </div>)}
+</div> : <details class="message-replies-more" data-message-fold><summary><span class="message-collapse__closed">还有 {group.length} 条回复</span><span class="message-collapse__opened">收起回复</span></summary>
+  <Astro.self replies={group} parentId={parentId} interactive={interactive} expanded />
+</details>))}

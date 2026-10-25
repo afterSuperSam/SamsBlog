@@ -129,6 +129,9 @@
 .article-explanation__body{padding:0 18px 12px}
 .article-explanation__body>:first-child{margin-top:0}
 .article-explanation__body>:last-child{margin-bottom:0}
+.article-spoiler{background:color-mix(in srgb,var(--glow-pink) 7%,var(--surface));border-radius:14px}
+.article-spoiler>summary{color:var(--text-soft)}.article-spoiler__label{display:inline-block;margin-right:14px;color:var(--summer-pink);font-size:.85em}
+.article-spoiler[open] .article-spoiler__label{color:var(--summer-blue)}
 .article-aside{margin:1.4em 0;padding:8px 0 8px 18px;border-left:2px solid color-mix(in srgb,var(--summer-pink) 40%,transparent);font-size:var(--font-size-small);line-height:1.85;color:var(--text-soft)}
 .article-aside__title{display:block;color:var(--summer-pink);font-weight:400}
 .article-aside p{margin:.5em 0 0}

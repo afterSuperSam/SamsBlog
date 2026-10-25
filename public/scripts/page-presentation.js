@@ -15,6 +15,13 @@
       if (savedTheme === 'dark' || savedTheme === 'light') theme = savedTheme;
       paused = localStorage.getItem('samsblog-motion') === 'paused';
       if (root.dataset.readingFontStorageKey) root.dataset.articleFont = localStorage.getItem(root.dataset.readingFontStorageKey) === 'default' ? 'default' : 'handwritten';
+      if (root.dataset.readingTypography) {
+        const configuration = JSON.parse(root.dataset.readingTypography);
+        const value = JSON.parse(localStorage.getItem(configuration.storageKey) || 'null');
+        if (value && Number.isSafeInteger(value.fontSize) && value.fontSize >= configuration.minimum && value.fontSize <= configuration.maximum && (value.fontSize - configuration.minimum) % configuration.step === 0) root.style.setProperty('--reader-font-size', `${value.fontSize / 16}rem`);
+        else root.style.removeProperty('--reader-font-size');
+        root.dataset.readingSpacing = value?.spacing === 'relaxed' ? 'relaxed' : 'standard';
+      }
     } catch (error) { console.warn('Theme preference unavailable', error); }
     root.dataset.theme = theme;
     root.classList.toggle('motion-paused', paused || reducedMotion.matches);
