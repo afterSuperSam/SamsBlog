@@ -29,6 +29,8 @@
 .admin-friend-import .media-button { justify-self:start; }
 .admin-friend-import>small { grid-column:1/-1; color:var(--muted); font-size:.875rem; line-height:1.6; overflow-wrap:anywhere; }
 .admin-friend-list { display:grid; gap:13px; }
+.admin-friend-actions { display:flex; flex-shrink:0; align-items:center; }
+.admin-friend-list .form-status:empty { display:none; }
 .admin-friend-card {
   --friend-accent:var(--summer-blue);
   display:grid;

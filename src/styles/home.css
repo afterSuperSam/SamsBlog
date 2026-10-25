@@ -14,7 +14,7 @@
 }
 @keyframes hero-release{from{opacity:1;translate:0 0;scale:1}to{opacity:0;translate:0 var(--hero-release-distance);scale:var(--hero-release-scale)}}
 .hero-title-heading{position:relative;isolation:isolate;width:min(100%,620px);margin:0 auto;line-height:1;animation:summer-arrive 1.2s .15s var(--ease-out) both}
-.hero-title-heading::before{position:absolute;inset:0;z-index:-1;content:"";background:linear-gradient(135deg,var(--hero-wordmark-depth),var(--hero-wordmark-shadow));mask:url('/media/branding/samsblog-wordmark-nav.webp') center/contain no-repeat;transform:translate(6px,10px);filter:drop-shadow(0 14px 18px var(--hero-wordmark-shadow))}
+.hero-title-heading::before{position:absolute;inset:0;z-index:-1;content:"";background:linear-gradient(135deg,var(--hero-wordmark-depth),var(--hero-wordmark-shadow));mask:url('/media/branding/samsblog-wordmark.webp') center/contain no-repeat;transform:translate(6px,10px);filter:drop-shadow(0 14px 18px var(--hero-wordmark-shadow))}
 .hero-title-heading::after{position:absolute;inset:12% -9% -18%;z-index:-2;content:"";border-radius:50%;background:radial-gradient(ellipse at 28% 42%,var(--hero-wordmark-halo),transparent 63%),radial-gradient(ellipse at 78% 60%,var(--hero-wordmark-fill),transparent 60%);filter:blur(24px);pointer-events:none}
 .hero-wordmark{display:block;width:100%;height:auto;object-fit:contain;filter:drop-shadow(1px 2px 0 var(--hero-wordmark-depth)) drop-shadow(1px 2px 0 var(--hero-wordmark-depth)) drop-shadow(0 20px 26px color-mix(in srgb,var(--hero-wordmark-shadow) 70%,transparent))}
 .home-page .site-brand__wordmark{transition:opacity .28s ease,max-width .35s var(--ease-out),filter .28s ease,transform .32s var(--ease-out)}

@@ -5,12 +5,14 @@ import { getArticle, getAdjacentArticles } from '../../lib/articles';
 import { articleExcerpt, renderArticleMarkdown } from '../../lib/markdown';
 import { siteConfig } from '../../config/site';
 import '../../styles/articles.css';
+import '../../styles/article-reading.css';
 import ArticleDiscussion from '../../components/ArticleDiscussion.astro';
 
 const identifier = Number(Astro.params.id);
 const article = Number.isSafeInteger(identifier) && identifier > 0 ? getArticle(identifier) : undefined;
 if (!article) Astro.response.status = 404;
 const rendered = article ? renderArticleMarkdown(article.content) : { html: '', headings: [] };
+const chapterLevel = rendered.headings.length ? Math.min(...rendered.headings.map((heading) => heading.level)) : 1;
 const { previous, next } = article ? getAdjacentArticles(article) : { previous: undefined, next: undefined };
 const author = article?.source === 'repost' ? article.originalAuthor : siteConfig.name;
 const articleMetadata = article ? {
@@ -31,31 +33,36 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
 
 {article ? <BaseLayout title={article.title} description={article.summary || articleExcerpt(article.content)} image={article.coverUrl || undefined} articleMetadata={articleMetadata} bodyClass="article-page">
   <article class="article-reading shell" data-article-reading data-article-id={article.id} data-article-version={article.updatedAt}>
+    <div class="article-reading__lead">
     <a class="articles-more article-reading__back" href="/content"><span aria-hidden="true">←</span> 回到内容</a>
     <header class="article-reading__heading">
       <div class="article-tags"><span>{article.source === 'original' ? '原创' : '搬运'}</span><span>{article.category === 'discussion' ? '杂谈' : '日志'}</span></div>
-      <h1>{article.title}</h1>
+      <h1 id="article-start" class:list={{ 'article-title--starred': article.starred }}>{article.title}</h1>
       {article.tags.length > 0 && <nav class="article-keywords" aria-label="文章标签">{article.tags.map((tag) => <a href={`/content?${new URLSearchParams({ tag })}`}># {tag}</a>)}</nav>}
       <div class="article-reading__dates"><span>写于 <time datetime={article.createdAt}>{dateLabel(article.createdAt)}</time></span><span>编辑于 <time datetime={article.updatedAt}>{dateLabel(article.updatedAt)}</time></span></div>
       {article.source === 'repost' && (article.originalAuthor || article.originalUrl) && <p class="article-reading__source">{article.originalAuthor && <span>原作者：{article.originalAuthor}</span>}{article.originalUrl && <a href={article.originalUrl} target="_blank" rel="noopener noreferrer">阅读原文 ↗</a>}</p>}
       {article.contentType === 'link' && <p class="article-reading__source"><a href={article.externalUrl} target="_blank" rel="noopener noreferrer">打开推荐链接 ↗</a></p>}
     </header>
-    {article.coverUrl && <img class="article-reading__cover" data-article-cover={article.id} src={article.coverUrl} alt="文章首图" referrerpolicy="no-referrer" fetchpriority="high" />}
+    {article.coverUrl && <img class="article-reading__cover" src={article.coverUrl} alt="文章首图" referrerpolicy="no-referrer" fetchpriority="high" />}
     <div class="article-reading__tools" data-reading-tools hidden>
-      <button type="button" data-reading-mode aria-pressed="false">舒适阅读</button>
-      <button type="button" data-reading-resume hidden>回到上次读到的位置</button>
+      <button type="button" data-reading-mode data-tooltip="调整正文宽度与行距，减淡背景干扰" aria-pressed="false">舒适阅读</button>
+      <button type="button" data-reading-font data-tooltip="在系统默认字体与本站艺术字体之间切换" aria-pressed="false">使用默认字体</button>
+      <button type="button" data-reading-resume data-tooltip="回到这台设备上次读到的位置" hidden>继续阅读</button>
       <span class="article-reading__status" role="status" data-reading-status></span>
     </div>
+    </div>
     {rendered.headings.length > 0 && <details class="article-toc">
-      <summary>文章目录 <span>{rendered.headings.length} 节</span></summary>
-      <nav aria-label="文章目录"><ol>{rendered.headings.map((heading) => <li data-level={heading.level}><a href={`#${heading.id}`}>{heading.text}</a></li>)}</ol></nav>
+      <summary>本文目录 <span>{rendered.headings.length} 节</span></summary>
+      <nav aria-label="文章目录"><ol>{rendered.headings.map((heading) => <li data-level={heading.level} data-depth={Math.min(2, heading.level - chapterLevel)}><a href={`#${heading.id}`}>{heading.text}</a></li>)}</ol></nav>
     </details>}
+    <div class="article-reading__content">
     <div class="article-prose" data-article-prose set:html={rendered.html}></div>
     {(previous || next) && <nav class="article-reading__footer" aria-label="相邻文章">
       {previous ? <a href={`/articles/${previous.id}`} rel="prev"><span>上一篇</span><strong>{previous.title}</strong></a> : <span />}
       {next && <a href={`/articles/${next.id}`} rel="next"><span>下一篇</span><strong>{next.title}</strong></a>}
     </nav>}
     <ArticleDiscussion articleId={article.id} />
+    </div>
   </article>
   <dialog class="article-image-dialog" data-article-image-dialog aria-label="正文图片查看器">
     <div class="article-image-dialog__toolbar"><button type="button" data-image-zoom aria-pressed="false">放大图片</button><button type="button" data-image-close autofocus aria-label="关闭图片查看器">关闭 ×</button></div>

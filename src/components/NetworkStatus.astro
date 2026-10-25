@@ -21,6 +21,11 @@
   const statusRoot = document.querySelector<HTMLElement>('[data-network-status]');
   const trigger = statusRoot?.querySelector<HTMLButtonElement>('[data-network-trigger]');
   const details = statusRoot?.querySelector<HTMLElement>('[data-network-details]');
+  const visibilityTarget = statusRoot?.parentElement;
+  const latencySamples: number[] = [];
+  let measurementRunning = false;
+  let measurementFinished = false;
+  let visibilityObserver: IntersectionObserver | undefined;
 
   const setDetailsOpen = (open: boolean) => {
     trigger?.setAttribute('aria-expanded', String(open));
@@ -42,29 +47,54 @@
     }
   });
 
+  function canMeasureLatency() {
+    if (document.hidden || !visibilityTarget?.getClientRects().length) return false;
+    const rectangle = visibilityTarget.getBoundingClientRect();
+    return rectangle.width > 0 && rectangle.height > 0
+      && rectangle.bottom > 0 && rectangle.top < window.innerHeight
+      && rectangle.right > 0 && rectangle.left < window.innerWidth;
+  }
+
   async function measureLatency() {
-    const values: number[] = [];
-    for (let index = 0; index < siteConfig.network.sampleCount; index += 1) {
+    while (latencySamples.length < siteConfig.network.sampleCount) {
+      if (!canMeasureLatency()) return null;
       const start = performance.now();
       const response = await fetch(`/api/ping.json?t=${Date.now()}`, { cache: 'no-store', signal: AbortSignal.timeout(siteConfig.network.timeoutMilliseconds) });
       if (!response.ok) throw new Error(`Latency probe returned ${response.status}`);
-      values.push(Math.round(performance.now() - start));
+      latencySamples.push(Math.round(performance.now() - start));
     }
-    return values.sort((a, b) => a - b)[Math.floor(values.length / 2)];
+    return latencySamples.sort((a, b) => a - b)[Math.floor(latencySamples.length / 2)];
   }
 
   async function refreshNetwork() {
-    if (!statusRoot) return;
+    if (!statusRoot || measurementRunning || measurementFinished || !canMeasureLatency()) return;
+    measurementRunning = true;
     try {
       const latency = await measureLatency();
+      if (latency === null) return;
+      measurementFinished = true;
       statusRoot.querySelector<HTMLElement>('[data-network-summary-latency]')!.textContent = `${latency} ms`;
       statusRoot.querySelector<HTMLElement>('[data-network-latency]')!.textContent = `${latency} ms`;
       trigger?.setAttribute('aria-label', `站点延迟 ${latency} 毫秒，查看网络信息`);
       statusRoot.hidden = false;
     } catch (error) {
+      measurementFinished = true;
       console.warn('Latency probe unavailable', error);
       statusRoot.hidden = true;
+    } finally {
+      measurementRunning = false;
+      if (measurementFinished) {
+        visibilityObserver?.disconnect();
+        document.removeEventListener('visibilitychange', refreshWhenVisible);
+        window.removeEventListener('resize', refreshWhenVisible);
+        window.removeEventListener('pageshow', refreshWhenVisible);
+        window.removeEventListener('scroll', refreshWhenVisible);
+      }
     }
+  }
+
+  function refreshWhenVisible() {
+    void refreshNetwork();
   }
 
   async function loadVisitorNetwork() {
@@ -80,6 +110,20 @@
       if (visitorGroup) visitorGroup.hidden = Boolean(location?.hidden && ip?.hidden);
     } catch (error) { console.warn('Visitor network information unavailable', error); }
   }
-  void refreshNetwork();
+  // 页脚宿主进入视口后才测速；窄屏隐藏或切到后台时保留样本，恢复可见后继续。
+  if (visibilityTarget) {
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    window.addEventListener('resize', refreshWhenVisible);
+    window.addEventListener('pageshow', refreshWhenVisible);
+    if (typeof window.IntersectionObserver === 'function') {
+      visibilityObserver = new IntersectionObserver((entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) refreshWhenVisible();
+      });
+      visibilityObserver.observe(visibilityTarget);
+    } else {
+      window.addEventListener('scroll', refreshWhenVisible, { passive: true });
+      refreshWhenVisible();
+    }
+  }
   trigger?.addEventListener('click', () => { void loadVisitorNetwork(); }, { once: true });
 </script>

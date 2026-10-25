@@ -17,8 +17,6 @@ const { title, eyebrow, calendar, href, unit = '次', period = '过去一年', s
 const formatCount = (count: number) => count >= 100000000 ? `${(count / 100000000).toFixed(1)}亿` : count >= 10000 ? `${(count / 10000).toFixed(1)}万` : count.toLocaleString('zh-CN');
 const totalLabel = calendar.available ? `${formatCount(calendar.total)} ${unit}` : '';
 const detailId = `usage-${eyebrow.toLowerCase()}-${title.toLowerCase().replace(/\s+/g, '-')}`;
-const months = [...new Set(calendar.days.map((day) => day.date.slice(0, 7)))];
-const monthLabel = (month: string) => `${month.slice(0, 4)} 年 ${Number(month.slice(5))} 月`;
 ---
 
 <article class="contribution-panel" data-unit={unit}>
@@ -64,18 +62,10 @@ const monthLabel = (month: string) => `${month.slice(0, 4)} 年 ${Number(month.s
     <span>{calendar.available ? period : '网络恢复后自动更新'}</span>
     <div aria-label="活动强度"><small>少</small>{[0, 1, 2, 3, 4].map((level) => <i class={`contribution-cell contribution-cell--${level}`}></i>)}<small>多</small></div>
     {href && <a href={href} target="_blank" rel="noreferrer">查看 GitHub</a>}
-    {showUsage && <nav class="contribution-months" aria-label={`${title}按月浏览`}>
-      <button type="button" data-month-previous aria-label="上一个月">←</button>
-      <output data-month-label aria-live="polite">{monthLabel(months.at(-1) || '')}</output>
-      <button type="button" data-month-next aria-label="下一个月" disabled>→</button>
-      <button type="button" class="contribution-months__latest" data-month-latest>回到最新</button>
-    </nav>}
   </footer>
 </article>
 
 <script>
-  import { animateMotion, motionDisabled } from '../lib/motion';
-  import { siteConfig } from '../config/site';
   import { createTooltip } from '../lib/tooltip';
   document.querySelectorAll<HTMLElement>('.contribution-scroll').forEach((scroll) => {
     let previousMaximum = 0;
@@ -86,59 +76,6 @@ const monthLabel = (month: string) => `${month.slice(0, 4)} 年 ${Number(month.s
     }).observe(scroll);
     scroll.scrollLeft = scroll.scrollWidth;
     previousMaximum = Math.max(0, scroll.scrollWidth - scroll.clientWidth);
-    if (!scroll.querySelector('[data-token-cell]')) return;
-    const panel = scroll.closest<HTMLElement>('.contribution-panel')!;
-    const cells = [...scroll.querySelectorAll<HTMLElement>('[data-contribution-cell]')];
-    const months = [...new Set(cells.map((cell) => cell.dataset.date!.slice(0, 7)))];
-    const previous = panel.querySelector<HTMLButtonElement>('[data-month-previous]');
-    const next = panel.querySelector<HTMLButtonElement>('[data-month-next]');
-    const label = panel.querySelector<HTMLElement>('[data-month-label]');
-    let selectedMonth = months.length - 1;
-    let scrollAnimation: Animation | undefined;
-    const stopScrollAnimation = () => { scrollAnimation?.cancel(); scrollAnimation = undefined; };
-    ['pointerdown', 'wheel', 'touchstart'].forEach((event) => scroll.addEventListener(event, stopScrollAnimation, { passive: true }));
-    const updateMonth = () => {
-      const month = months[selectedMonth];
-      if (label && month) label.textContent = `${month.slice(0, 4)} 年 ${Number(month.slice(5))} 月`;
-      if (previous) previous.disabled = selectedMonth <= 0;
-      if (next) next.disabled = selectedMonth >= months.length - 1;
-    };
-    const jumpMonth = (index: number) => {
-      selectedMonth = Math.max(0, Math.min(months.length - 1, index));
-      const monthCells = cells.filter((cell) => cell.dataset.date?.startsWith(months[selectedMonth]));
-      const last = monthCells.at(-1);
-      if (!last) return;
-      const left = Math.max(0, Math.min(scroll.scrollWidth - scroll.clientWidth, selectedMonth === months.length - 1 ? scroll.scrollWidth : last.getBoundingClientRect().right - scroll.getBoundingClientRect().left + scroll.scrollLeft - scroll.clientWidth));
-      stopScrollAnimation();
-      if (motionDisabled()) scroll.scrollLeft = left;
-      else {
-        const start = scroll.scrollLeft;
-        const easing = getComputedStyle(document.documentElement).getPropertyValue('--ease-out').trim();
-        const animation = animateMotion(scroll, [{}, {}], { duration: siteConfig.interactions.monthScrollMilliseconds, easing });
-        scrollAnimation = animation;
-        const advance = () => {
-          if (!animation || scrollAnimation !== animation) return;
-          if (motionDisabled() || animation.playState === 'finished') { scroll.scrollLeft = left; scrollAnimation = undefined; return; }
-          if (animation.playState === 'idle') { scrollAnimation = undefined; return; }
-          const progress = animation.effect?.getComputedTiming().progress || 0;
-          scroll.scrollLeft = start + (left - start) * progress;
-          requestAnimationFrame(advance);
-        };
-        requestAnimationFrame(advance);
-      }
-      updateMonth();
-    };
-    previous?.addEventListener('click', () => jumpMonth(selectedMonth - 1));
-    next?.addEventListener('click', () => jumpMonth(selectedMonth + 1));
-    panel.querySelector('[data-month-latest]')?.addEventListener('click', () => jumpMonth(months.length - 1));
-    scroll.addEventListener('keydown', (event) => {
-      if (event.key !== 'PageUp' && event.key !== 'PageDown') return;
-      event.preventDefault();
-      jumpMonth(selectedMonth + (event.key === 'PageUp' ? -1 : 1));
-      const first = cells.find((cell) => cell.dataset.date?.startsWith(months[selectedMonth]));
-      first?.focus({ preventScroll: true });
-    });
-    updateMonth();
   });
 
   const formatUsageNumber = (value: string | undefined) => Number(value || 0).toLocaleString('zh-CN');

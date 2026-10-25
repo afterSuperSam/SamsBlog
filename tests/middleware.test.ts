@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from 'vitest';
 const source = readFileSync(new URL('../src/middleware.ts', import.meta.url), 'utf8');
 const script = transpile(source, { module: ModuleKind.CommonJS });
 
-function createMiddleware(recordPageView = vi.fn()) {
+function createMiddleware(recordPageView = vi.fn(), siteUrl = 'https://blog.example.com') {
   const logger = { warn: vi.fn(), error: vi.fn() };
   const moduleExports: { onRequest?: (context: Record<string, unknown>, next: () => Promise<Response>) => Promise<Response> } = {};
   runInNewContext(script, {
@@ -16,19 +16,21 @@ function createMiddleware(recordPageView = vi.fn()) {
       if (name === 'node:crypto') return { randomUUID: () => '11111111-1111-4111-8111-111111111111' };
       if (name === './lib/stats') return { hashVisitorToken: () => 'anonymous-fingerprint', recordPageView };
       if (name === './lib/reply-notifications') return { scheduleReplyNotifications: vi.fn() };
+      if (name === './config/site') return { siteConfig: { siteUrl } };
       throw new Error(`Unexpected test import: ${name}`);
     },
     console: logger,
     Error,
+    URL,
   });
   return { onRequest: moduleExports.onRequest!, recordPageView, logger };
 }
 
-const requestContext = () => ({
-  request: new Request('https://blog.example.com/about', {
+const requestContext = (origin = 'https://blog.example.com') => ({
+  request: new Request(`${origin}/about`, {
     headers: { accept: 'text/html', 'user-agent': 'fixture-browser', 'sec-fetch-dest': 'document', 'x-real-ip': '198.51.100.100' },
   }),
-  url: new URL('https://blog.example.com/about'),
+  url: new URL(`${origin}/about`),
   cookies: { get: () => undefined, set: vi.fn() },
 });
 
@@ -74,5 +76,16 @@ describe('public page view statistics boundary', () => {
     expect(recordPageView).not.toHaveBeenCalled();
     expect(logger.warn).not.toHaveBeenCalled();
     expect(logger.error).not.toHaveBeenCalled();
+  });
+
+  it.each<[string, string, boolean]>([
+    ['https://blog.example.com', 'http://127.0.0.1:4321', true],
+    ['http://localhost:4321', 'http://localhost:4321', false],
+    ['http://localhost:4321', 'https://blog.example.com', true],
+  ])('sets Secure for trusted public HTTPS or actual HTTPS: %s via %s', async (siteUrl, requestOrigin, secure) => {
+    const { onRequest } = createMiddleware(vi.fn(), siteUrl);
+    const context = requestContext(requestOrigin);
+    await onRequest(context, async () => new Response('<html>fixture</html>', { headers: { 'Content-Type': 'text/html' } }));
+    expect(context.cookies.set).toHaveBeenCalledWith('samsblog-visitor', expect.any(String), expect.objectContaining({ secure, httpOnly: true, sameSite: 'lax' }));
   });
 });

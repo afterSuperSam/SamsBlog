@@ -22,13 +22,16 @@ export const siteConfig = {
   sponsorPresentation: { twoColumnMinimumCount: 6, avatarSizePixels: 64, avatarBaseUrl: 'https://minotar.net/helm/', avatarTimeoutMilliseconds: 4000, avatarPreloadMarginPixels: 240 },
   sponsorFields: { nameMaximumLength: 60, maximumAmount: 1000000 },
   articles: { homepageCount: 1, homepageNoteCount: 2, homepageLinkCount: 1, feedCount: 20, cardCount: 3, reorderMilliseconds: 420, maximumTags: 8, tagMaximumLength: 24, searchMaximumLength: 120, searchDelayMilliseconds: 180, searchRevealMilliseconds: 280, searchDismissMilliseconds: 180 },
-  articleReading: { positionStorageKey: 'sams-blog-reading-positions', preferenceStorageKey: 'sams-blog-reading-mode', positionLimit: 50, positionSaveMilliseconds: 1000, positionMinimumPixels: 240, imageZoomScale: 2, copyFeedbackMilliseconds: 1800, codeCollapsedLines: 16 },
+  articleReading: { positionStorageKey: 'sams-blog-reading-positions', preferenceStorageKey: 'sams-blog-reading-mode', fontPreferenceStorageKey: 'sams-blog-reading-font', positionLimit: 50, positionSaveMilliseconds: 1000, positionMinimumPixels: 240, imageZoomScale: 2, copyFeedbackMilliseconds: 1800, codeCollapsedLines: 16 },
   visitorProfile: { storageKey: 'sams-blog-visitor-profile', nicknameMaximumLength: 24, emailMaximumLength: 254 },
   readingExtras: { historyVisibleCount: 2, quoteMaximumCharacters: 450, quoteWidth: 1080, quoteWordmarkWidth: 210, quoteFontSize: 42, quoteLineHeight: 72, quotePadding: 88, quoteMinimumHeight: 720 },
-  interactions: { feedbackResizeMilliseconds: 260, themeRevealMilliseconds: 760, monthScrollMilliseconds: 360, keyboardInsetPixels: 18, requestTimeoutMilliseconds: 15000, tooltipDismissMilliseconds: 160, tooltipRevealMilliseconds: 180, receiptDurationMilliseconds: 1440 },
+  interactions: { feedbackResizeMilliseconds: 260, themeRevealMilliseconds: 760, keyboardInsetPixels: 18, requestTimeoutMilliseconds: 15000, tooltipDismissMilliseconds: 160, tooltipRevealMilliseconds: 180, receiptDurationMilliseconds: 1440 },
   projectPresentation: { initialVisibleCount: 4 },
   friendPresentation: { homepageCount: 6 },
-  friendApplications: { draftStorageKey: 'sams-blog-friend-application' },
+  friendApplications: {
+    draftStorageKey: 'sams-blog-friend-application', ownerName: 'SuperSam', iconUrl: '/media/brand/logo.jpg',
+    backgroundUrl: '/uploads/2dc4ab1565c204e969aaab5618e9354cc21fdb690cef6788d5c453d8fe132edb.webp',
+  },
   projectTerrain: {
     rows: 6, maximumColumns: 40, cellPixels: 60, mobileCellPixels: 48, mobileBreakpointPixels: 760,
     cameraElevationDegrees: 87, footprintRatio: 1.004, maximumHeight: 108,
@@ -56,6 +59,11 @@ export const siteConfig = {
 } as const;
 
 const rssUrl = new URL(siteConfig.rss.siteUrl);
+if (!siteConfig.friendApplications.ownerName.trim()
+  || ![siteConfig.friendApplications.iconUrl, siteConfig.friendApplications.backgroundUrl].every((value) => /^\/(?!\/)[\w./-]+$/.test(value)
+    && value.slice(1).split('/').every((segment) => segment !== '' && segment !== '.' && segment !== '..'))) {
+  throw new Error('Invalid friend application profile');
+}
 const sponsorAvatarUrl = new URL(siteConfig.sponsorPresentation.avatarBaseUrl);
 if (sponsorAvatarUrl.protocol !== 'https:' || sponsorAvatarUrl.username || sponsorAvatarUrl.password || sponsorAvatarUrl.search || sponsorAvatarUrl.hash
   || !Number.isSafeInteger(siteConfig.sponsorPresentation.twoColumnMinimumCount) || siteConfig.sponsorPresentation.twoColumnMinimumCount < 2
@@ -80,7 +88,7 @@ if (!Object.values(siteConfig.interactions).every((value) => Number.isSafeIntege
   || !Object.values(siteConfig.readingExtras).every((value) => Number.isSafeInteger(value) && value > 0)
   || ![siteConfig.articleReading.positionLimit, siteConfig.articleReading.positionSaveMilliseconds, siteConfig.articleReading.positionMinimumPixels, siteConfig.articleReading.imageZoomScale, siteConfig.articleReading.copyFeedbackMilliseconds, siteConfig.articleReading.codeCollapsedLines, siteConfig.visitorProfile.nicknameMaximumLength, siteConfig.visitorProfile.emailMaximumLength].every((value) => Number.isSafeInteger(value) && value > 0)
   || !siteConfig.visitorProfile.storageKey || !siteConfig.friendApplications.draftStorageKey
-  || !siteConfig.articleReading.positionStorageKey || !siteConfig.articleReading.preferenceStorageKey) {
+  || !siteConfig.articleReading.positionStorageKey || !siteConfig.articleReading.preferenceStorageKey || !siteConfig.articleReading.fontPreferenceStorageKey) {
   throw new Error('Invalid interaction configuration');
 }
 

@@ -11,6 +11,7 @@ export interface FriendRecord {
   backgroundUrl: string;
   rssUrl: string;
   visible: boolean;
+  starred: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -24,6 +25,7 @@ export interface FriendInput {
   backgroundUrl: string;
   rssUrl: string;
   visible: boolean;
+  starred?: boolean;
 }
 
 function mapFriend(row: Record<string, unknown>): FriendRecord {
@@ -36,6 +38,7 @@ function mapFriend(row: Record<string, unknown>): FriendRecord {
     backgroundUrl: String(row.background_url || ''),
     rssUrl: String(row.rss_url || ''),
     visible: Boolean(row.visible),
+    starred: Boolean(row.starred),
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
   };
@@ -60,6 +63,7 @@ export function parseFriendInput(body: Record<string, unknown>): FriendInput {
   if (body.rssUrl !== undefined && typeof body.rssUrl !== 'string') throw new HttpError(400, 'RSS 地址必须是文本');
   const rssUrl = typeof body.rssUrl === 'string' ? body.rssUrl.trim() : '';
   if (body.visible !== undefined && typeof body.visible !== 'boolean') throw new HttpError(400, '公开状态必须是布尔值');
+  if (body.starred !== undefined && typeof body.starred !== 'boolean') throw new HttpError(400, '星标状态必须是布尔值');
   if (name.length < 1 || name.length > 60) throw new HttpError(400, '名称需要 1 至 60 个字符');
   if (description.length < 1 || description.length > 240) throw new HttpError(400, '简介需要 1 至 240 个字符');
   return {
@@ -71,24 +75,31 @@ export function parseFriendInput(body: Record<string, unknown>): FriendInput {
     backgroundUrl: backgroundUrl ? normalizeWebUrl(backgroundUrl, '背景图片') : '',
     rssUrl: rssUrl ? normalizeWebUrl(rssUrl, 'RSS 地址') : '',
     visible: body.visible !== false,
+    starred: typeof body.starred === 'boolean' ? body.starred : undefined,
   };
 }
 
 export function listFriends(options: { includeHidden?: boolean } = {}) {
   const where = options.includeHidden ? 'WHERE deleted_at IS NULL' : 'WHERE visible = 1 AND deleted_at IS NULL';
-  return (getDatabase().prepare(`SELECT * FROM friends ${where} ORDER BY created_at ASC, id ASC`).all() as Record<string, unknown>[]).map(mapFriend);
+  return (getDatabase().prepare(`SELECT * FROM friends ${where} ORDER BY starred DESC, created_at ASC, id ASC`).all() as Record<string, unknown>[]).map(mapFriend);
 }
 
 export function saveFriend(input: FriendInput) {
   const now = new Date().toISOString();
-  const values = { ...input, visible: Number(input.visible), now };
+  const values = { ...input, visible: Number(input.visible), starred: input.starred === undefined ? null : Number(input.starred), now };
   if (input.id) {
     return getDatabase().prepare(`UPDATE friends SET name=@name,url=@url,description=@description,
-      icon_url=@iconUrl,background_url=@backgroundUrl,rss_url=@rssUrl,visible=@visible,updated_at=@now WHERE id=@id AND deleted_at IS NULL`).run(values).changes === 1;
+      icon_url=@iconUrl,background_url=@backgroundUrl,rss_url=@rssUrl,visible=@visible,starred=COALESCE(@starred,starred),updated_at=@now WHERE id=@id AND deleted_at IS NULL`).run(values).changes === 1;
   }
   return Number(getDatabase().prepare(`INSERT INTO friends
-    (name,url,description,icon_url,background_url,rss_url,visible,created_at,updated_at)
-    VALUES (@name,@url,@description,@iconUrl,@backgroundUrl,@rssUrl,@visible,@now,@now)`).run(values).lastInsertRowid);
+    (name,url,description,icon_url,background_url,rss_url,visible,starred,created_at,updated_at)
+    VALUES (@name,@url,@description,@iconUrl,@backgroundUrl,@rssUrl,@visible,COALESCE(@starred,0),@now,@now)`).run(values).lastInsertRowid);
+}
+
+export function setFriendStarred(id: number, starred: unknown) {
+  if (typeof starred !== 'boolean') throw new HttpError(400, '星标状态必须是布尔值');
+  return getDatabase().prepare('UPDATE friends SET starred = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL')
+    .run(Number(starred), new Date().toISOString(), id).changes === 1;
 }
 
 export function deleteFriend(id: number) {

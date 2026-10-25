@@ -1,4 +1,4 @@
-import { deleteArticle, listArticles, restoreArticle, withdrawArticle } from '../../../lib/articles';
+import { deleteArticle, listArticles, restoreArticle, setArticleStarred, withdrawArticle } from '../../../lib/articles';
 import { listArticleDrafts, saveArticleDraft, publishArticleDraft, deleteArticleDraft, restoreArticleDraft } from '../../../lib/article-drafts';
 import { adminRoute, HttpError, json, readJsonObject, readPositiveId, requireSameOrigin } from '../../../lib/http';
 
@@ -19,6 +19,7 @@ export const PATCH = adminRoute(async ({ request }) => {
   const id = readPositiveId(body.id);
   if (body.restore === true) return restoreArticle(id) ? json({ ok: true, id }) : json({ error: '已删除的文章不存在' }, 404);
   if (body.withdraw === true) return withdrawArticle(id) ? json({ ok: true, id }) : json({ error: '公开文章不存在' }, 404);
+  if (body.starred !== undefined) { setArticleStarred(id, body.starred); return json({ ok: true, id, starred: body.starred }); }
   throw new HttpError(400, '不支持的文章操作');
 });
 

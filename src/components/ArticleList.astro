@@ -120,7 +120,7 @@ const selectedFilters = filterGroups.slice(0, 4).map((group) => group.options.fi
   import { animateMotion, animateContentHeight, setFeedbackText } from '../lib/motion';
   import { siteConfig } from '../config/site';
   import { attachPaperCaret } from '../lib/paper-caret';
-  import { initializeInlineNotes } from '../lib/reading-extras';
+  import { initializeInlineContent } from '../lib/reading-extras';
   import { articleMonth, readArticleFilters, matchesArticle, compareArticles, articleFilterParameters, articleDateLabel, articleLinkHost, type CatalogArticle } from '../lib/article-catalog';
 
   document.querySelectorAll<HTMLButtonElement>('[data-link-shuffle]').forEach((button) => {
@@ -137,24 +137,33 @@ const selectedFilters = filterGroups.slice(0, 4).map((group) => group.options.fi
         if (!response.ok) throw new Error(`Featured link returned ${response.status}`);
         const { article } = await response.json();
         if (!article || String(article.id) === card.dataset.articleCard) { status.textContent = '暂时只有这一条精选链接'; return; }
-        const replacement = card.cloneNode(true) as HTMLElement;
-        replacement.dataset.articleCard = String(article.id);
-        replacement.querySelector<HTMLAnchorElement>('a')!.href = article.externalUrl;
-        replacement.querySelector('[data-card-title]')!.textContent = article.title;
-        replacement.querySelector('[data-card-excerpt]')!.textContent = article.excerpt;
-        replacement.querySelector('[data-card-host]')!.textContent = articleLinkHost(article.externalUrl);
-        replacement.querySelector('[data-card-source]')!.textContent = article.source === 'original' ? '原创' : '搬运';
-        replacement.querySelector('[data-card-category]')!.textContent = article.category === 'discussion' ? '杂谈' : '日志';
-        const date = replacement.querySelector<HTMLTimeElement>('[data-card-date]')!;
-        date.dateTime = article.createdAt; date.textContent = articleDateLabel(article.createdAt);
-        replacement.querySelector('[data-card-tags]')?.remove();
-        if (article.tags.length) {
-          const tags = document.createElement('div'); tags.className = 'article-keywords'; tags.dataset.cardTags = '';
-          tags.replaceChildren(...article.tags.map((tag: string) => { const span = document.createElement('span'); span.textContent = `# ${tag}`; return span; }));
-          replacement.querySelector('footer')!.before(tags);
-        }
-        animateContentHeight(card.parentElement!, () => card.replaceWith(replacement));
-        animateMotion(replacement, [{ opacity: 0, translate: '0 8px' }, { opacity: 1, translate: '0 0' }], { duration: siteConfig.articles.reorderMilliseconds, easing: getComputedStyle(document.documentElement).getPropertyValue('--ease-out').trim() });
+        animateContentHeight(card.parentElement!, () => {
+          card.dataset.articleCard = String(article.id);
+          const title = card.querySelector('[data-card-title]')!;
+          title.classList.toggle('article-title--starred', article.starred);
+          const destination = title.querySelector<HTMLAnchorElement>('[data-card-title-link]')!;
+          destination.href = article.externalUrl; destination.textContent = article.title;
+          card.querySelector('[data-card-excerpt]')!.textContent = article.excerpt;
+          card.querySelector('[data-note-prose]')!.innerHTML = article.html;
+          const content = card.querySelector<HTMLElement>('[data-note-content]')!;
+          content.id = `article-note-${article.id}`;
+          const toggle = card.querySelector<HTMLButtonElement>('[data-note-toggle]')!;
+          toggle.dataset.requestedExpanded = 'false'; toggle.setAttribute('aria-controls', content.id);
+          card.querySelector<HTMLAnchorElement>('[data-note-fallback]')!.href = `/articles/${article.id}`;
+          card.querySelector('[data-card-host]')!.textContent = articleLinkHost(article.externalUrl);
+          card.querySelector('[data-card-source]')!.textContent = article.source === 'original' ? '原创' : '搬运';
+          card.querySelector('[data-card-category]')!.textContent = article.category === 'discussion' ? '杂谈' : '日志';
+          const date = card.querySelector<HTMLTimeElement>('[data-card-date]')!;
+          date.dateTime = article.createdAt; date.textContent = articleDateLabel(article.createdAt);
+          card.querySelector('[data-card-tags]')?.remove();
+          if (article.tags.length) {
+            const tags = document.createElement('div'); tags.className = 'article-keywords'; tags.dataset.cardTags = '';
+            tags.replaceChildren(...article.tags.map((tag: string) => { const span = document.createElement('span'); span.textContent = `# ${tag}`; return span; }));
+            card.querySelector('footer')!.before(tags);
+          }
+          initializeInlineContent(card);
+        });
+        animateMotion(card, [{ opacity: 0, translate: '0 8px' }, { opacity: 1, translate: '0 0' }], { duration: siteConfig.articles.reorderMilliseconds, easing: getComputedStyle(document.documentElement).getPropertyValue('--ease-out').trim() });
         status.textContent = `已换为：${article.title}`;
       } catch (error) { console.warn('Featured link switch failed', error); status.textContent = '暂时无法换一条，请稍后重试'; }
       finally { button.disabled = false; setFeedbackText(label, '换一条'); }
@@ -312,7 +321,7 @@ const selectedFilters = filterGroups.slice(0, 4).map((group) => group.options.fi
       const viewChanged = grid.dataset.view !== values.view;
       grid.dataset.view = values.view;
       grid.append(fragment);
-      if (viewChanged) initializeInlineNotes(grid);
+      if (viewChanged) initializeInlineContent(grid);
       empty.hidden = count > 0;
       setFeedbackText(result, `共 ${count} 条内容`);
       links.forEach((link) => {

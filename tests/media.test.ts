@@ -10,6 +10,7 @@ import { changeMediaVisibility, getMedia, listMedia, mediaResponse, saveMedia } 
 import { GET, POST, PATCH, DELETE } from '../src/pages/api/admin/media.json';
 import { GET as getRss } from '../src/pages/rss.xml';
 import { serverConfig } from '../src/config/server';
+import { siteConfig } from '../src/config/site';
 import { renderMarkdown } from '../src/lib/markdown';
 
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6u1sAAAAASUVORK5CYII=', 'base64');
@@ -119,5 +120,13 @@ describe('authenticated image storage and media management', () => {
     changeMediaVisibility(media.id, false);
     expect(() => saveArticle({ title: '已删媒体尖括号引用', content: `![图片](<${media.url}>)`, source: 'original', category: 'journal' })).toThrow('已删除或不存在');
     expect(() => saveArticle({ title: '已删媒体编码引用', content, source: 'original', category: 'journal' })).toThrow('已删除或不存在');
+  });
+
+  it('keeps the homepage background available while the friend application links to it', async () => {
+    const filename = siteConfig.friendApplications.backgroundUrl.split('/').pop()!;
+    const inserted = getDatabase().prepare('INSERT INTO blog_media(filename,original_name,mime_type,byte_size,created_at) VALUES (?,?,?,?,?)')
+      .run(filename, '本站背景.webp', 'image/webp', 1, new Date().toISOString());
+    expect((await mutation(DELETE, 'DELETE', { id: Number(inserted.lastInsertRowid) })).status).toBe(409);
+    expect(getMedia(filename)?.deletedAt).toBeNull();
   });
 });

@@ -1,8 +1,24 @@
 import { describe, expect, it } from 'vitest';
-import { parseReadingHistory, getReadingTrail } from '../src/lib/reading-history';
+import { parseReadingHistory, getReadingTrail, measureReadingChapters } from '../src/lib/reading-history';
 import { siteConfig } from '../src/config/site';
 
 const record = { version: 'v1', progress: .4, heading: 'article-heading-test', offset: 20, updatedAt: 1 };
+
+describe('chapter reading progress', () => {
+  it('includes nested sections in their parent length and measures each section independently', () => {
+    const progress = measureReadingChapters([{ top: 0, level: 2 }, { top: 200, level: 3 }, { top: 600, level: 2 }], 800, 300);
+    expect(progress).toEqual([
+      { lengthRatio: 1, progress: .5 },
+      { lengthRatio: 2 / 3, progress: .25 },
+      { lengthRatio: 1 / 3, progress: 0 },
+    ]);
+  });
+  it('handles empty content and coincident headings without invalid progress', () => {
+    expect(measureReadingChapters([], 0, 0)).toEqual([]);
+    expect(measureReadingChapters([{ top: 100, level: 2 }, { top: 100, level: 2 }], 100, 0).every((chapter) => chapter.progress === 0)).toBe(true);
+    expect(measureReadingChapters([{ top: 100, level: 2 }], 200, 300)[0].progress).toBe(1);
+  });
+});
 
 describe('local reading trail', () => {
   it('preserves older positions and rejects corrupt or unsafe records', () => {

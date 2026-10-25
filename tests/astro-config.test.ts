@@ -1,5 +1,7 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { runInNewContext } from 'node:vm';
+import { ModuleKind, transpile } from 'typescript';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -67,5 +69,22 @@ describe('production Astro configuration', () => {
 
   it('rejects an insecure production origin', () => {
     expect(() => readBuildSite({}, 'http://blog.example.com')).toThrow('PUBLIC_SITE_URL must use HTTPS for production builds');
+  });
+});
+
+describe('public friend profile image configuration', () => {
+  const source = readFileSync(new URL('../src/config/site.ts', import.meta.url), 'utf8')
+    .replace('import.meta.env.PUBLIC_SITE_URL', JSON.stringify('https://blog.example.com'))
+    .replace('const rssUrl = new URL(siteConfig.rss.siteUrl);', 'Object.assign(siteConfig.friendApplications, profileOverrides);\nconst rssUrl = new URL(siteConfig.rss.siteUrl);');
+  const script = transpile(source, { module: ModuleKind.CommonJS });
+  const readProfile = (profileOverrides: Record<string, string>) => runInNewContext(script, { exports: {}, URL, profileOverrides });
+
+  it('accepts the configured static and uploaded image paths with dots inside filenames', () => {
+    expect(() => readProfile({})).not.toThrow();
+    expect(() => readProfile({ iconUrl: '/media/brand/logo.v2.jpg', backgroundUrl: '/uploads/fixture.webp' })).not.toThrow();
+  });
+
+  it.each(['/media/../admin', '/uploads/../../admin', '/media/./logo.jpg', '/media//logo.jpg', '/media/logo.jpg/', '//other.example/logo.jpg', '/media/%2e%2e/logo.jpg', '/media/logo.jpg?private=1', '/media/logo.jpg#private', '/media\\logo.jpg'])('rejects noncanonical public image path %s', (pathname) => {
+    for (const field of ['iconUrl', 'backgroundUrl']) expect(() => readProfile({ [field]: pathname })).toThrow('Invalid friend application profile');
   });
 });

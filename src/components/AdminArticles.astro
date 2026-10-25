@@ -9,6 +9,7 @@ import ThemeSelect from './ThemeSelect.astro';
 import ArticleCard from './ArticleCard.astro';
 import { articleCardLayouts, articleContentTypes } from '../lib/article-catalog';
 import '../styles/articles.css';
+import '../styles/article-reading.css';
 import '../styles/admin-articles.css';
 
 const articles = listArticles({ includeDeleted: true, includeDrafts: true });
@@ -95,8 +96,8 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
     <h3>全部内容 · {active.length} 条</h3>
     {active.length === 0 && <p class="admin-empty">还没有内容，从上方开始写吧。</p>}
     {active.map((article) => <article class="article-management-item">
-      <div><h4>{article.publicationStatus === 'published' ? <a href={`/articles/${article.id}`}>{article.title}</a> : article.title}</h4><p>{articleContentTypes.find((type) => type.value === article.contentType)?.label} · {article.source === 'original' ? '原创' : '搬运'} · {article.category === 'discussion' ? '杂谈' : '日志'}</p>{article.tags.length > 0 && <div class="article-keywords">{article.tags.map((tag) => <span># {tag}</span>)}</div>}<small>创建 {dateLabel(article.createdAt)} · 编辑 {dateLabel(article.updatedAt)}</small></div>
-      <div class="article-management-actions"><span class="admin-publication-status">{article.publicationStatus === 'draft' ? '草稿' : '已公开'}{drafts.some((draft) => draft.articleId === article.id) ? ' · 有未发布修改' : ''}</span><button type="button" data-edit-article data-article={JSON.stringify(article)} data-draft={JSON.stringify(drafts.find((draft) => draft.articleId === article.id) || null)}>编辑</button>{article.publicationStatus === 'published' && <button type="button" data-withdraw-article={article.id}>撤回草稿</button>}<button type="button" data-remove-article={article.id}>删除</button></div>
+      <div><h4 class:list={{ 'article-title--starred': article.starred }}>{article.publicationStatus === 'published' ? <a href={`/articles/${article.id}`}>{article.title}</a> : article.title}</h4><p>{articleContentTypes.find((type) => type.value === article.contentType)?.label} · {article.source === 'original' ? '原创' : '搬运'} · {article.category === 'discussion' ? '杂谈' : '日志'}</p>{article.tags.length > 0 && <div class="article-keywords">{article.tags.map((tag) => <span># {tag}</span>)}</div>}<small>创建 {dateLabel(article.createdAt)} · 编辑 {dateLabel(article.updatedAt)}</small></div>
+      <div class="article-management-actions"><span class="admin-publication-status">{article.publicationStatus === 'draft' ? '草稿' : '已公开'}{drafts.some((draft) => draft.articleId === article.id) ? ' · 有未发布修改' : ''}</span><button type="button" class="article-star-toggle" data-star-article={article.id} aria-pressed={article.starred} aria-label={`${article.starred ? '取消' : '添加'}星标：${article.title}`}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.8 5.8 6.4.9-4.6 4.5 1.1 6.3-5.7-3-5.7 3 1.1-6.3L2.8 9.7l6.4-.9Z" /></svg>星标</button><button type="button" data-edit-article data-article={JSON.stringify(article)} data-draft={JSON.stringify(drafts.find((draft) => draft.articleId === article.id) || null)}>编辑</button>{article.publicationStatus === 'published' && <button type="button" data-withdraw-article={article.id}>撤回草稿</button>}<button type="button" data-remove-article={article.id}>删除</button></div>
     </article>)}
   </div>
   <details class="article-management-deleted"><summary>已删除 · {deleted.length + deletedDrafts.length} 条</summary>
@@ -143,6 +144,7 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
     const externalUrl = editor.elements.namedItem('externalUrl') as HTMLInputElement;
     const updateArticlePreview = createArticlePreview(editor);
     let articleDates = { createdAt: '', updatedAt: '' };
+    let articleStarred = false;
     const feedback = editor.querySelector<HTMLElement>('[data-article-feedback]')!;
     const heading = editor.querySelector<HTMLElement>('[data-editor-heading]')!;
     const dates = editor.querySelector<HTMLElement>('[data-editor-dates]')!;
@@ -205,7 +207,7 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
       editor.querySelector<HTMLElement>('[data-external-field]')!.hidden = contentType.value !== 'link';
       editor.querySelector<HTMLElement>('[data-article-layout]')!.hidden = contentType.value !== 'article';
       externalUrl.required = contentType.value === 'link';
-      updateArticlePreview({ title: title.value, content: content.value, summary: manualSummary.value, coverUrl: cover.value,
+      updateArticlePreview({ title: title.value, content: content.value, summary: manualSummary.value, coverUrl: cover.value, starred: articleStarred,
         source: source.value as ArticleRecord['source'], category: category.value as ArticleRecord['category'],
         cardLayout: cardLayout.value as ArticleRecord['cardLayout'], contentType: contentType.value as ArticleRecord['contentType'], externalUrl: externalUrl.value, tags,
         originalAuthor: originalAuthor.value, originalUrl: originalUrl.value, ...articleDates });
@@ -235,6 +237,7 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
       id.value = '';
       draftId = crypto.randomUUID(); revision = 0; savedPayload = ''; clearTimeout(autosaveTimer);
       articleDates = { createdAt: '', updatedAt: '' };
+      articleStarred = false;
       tags = [];
       renderTags();
       heading.textContent = '写点内容';
@@ -249,6 +252,7 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
       if (!await mayDiscard() || root.getAttribute('aria-busy') === 'true') return;
       const draft = JSON.parse(button.dataset.draft || 'null') as ArticleDraft | null;
       const article = { ...JSON.parse(button.dataset.article || '{}'), ...draft?.payload } as ArticleRecord;
+      articleStarred = article.starred === true;
       draftId = draft?.draftId || crypto.randomUUID(); revision = draft?.revision || 0; clearTimeout(autosaveTimer);
       id.value = article.id ? String(article.id) : '';
       title.value = article.title;
@@ -372,6 +376,26 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
       void perform(feedback, async () => { await saveDraft(); await request('POST', { action: 'publish', draftId, revision }); }, true);
     });
     editor.querySelector<HTMLButtonElement>('button[type="submit"]')?.removeAttribute('disabled');
+    root.querySelectorAll<HTMLButtonElement>('[data-star-article]').forEach((button) => button.addEventListener('click', async () => {
+      if (button.disabled || root.getAttribute('aria-busy') === 'true') return;
+      const starred = button.getAttribute('aria-pressed') !== 'true';
+      button.disabled = true;
+      try {
+        await request('PATCH', { id: Number(button.dataset.starArticle), starred });
+        button.setAttribute('aria-pressed', String(starred));
+        const item = button.closest<HTMLElement>('.article-management-item')!;
+        const title = item.querySelector('h4')!;
+        title.classList.toggle('article-title--starred', starred);
+        button.setAttribute('aria-label', `${starred ? '取消' : '添加'}星标：${title.textContent}`);
+        const edit = item.querySelector<HTMLButtonElement>('[data-edit-article]')!;
+        edit.dataset.article = JSON.stringify({ ...JSON.parse(edit.dataset.article!), starred });
+        listFeedback.dataset.state = 'success';
+        listFeedback.textContent = starred ? '已添加星标' : '已取消星标';
+      } catch (error) {
+        listFeedback.dataset.state = 'error';
+        listFeedback.textContent = error instanceof Error ? error.message : '星标保存失败，请重试';
+      } finally { button.disabled = false; }
+    }));
     root.querySelectorAll<HTMLButtonElement>('[data-withdraw-article]').forEach((button) => button.addEventListener('click', async () => {
       if (!await confirmAdminAction('撤回后将从首页、搜索和 RSS 中隐藏，已有评论会保留。', '撤回草稿')) return;
       void perform(listFeedback, () => request('PATCH', { id: Number(button.dataset.withdrawArticle), withdraw: true }));

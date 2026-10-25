@@ -1,6 +1,30 @@
+---
+import { siteConfig } from '../config/site';
+const publicAddress = (pathname: string) => new URL(pathname, siteConfig.rss.siteUrl).href;
+const information = [
+  { label: '网站名称', value: siteConfig.name },
+  { label: '站长', value: siteConfig.friendApplications.ownerName },
+  { label: '一句话介绍', value: siteConfig.rss.description },
+  { label: '网站地址', value: siteConfig.rss.siteUrl },
+  { label: '头像地址', value: publicAddress(siteConfig.friendApplications.iconUrl) },
+  { label: '背景地址', value: publicAddress(siteConfig.friendApplications.backgroundUrl) },
+  { label: 'RSS 地址', value: publicAddress('/rss.xml') },
+  { label: '联系邮箱', value: `${siteConfig.social.qq}@qq.com` },
+];
+const allInformation = information.map(({ label, value }) => `${label}：${value}`).join('\n');
+---
 <button type="button" class="friends-more" data-friend-apply>申请友链 <span aria-hidden="true">＋</span></button>
 <dialog class="friend-application-dialog" data-friend-application aria-label="申请友链">
   <div class="friend-application-content">
+  <section class="friend-site-sheet" aria-labelledby="friend-site-title">
+    <header><h2 id="friend-site-title">本站信息</h2><button type="button" class="copy-feedback" data-site-copy={allInformation} data-copy-name="全部信息"><span data-copy-label>复制全部</span></button></header>
+    <div class="friend-site-layout">
+      <figure class="friend-site-preview"><a href={siteConfig.friendApplications.backgroundUrl} target="_blank" rel="noopener noreferrer" aria-label="打开本站友链背景原图"><img src={siteConfig.friendApplications.backgroundUrl} alt="SamsBlog 首页背景，夏日插画与蓝白手写字标" width="1600" height="872" loading="lazy" decoding="async" /></a><figcaption>首页背景 · 点击查看原图</figcaption></figure>
+      <dl class="friend-site-details">{information.map(({ label, value }) => <div><dt>{label}</dt><dd><span class="friend-site-value">{value}</span><button type="button" class="copy-feedback" data-site-copy={value} data-copy-name={label} aria-label={`复制${label}`}><span data-copy-label>复制</span></button></dd></div>)}</dl>
+    </div>
+    <p class="sr-only" role="status" data-site-copy-status></p>
+    <textarea class="friend-site-manual" data-site-copy-manual aria-label="手动复制本站信息" readonly hidden></textarea>
+  </section>
   <p class="friend-application-intro">友链申请可能需要一些时间，请先将本站添加到您的友链页面，确认后会添加您的友链</p>
   <dl class="friend-application-guidelines">
     <div><dt>链接维护</dt><dd>友链网站长期无法访问或内容违规，将会被移除</dd></div>
@@ -32,6 +56,29 @@
     const feedback = form.querySelector<HTMLElement>('[data-friend-apply-feedback]')!;
     const fields = [...form.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('.paper-input-label :is(input,textarea)')];
     const refreshCarets = fields.map(attachPaperCaret);
+    dialog.querySelectorAll<HTMLButtonElement>('[data-site-copy]').forEach((button) => {
+      const label = button.querySelector<HTMLElement>('[data-copy-label]')!;
+      const originalLabel = label.textContent!;
+      const status = dialog.querySelector<HTMLElement>('[data-site-copy-status]')!;
+      const manual = dialog.querySelector<HTMLTextAreaElement>('[data-site-copy-manual]')!;
+      let timer: ReturnType<typeof setTimeout>;
+      button.addEventListener('click', async () => {
+        if (button.disabled) return;
+        clearTimeout(timer); button.disabled = true;
+        try {
+          await navigator.clipboard.writeText(button.dataset.siteCopy!);
+          button.dataset.copyState = 'success'; label.textContent = '已复制';
+          status.textContent = `${button.dataset.copyName}复制成功`; manual.hidden = true;
+        } catch {
+          button.dataset.copyState = 'error'; label.textContent = '手动复制';
+          status.textContent = '浏览器未允许复制，请复制下方已选中的内容。';
+          manual.value = button.dataset.siteCopy!; manual.hidden = false; manual.focus(); manual.select();
+        } finally {
+          button.disabled = false;
+          timer = setTimeout(() => { delete button.dataset.copyState; label.textContent = originalLabel; }, siteConfig.articleReading.copyFeedbackMilliseconds);
+        }
+      });
+    });
     const draftKey = siteConfig.friendApplications.draftStorageKey;
     const saveDraft = () => {
       const draft = Object.fromEntries(fields.map((field) => [field.name, field.value]));
@@ -57,6 +104,8 @@
     opener.addEventListener('click', () => {
       if (dialog.open) return;
       dialog.showModal(); refreshCarets.forEach((refresh) => refresh());
+      dialog.querySelector<HTMLButtonElement>('[data-copy-name="全部信息"]')!.focus({ preventScroll: true });
+      dialog.querySelector('.friend-application-content')!.scrollTop = 0;
       animateMotion(dialog, [{ opacity: 0, translate: '0 20px', scale: '.96', filter: 'blur(9px)' }, { opacity: 1, translate: '0 0', scale: '1', filter: 'blur(0)' }], { duration: duration('--motion-reorder-duration'), easing });
     });
     const close = async () => {

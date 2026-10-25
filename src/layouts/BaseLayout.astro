@@ -31,7 +31,7 @@ const sharingImage = image || '/media/anime/hero/1719656915755.webp';
 ---
 
 <!doctype html>
-<html lang="zh-CN" data-theme="dark" data-page-routes={JSON.stringify(siteConfig.nav.map((item) => item.href))}>
+<html lang="zh-CN" data-theme="dark" data-reading-font-storage-key={articleMetadata ? siteConfig.articleReading.fontPreferenceStorageKey : undefined}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -74,7 +74,7 @@ const sharingImage = image || '/media/anime/hero/1719656915755.webp';
     <script>
       import { animateMotion as animate, createCharacters, animateCharacters } from '../lib/motion';
       import { createTooltip } from '../lib/tooltip';
-      // 返回链接走原历史记录，使封面落回原筛选结果及滚动位置。
+      // 返回链接走原历史记录，保留文章列表的筛选结果及滚动位置。
       const pageNavigation = (window as Window & { navigation?: { currentEntry?: { key: string }; entries(): { key: string }[]; traverseTo(key: string): unknown } }).navigation;
       try {
         const restore = JSON.parse(sessionStorage.getItem('article-list-return') || 'null');
@@ -191,11 +191,18 @@ const sharingImage = image || '/media/anime/hero/1719656915755.webp';
 
       const progress = document.querySelector<HTMLElement>('[data-reading-progress]');
       if (progress) {
+        const prose = document.querySelector<HTMLElement>('[data-article-prose]');
         let progressFrame = 0;
         const updateProgress = () => {
           progressFrame = 0;
           const distance = document.documentElement.scrollHeight - window.innerHeight;
-          progress.style.setProperty('--reading-progress', String(distance > 0 ? window.scrollY / distance : 1));
+          let fraction = distance > 0 ? window.scrollY / distance : 1;
+          if (prose) {
+            const bounds = prose.getBoundingClientRect();
+            const offset = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--header-height')) + 24;
+            fraction = Math.max(0, Math.min(1, (offset - bounds.top) / Math.max(1, bounds.height - window.innerHeight + offset)));
+          }
+          progress.style.setProperty('--reading-progress', String(fraction));
         };
         const scheduleProgress = () => {
           if (!progressFrame) progressFrame = requestAnimationFrame(updateProgress);
@@ -203,9 +210,10 @@ const sharingImage = image || '/media/anime/hero/1719656915755.webp';
         progress.hidden = false;
         window.addEventListener('scroll', scheduleProgress, { passive: true });
         window.addEventListener('resize', scheduleProgress);
+        if (prose) new ResizeObserver(scheduleProgress).observe(prose);
         updateProgress();
       }
-      // 区块渐入共用一次性观察；历史返回直接显示，避免干扰封面转场。
+      // 区块渐入共用一次性观察；历史返回直接显示，避免重复播放入场动效。
       const revealMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
       const revealIsDisabled = () => revealMotion.matches || document.documentElement.classList.contains('motion-paused');
       const revealConfiguration = document.body.dataset.revealConfig;

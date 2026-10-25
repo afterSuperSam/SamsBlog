@@ -1,6 +1,6 @@
 import { siteConfig } from '../config/site';
 import { motionDisabled } from './motion';
-import { readReadingHistory, saveReadingHistory, type ReadingPosition } from './reading-history';
+import { readReadingHistory, saveReadingHistory, measureReadingChapters, type ReadingPosition } from './reading-history';
 import { initializeReadingExtras } from './reading-extras';
 
 const root = document.querySelector<HTMLElement>('[data-article-reading]');
@@ -10,6 +10,7 @@ if (root && prose) {
   const configuration = siteConfig.articleReading;
   const status = root.querySelector<HTMLElement>('[data-reading-status]')!;
   const mode = root.querySelector<HTMLButtonElement>('[data-reading-mode]')!;
+  const font = root.querySelector<HTMLButtonElement>('[data-reading-font]')!;
   const resume = root.querySelector<HTMLButtonElement>('[data-reading-resume]')!;
   root.querySelector<HTMLElement>('[data-reading-tools]')!.hidden = false;
   const applyMode = (enabled: boolean) => {
@@ -24,6 +25,18 @@ if (root && prose) {
     applyMode(enabled);
     try { localStorage.setItem(configuration.preferenceStorageKey, String(enabled)); }
     catch (error) { console.warn('Reading preference save failed', error); status.textContent = '本机无法保存设置，本次切换仍然有效。'; }
+  });
+  const applyFont = (enabled: boolean) => {
+    document.documentElement.dataset.articleFont = enabled ? 'default' : 'handwritten';
+    font.setAttribute('aria-pressed', String(enabled));
+    font.textContent = enabled ? '恢复艺术字体' : '使用默认字体';
+  };
+  applyFont(document.documentElement.dataset.articleFont === 'default');
+  font.addEventListener('click', () => {
+    const enabled = font.getAttribute('aria-pressed') !== 'true';
+    applyFont(enabled);
+    try { localStorage.setItem(configuration.fontPreferenceStorageKey, enabled ? 'default' : 'handwritten'); }
+    catch (error) { console.warn('Reading font preference save failed', error); status.textContent = '本机无法保存字体设置，本次切换仍然有效。'; }
   });
 
   // 位置只在读者主动选择后恢复，不接管目录锚点或浏览器返回滚动。
@@ -53,6 +66,64 @@ if (root && prose) {
     status.textContent = '已回到上次阅读位置。';
   });
   prose.tabIndex = -1;
+  // 桌面目录停留在正文旁，手机仍用原来的折叠入口与唯一标题锚点。
+  const toc = root.querySelector<HTMLDetailsElement>('.article-toc');
+  const tocNavigation = toc?.querySelector<HTMLElement>('nav');
+  const chapters = [...toc?.querySelectorAll<HTMLAnchorElement>('a[href^="#"]') || []].flatMap((link) => {
+    const heading = document.getElementById(link.getAttribute('href')!.slice(1));
+    return heading && prose.contains(heading) ? [{ link, heading }] : [];
+  });
+  let tocFrame = 0;
+  let tocSidebar: boolean | undefined;
+  let currentChapter: HTMLAnchorElement | undefined;
+  const updateToc = () => {
+    tocFrame = 0;
+    if (!toc || !tocNavigation) return;
+    const sidebar = getComputedStyle(toc).position === 'sticky';
+    if (sidebar !== tocSidebar) { tocSidebar = sidebar; toc.open = sidebar; }
+    const offset = headerOffset();
+    const positions = chapters.map(({ heading }) => ({ top: heading.getBoundingClientRect().top, level: Number(heading.tagName.slice(1)) }));
+    const measurements = measureReadingChapters(positions, prose.getBoundingClientRect().bottom, offset);
+    const current = chapters[positions.findLastIndex(({ top }) => top <= offset + 1)] || chapters[0];
+    chapters.forEach(({ link }, index) => {
+      if (link === current?.link) link.setAttribute('aria-current', 'location');
+      else link.removeAttribute('aria-current');
+      link.style.setProperty('--chapter-length', String(measurements[index].lengthRatio));
+      link.style.setProperty('--chapter-progress', `${measurements[index].progress * 100}%`);
+      link.setAttribute('aria-description', `章节进度 ${Math.round(measurements[index].progress * 100)}%，下方横线长度表示章节篇幅`);
+    });
+    if (!current || !toc.open) return;
+    if (currentChapter !== current.link && sidebar && !toc.matches(':hover') && !toc.contains(document.activeElement)) {
+      const viewport = tocNavigation.getBoundingClientRect();
+      const item = current.link.getBoundingClientRect();
+      if (item.top < viewport.top) tocNavigation.scrollTop -= viewport.top - item.top;
+      else if (item.bottom > viewport.bottom) tocNavigation.scrollTop += item.bottom - viewport.bottom;
+    }
+    currentChapter = current.link;
+    tocNavigation.style.setProperty('--toc-active-top', `${current.link.offsetTop}px`);
+    tocNavigation.style.setProperty('--toc-active-height', `${current.link.offsetHeight}px`);
+  };
+  const scheduleToc = () => { if (toc && !tocFrame) tocFrame = requestAnimationFrame(updateToc); };
+  toc?.querySelector('summary')?.addEventListener('click', (event) => { if (tocSidebar) event.preventDefault(); });
+  toc?.addEventListener('toggle', scheduleToc);
+  chapters.forEach(({ link, heading }) => link.addEventListener('click', (event) => {
+    if (event.button || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
+    event.preventDefault();
+    if (!tocSidebar && toc) toc.open = false;
+    if (location.hash !== link.hash) history.pushState(history.state, '', link.hash);
+    heading.scrollIntoView({ block: 'start', behavior: motionDisabled() ? 'instant' : 'smooth' });
+    heading.tabIndex = -1;
+    heading.focus({ preventScroll: true });
+    scheduleToc();
+  }));
+  if (toc) {
+    const observer = new ResizeObserver(scheduleToc);
+    observer.observe(prose); observer.observe(toc);
+    window.addEventListener('resize', scheduleToc);
+    window.addEventListener('pageshow', scheduleToc);
+    void document.fonts.ready.then(scheduleToc);
+    updateToc();
+  }
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
   let moved = false;
   const savePosition = () => {
@@ -74,6 +145,7 @@ if (root && prose) {
   };
   window.addEventListener('scroll', () => {
     moved = true;
+    scheduleToc();
     if (!saveTimer) saveTimer = setTimeout(savePosition, configuration.positionSaveMilliseconds);
   }, { passive: true });
   window.addEventListener('pagehide', savePosition);

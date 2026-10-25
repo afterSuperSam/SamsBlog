@@ -22,6 +22,7 @@ export interface ArticleRecord {
   tags: string[];
   content: string;
   summary: string;
+  starred: boolean;
   publicationStatus: 'draft' | 'published';
   createdAt: string;
   updatedAt: string;
@@ -35,7 +36,7 @@ function mapArticle(row: Record<string, unknown>): ArticleRecord {
     contentType: row.content_type as ArticleContentType, externalUrl: String(row.external_url),
     source: row.source as ArticleRecord['source'], category: row.category as ArticleRecord['category'],
     originalAuthor: String(row.original_author || ''), originalUrl: String(row.original_url || ''),
-    tags: JSON.parse(String(row.tags)),
+    tags: JSON.parse(String(row.tags)), starred: row.starred === 1,
     content: String(row.content), summary: String(row.summary || ''), publicationStatus: row.publication_status as ArticleRecord['publicationStatus'], createdAt: String(row.created_at), updatedAt: String(row.updated_at),
     deletedAt: row.deleted_at === null ? null : String(row.deleted_at),
   };
@@ -200,6 +201,14 @@ export function saveArticle(input: unknown): number {
   }
   return Number(getDatabase().prepare(`INSERT INTO blog_articles (title,cover_url,source,original_author,original_url,category,tags,card_layout,content_type,external_url,content,summary,created_at,updated_at)
     VALUES (@title,@coverUrl,@source,@originalAuthor,@originalUrl,@category,COALESCE(@tags,'[]'),COALESCE(@cardLayout,'left'),@contentType,@externalUrl,@content,@summary,@now,@now)`).run(values).lastInsertRowid);
+}
+
+// 星标仅改变展示，不改正文、草稿或文章编辑时间。
+export function setArticleStarred(id: number, starred: unknown) {
+  if (typeof starred !== 'boolean') throw new HttpError(400, '星标状态必须为开启或关闭');
+  const result = getDatabase().prepare('UPDATE blog_articles SET starred = ? WHERE id = ? AND deleted_at IS NULL')
+    .run(Number(starred), readPositiveId(id));
+  if (!result.changes) throw new HttpError(404, '文章不存在或已删除');
 }
 
 export function withdrawArticle(id: number) {

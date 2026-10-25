@@ -53,6 +53,13 @@ const constellationSlots = Array.from({ length: siteConfig.effects.constellation
 </style>
 
 <script>
+  // 先读取视口，绘制只使用缓存，避免样式写入后反复触发布局读取。
+  const viewport = { width: window.innerWidth, height: window.innerHeight, scrollY: window.scrollY };
+  const readViewport = () => {
+    viewport.width = window.innerWidth;
+    viewport.height = window.innerHeight;
+    viewport.scrollY = window.scrollY;
+  };
   // 通过 CSSOM 设置粒子定位，避免生产 CSP 拦截内联 style 属性
   document.querySelectorAll<HTMLElement>('.ambient-mote').forEach((particle, index) => {
     particle.style.setProperty('--mote-left', `${particle.dataset.moteLeft}%`);
@@ -71,7 +78,8 @@ const constellationSlots = Array.from({ length: siteConfig.effects.constellation
   };
   const compactViewport = matchMedia('(max-width: 720px)');
   const points = [...document.querySelectorAll<HTMLElement>('.ambient-mote')].map((element, index) => ({
-    element, index, x: Number(element.dataset.moteLeft), y: Number(element.dataset.moteTop),
+    index, x: Number(element.dataset.moteLeft), y: Number(element.dataset.moteTop),
+    desktopOnly: element.classList.contains('ambient-mote--desktop'),
   }));
   const constellationAnimations = new Map<SVGSVGElement, Animation>();
   let constellationTimer = 0;
@@ -80,13 +88,13 @@ const constellationSlots = Array.from({ length: siteConfig.effects.constellation
   const constellationIsDisabled = () => document.documentElement.classList.contains('motion-paused');
   // 随机抽取相邻点，限制节点数量、连接距离与分叉密度。
   const drawConstellation = (layer: SVGSVGElement) => {
-    const visiblePoints = points.filter((point) => getComputedStyle(point.element).display !== 'none');
+    const visiblePoints = compactViewport.matches ? points.filter((point) => !point.desktopOnly) : points;
     const lineCount = compactViewport.matches ? constellationConfiguration.mobileLineCount : constellationConfiguration.desktopLineCount;
     const pointCount = compactViewport.matches ? constellationConfiguration.mobilePointCount : constellationConfiguration.desktopPointCount;
-    const maximumDistance = Math.hypot(window.innerWidth, window.innerHeight) * constellationConfiguration.maximumDistanceRatio;
+    const maximumDistance = Math.hypot(viewport.width, viewport.height) * constellationConfiguration.maximumDistanceRatio;
     const candidates: { first: typeof points[number]; second: typeof points[number] }[] = [];
     visiblePoints.forEach((first, index) => visiblePoints.slice(index + 1).forEach((second) => {
-      const distance = Math.hypot((first.x - second.x) * window.innerWidth / 100, (first.y - second.y) * window.innerHeight / 100);
+      const distance = Math.hypot((first.x - second.x) * viewport.width / 100, (first.y - second.y) * viewport.height / 100);
       if (distance <= maximumDistance) candidates.push({ first, second });
     }));
     for (let index = candidates.length - 1; index > 0; index--) {
@@ -139,26 +147,39 @@ const constellationSlots = Array.from({ length: siteConfig.effects.constellation
     constellationTimer = 0;
     constellationAnimations.forEach((animation) => animation.cancel());
     constellationAnimations.clear();
+    if (document.hidden) return;
     if (activeLayer < 0) {
       activeLayer = 0;
       drawConstellation(constellationLayers[activeLayer]);
     }
     constellationLayers.forEach((layer, index) => { layer.style.opacity = index === activeLayer ? '1' : '0'; });
-    if (!document.hidden && !constellationIsDisabled()) refreshConstellations();
+    if (!constellationIsDisabled()) refreshConstellations();
   };
   const updateConstellationScroll = () => {
     scrollFrame = 0;
     if (document.hidden) return;
-    const progress = window.scrollY / (window.innerHeight * constellationConfiguration.scrollPeriodScreens);
+    const progress = viewport.scrollY / (viewport.height * constellationConfiguration.scrollPeriodScreens);
     const visibility = constellationIsDisabled() ? .3 : .55 + .45 * Math.sin(progress * Math.PI) ** 2;
     ambientScene!.style.setProperty('--constellation-scroll-opacity', String(visibility));
   };
   const scheduleConstellationScroll = () => {
+    if (document.hidden || constellationIsDisabled()) return;
     if (!scrollFrame) scrollFrame = requestAnimationFrame(updateConstellationScroll);
   };
-  window.addEventListener('scroll', scheduleConstellationScroll, { passive: true });
-  window.addEventListener('resize', scheduleConstellationScroll);
-  compactViewport.addEventListener('change', syncConstellations);
+  window.addEventListener('scroll', () => {
+    if (document.hidden) return;
+    viewport.scrollY = window.scrollY;
+    scheduleConstellationScroll();
+  }, { passive: true });
+  window.addEventListener('resize', () => {
+    if (document.hidden) return;
+    readViewport();
+    scheduleConstellationScroll();
+  });
+  compactViewport.addEventListener('change', () => {
+    if (!document.hidden) readViewport();
+    syncConstellations();
+  });
   let paused = false;
   const readMotionPreference = () => {
     try { paused = localStorage.getItem('samsblog-motion') === 'paused'; }
@@ -168,6 +189,10 @@ const constellationSlots = Array.from({ length: siteConfig.effects.constellation
   const syncMotion = () => {
     const disabled = paused || reducedMotion.matches;
     document.documentElement.classList.toggle('motion-paused', disabled);
+    if (disabled) {
+      cancelAnimationFrame(scrollFrame);
+      scrollFrame = 0;
+    }
     syncConstellations();
     updateConstellationScroll();
     if (!motionButton) return;
@@ -177,6 +202,7 @@ const constellationSlots = Array.from({ length: siteConfig.effects.constellation
     const actionLabel = motionButton.querySelector('[data-motion-action-label]');
     if (actionLabel) actionLabel.textContent = reducedMotion.matches ? '减少动效' : paused ? '开启动效' : '关闭动效';
   };
+  document.documentElement.classList.toggle('page-hidden', document.hidden);
   syncMotion();
   reducedMotion.addEventListener('change', syncMotion);
   motionButton?.addEventListener('click', () => {
@@ -186,16 +212,19 @@ const constellationSlots = Array.from({ length: siteConfig.effects.constellation
     syncMotion();
   });
   const syncVisibility = () => {
+    if (!document.hidden) readViewport();
     document.documentElement.classList.toggle('page-hidden', document.hidden);
-    if (!document.hidden) updateConstellationScroll();
+    if (document.hidden) {
+      cancelAnimationFrame(scrollFrame);
+      scrollFrame = 0;
+    } else updateConstellationScroll();
   };
   document.addEventListener('visibilitychange', () => { syncVisibility(); syncConstellations(); });
-  syncVisibility();
   window.addEventListener('pageshow', (event) => {
     if (!event.persisted) return;
     readMotionPreference();
-    syncMotion();
     syncVisibility();
+    syncMotion();
   });
   // 点击才生成短暂火花，动画结束即移除，不保持空转渲染循环
   document.addEventListener('click', (event) => {

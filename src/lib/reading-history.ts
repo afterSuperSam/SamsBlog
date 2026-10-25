@@ -5,6 +5,17 @@ export interface ReadingPosition {
   title?: string; visitedAt?: number;
 }
 
+// 章节长度包含其子标题，按实际排版高度计算占比与阅读进度。
+export function measureReadingChapters(headings: readonly { top: number; level: number }[], contentEnd: number, readingLine: number) {
+  const lengths = headings.map((heading, index) => Math.max(1,
+    (headings.slice(index + 1).find((next) => next.level <= heading.level)?.top ?? contentEnd) - heading.top));
+  const maximum = Math.max(1, ...lengths);
+  return headings.map((heading, index) => ({
+    lengthRatio: lengths[index] / maximum,
+    progress: Math.max(0, Math.min(1, (readingLine - heading.top) / lengths[index])),
+  }));
+}
+
 // 阅读路径和断点共用一个本机存储，兼容没有标题的旧断点。
 export function parseReadingHistory(raw: string | null): Record<string, ReadingPosition> {
   if (!raw) return {};

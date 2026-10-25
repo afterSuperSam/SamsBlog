@@ -3,7 +3,7 @@ import { articleExcerpt, renderArticleMarkdown, renderMarkdown } from './markdow
 import { animateMotion } from './motion';
 import { siteConfig } from '../config/site';
 import { articleContentTypes, articleDateLabel, articleLinkHost } from './article-catalog';
-import { initializeExplanations, initializeInlineNotes } from './reading-extras';
+import { initializeExplanations, initializeInlineContent } from './reading-extras';
 
 type PreviewArticle = Omit<ArticleRecord, 'id' | 'deletedAt' | 'publicationStatus'>;
 
@@ -36,7 +36,6 @@ export function createArticlePreview(editor: HTMLFormElement) {
     failedCoverUrl = image.src;
     cover.hidden = true;
     cardCover.hidden = true;
-    card.classList.remove('article-card--cover');
   }));
   const setDate = (element: HTMLTimeElement, value: string, compact = false) => {
     element.textContent = articleDateLabel(value, compact);
@@ -65,6 +64,7 @@ export function createArticlePreview(editor: HTMLFormElement) {
     else externalLink.removeAttribute('href');
     reading.querySelector<HTMLElement>('[data-preview-title]')!.textContent = article.title || '文章题目';
     card.querySelector<HTMLElement>('[data-card-title]')!.textContent = article.title || '文章题目';
+    shell.querySelectorAll('[data-preview-title],[data-card-title]').forEach((title) => title.classList.toggle('article-title--starred', article.starred));
     shell.querySelectorAll<HTMLElement>('[data-preview-source],[data-card-source]').forEach((element) => { element.textContent = article.source === 'original' ? '原创' : '搬运'; });
     shell.querySelectorAll<HTMLElement>('[data-preview-category],[data-card-category]').forEach((element) => { element.textContent = article.category === 'discussion' ? '杂谈' : '日志'; });
     shell.querySelectorAll<HTMLElement>('[data-preview-tags],[data-card-tags]').forEach((container) => {
@@ -105,6 +105,7 @@ export function createArticlePreview(editor: HTMLFormElement) {
       toc.querySelector('ol')!.replaceChildren(...rendered.headings.map((heading) => {
         const item = document.createElement('li');
         item.dataset.level = String(heading.level);
+        item.dataset.depth = String(Math.min(2, heading.level - Math.min(...rendered.headings.map((entry) => entry.level))));
         const link = document.createElement('a');
         link.href = '#article-preview-' + heading.id;
         link.textContent = heading.text;
@@ -115,16 +116,17 @@ export function createArticlePreview(editor: HTMLFormElement) {
       renderedContent = article.content;
     }
     card.querySelector<HTMLElement>('[data-card-excerpt]')!.textContent = article.summary.trim() || excerpt || '正文的前两行摘要会显示在这里。';
-    initializeInlineNotes(card);
+    initializeInlineContent(card);
     const imageUrl = publicUrl(article.coverUrl, true);
     const showImage = Boolean(imageUrl) && imageUrl !== failedCoverUrl;
+    const usesCoverLayout = Boolean(imageUrl) && article.cardLayout !== 'text' && article.contentType === 'article';
     images.forEach((image) => {
       if (imageUrl && image.getAttribute('src') !== imageUrl) image.src = imageUrl;
       else if (!imageUrl) image.removeAttribute('src');
     });
     cover.hidden = !showImage;
     card.dataset.imageSide = article.cardLayout;
-    cardCover.hidden = !showImage || article.cardLayout === 'text' || article.contentType !== 'article';
-    card.classList.toggle('article-card--cover', !cardCover.hidden);
+    cardCover.hidden = !showImage || !usesCoverLayout;
+    card.classList.toggle('article-card--cover', usesCoverLayout);
   };
 }

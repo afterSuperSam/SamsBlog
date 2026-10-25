@@ -88,6 +88,7 @@ export function changeMediaVisibility(id: number, restore: boolean) {
     const row = database.prepare(`${select} WHERE id = ?`).get(id) as MediaRecord | undefined;
     if (!row) throw new HttpError(404, '图片不存在');
     if (!restore) {
+      if (siteConfig.friendApplications.backgroundUrl === `/uploads/${row.filename}`) throw new HttpError(409, '图片仍被友链申请页引用，请先更换本站背景图');
       const articles = database.prepare('SELECT content,cover_url AS coverUrl FROM blog_articles').all() as Array<{ content: string; coverUrl: string }>;
       const used = articles.some((article) => article.content.includes(`/uploads/${row.filename}`) || article.coverUrl.includes(`/uploads/${row.filename}`)
         || referencedMediaFilenames(article.content, article.coverUrl).has(row.filename));

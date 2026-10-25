@@ -1,8 +1,8 @@
 import { siteConfig } from '../config/site';
 import { animateContentHeight, animateMotion } from './motion';
 
-// 短记录与编辑器卡片共用展开状态，正文仍走安全 Markdown 渲染。
-export function initializeInlineNotes(container: ParentNode) {
+// 短记录、外链说明与编辑器卡片共用展开状态，正文仍走安全 Markdown 渲染。
+export function initializeInlineContent(container: ParentNode) {
   container.querySelectorAll<HTMLButtonElement>('[data-note-toggle]').forEach((button) => {
     const card = button.closest<HTMLElement>('.article-card')!;
     const content = card.querySelector<HTMLElement>('[data-note-content]')!;
@@ -11,7 +11,7 @@ export function initializeInlineNotes(container: ParentNode) {
     const setExpanded = (expanded: boolean) => {
       button.setAttribute('aria-expanded', String(expanded));
       button.textContent = expanded ? '收起' : '展开';
-      button.setAttribute('aria-label', `${button.textContent}短记录：${card.querySelector('[data-card-title]')!.textContent}`);
+      button.setAttribute('aria-label', `${button.textContent}${card.dataset.contentType === 'link' ? '链接说明' : '短记录'}：${card.querySelector('[data-card-title]')!.textContent}`);
       card.dataset.noteExpanded = String(expanded);
       excerpt.hidden = expanded;
       prose.hidden = !expanded;
@@ -19,7 +19,7 @@ export function initializeInlineNotes(container: ParentNode) {
     const fallback = card.querySelector<HTMLElement>('[data-note-fallback]');
     if (fallback) fallback.hidden = true;
     const refresh = () => {
-      const enabled = card.dataset.contentType === 'note';
+      const enabled = card.dataset.contentType === 'note' || card.dataset.contentType === 'link';
       const requested = button.dataset.requestedExpanded === 'true';
       // 内容能完整放进摘要时直接展示；结构复杂或有手写摘要的记录仍可展开。
       prose.hidden = false;

@@ -146,7 +146,9 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
           </AdminDrawer>
           <div class="admin-friend-list">
             {friends.map((friend) => (
-              <div class="admin-record-row"><div><b>{friend.name}</b><p>{friend.description}</p></div><button type="button" data-drawer-open={`friend-${friend.id}`}>编辑</button>
+              <div class="admin-record-row" data-friend-row={friend.id} data-friend-starred={friend.starred} data-friend-created={friend.createdAt}>
+              <div><b>{friend.name}</b><p>{friend.description}</p><p class="form-status" role="status" data-admin-feedback></p></div>
+              <div class="admin-friend-actions"><button type="button" class="article-star-toggle" data-star-friend={friend.id} aria-pressed={friend.starred} aria-label={`${friend.starred ? '取消' : '添加'}星标：${friend.name}`}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.8 5.8 6.4.9-4.6 4.5 1.1 6.3-5.7-3-5.7 3 1.1-6.3L2.8 9.7l6.4-.9Z" /></svg>星标</button><button type="button" data-drawer-open={`friend-${friend.id}`}>编辑</button></div>
               <AdminDrawer id={`friend-${friend.id}`} title={`编辑 ${friend.name}`}>
               <form method="post" novalidate class="admin-friend-card" data-friend-id={friend.id}>
                 <span class="admin-friend-card__icon"><b>{friend.name.slice(0, 1)}</b><img src={friend.iconUrl} alt="" loading="lazy" referrerpolicy="no-referrer" /></span>
@@ -380,6 +382,26 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
     }, true);
   });
   friendImport?.querySelector<HTMLButtonElement>('button[type="submit"]')?.removeAttribute('disabled');
+  document.querySelectorAll<HTMLButtonElement>('[data-star-friend]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const row = button.closest<HTMLElement>('[data-friend-row]')!;
+      const list = row.parentElement!;
+      const starred = button.getAttribute('aria-pressed') !== 'true';
+      const restoreFocus = document.activeElement === button;
+      await runAdminAction(row, async () => {
+        await sendAdminRequest('/api/admin/friends.json', 'PATCH', { id: Number(button.dataset.starFriend), action: 'star', starred });
+        button.setAttribute('aria-pressed', String(starred));
+        button.setAttribute('aria-label', `${starred ? '取消' : '添加'}星标：${row.querySelector('b')?.textContent || ''}`);
+        row.dataset.friendStarred = String(starred);
+        const rows = [...list.querySelectorAll<HTMLElement>('[data-friend-row]')];
+        rows.sort((first, second) => Number(second.dataset.friendStarred === 'true') - Number(first.dataset.friendStarred === 'true')
+          || first.dataset.friendCreated!.localeCompare(second.dataset.friendCreated!) || Number(first.dataset.friendRow) - Number(second.dataset.friendRow));
+        list.append(...rows);
+        return starred ? '已添加星标，友链已置顶。' : '已取消星标。';
+      });
+      if (restoreFocus) button.focus({ preventScroll: true });
+    });
+  });
   document.querySelectorAll<HTMLFormElement>('[data-friend-id]').forEach((form) => {
     const id = Number(form.dataset.friendId);
     form.addEventListener('submit', (event) => {

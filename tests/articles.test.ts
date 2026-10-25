@@ -15,6 +15,7 @@ import { getProjectSettings, getProjectCommit, saveProjectSettings } from '../sr
 import { PUT as saveProjects } from '../src/pages/api/admin/projects.json';
 import { GET as getRss } from '../src/pages/rss.xml';
 import { GET as getSiteCard } from '../src/pages/api/public/site-card.json';
+import { GET as getFeaturedLink } from '../src/pages/api/public/featured-link.json';
 import { listArticleDrafts, saveArticleDraft, publishArticleDraft, deleteArticleDraft, restoreArticleDraft } from '../src/lib/article-drafts';
 import { searchArticleIds, withdrawArticle } from '../src/lib/articles';
 
@@ -56,6 +57,76 @@ describe('article persistence and authenticated management', () => {
       deleteArticle(last);
       expect(getNextFeaturedLink(first)?.id).toBe(first);
     } finally { [first, removed, last].forEach(deleteArticle); }
+  });
+
+  it('stars content independently of publication, dates and unpublished edits', async () => {
+    const id = saveArticle(input);
+    const initial = getArticle(id)!;
+    const draft = saveArticleDraft({ ...initial, title: '未发布修改', draftId: randomUUID(), revision: 0 });
+    try {
+      expect(initial.starred).toBe(false);
+      for (let attempt = 0; attempt < 2; attempt++) expect((await call(PATCH, 'PATCH', { id, starred: true })).status).toBe(200);
+      expect(getArticle(id)).toEqual({ ...initial, starred: true });
+      expect(listArticleDrafts().find((item) => item.draftId === draft.draftId)).toEqual(draft);
+      publishArticleDraft(draft);
+      expect(getArticle(id)).toMatchObject({ title: '未发布修改', starred: true });
+      withdrawArticle(id);
+      expect((await call(PATCH, 'PATCH', { id, starred: false })).status).toBe(200);
+      expect(getArticle(id)).toBeUndefined();
+      expect(getArticle(id, { includeDrafts: true })).toMatchObject({ starred: false, publicationStatus: 'draft' });
+    } finally { deleteArticle(id); }
+  });
+
+  it('guards star updates and preserves them through deletion and restoration', async () => {
+    const id = saveArticle(input);
+    try {
+      expect((await call(PATCH, 'PATCH', { id, starred: true }, false)).status).toBe(401);
+      expect((await call(PATCH, 'PATCH', { id, starred: true }, true, { origin: 'https://untrusted.example' })).status).toBe(403);
+      for (const starred of ['true', 1, null, {}]) expect((await call(PATCH, 'PATCH', { id, starred })).status).toBe(400);
+      expect(getArticle(id)?.starred).toBe(false);
+      expect((await call(PATCH, 'PATCH', { id, starred: true })).status).toBe(200);
+      deleteArticle(id);
+      expect((await call(PATCH, 'PATCH', { id, starred: false })).status).toBe(404);
+      restoreArticle(id);
+      expect(getArticle(id)?.starred).toBe(true);
+      expect(() => getDatabase().prepare('UPDATE blog_articles SET starred = 2 WHERE id = ?').run(id)).toThrow();
+    } finally { deleteArticle(id); }
+  });
+
+  it('returns complete sanitized explanations and star state when shuffling external links', async () => {
+    const explanation = '需要完整保留的长链接说明。'.repeat(100);
+    const id = saveArticle({ ...input, contentType: 'link', externalUrl: 'https://example.com', content: `第一段\n\n第二段 [引用](https://example.com/read)\n\n${explanation}\n\n<script>alert(1)</script>\n\n[危险](javascript:alert(1))` });
+    try {
+      await call(PATCH, 'PATCH', { id, starred: true });
+      const response = await getFeaturedLink({ url: new URL('https://blog.example.com/api/public/featured-link.json?after=999999') } as APIContext) as Response;
+      const { article } = await response.json();
+      expect(article).toMatchObject({ id, starred: true });
+      expect(article.html).toContain('<p>第二段');
+      expect(article.html).toContain(explanation);
+      expect(article.html).toContain('href="https://example.com/read"');
+      expect(article.html).not.toContain('<script>');
+      expect(article.html).not.toContain('href="javascript:');
+      expect(response.headers.get('Cache-Control')).toBe('no-store');
+      expect(response.headers.has('Access-Control-Allow-Origin')).toBe(false);
+    } finally { deleteArticle(id); }
+  });
+
+  it('shuffles only published undeleted external links and does not expose private explanations', async () => {
+    const identifiers = [
+      saveArticle({ ...input, contentType: 'link', externalUrl: 'https://public.example/', content: '公开外链的说明' }),
+      saveArticle({ ...input, contentType: 'link', externalUrl: 'https://deleted.example/', content: '已删外链的私有标记' }),
+      saveArticle({ ...input, contentType: 'link', externalUrl: 'https://draft.example/', content: '撤回外链的私有标记' }),
+      saveArticle({ ...input, contentType: 'article', content: '长文章不会混入精选外链' }),
+    ];
+    try {
+      deleteArticle(identifiers[1]);
+      withdrawArticle(identifiers[2]);
+      const response = await getFeaturedLink({ url: new URL(`https://blog.example.com/api/public/featured-link.json?after=${identifiers[2]}`) } as APIContext) as Response;
+      const serialized = await response.text();
+      expect(JSON.parse(serialized).article).toMatchObject({ id: identifiers[0], externalUrl: 'https://public.example/' });
+      expect(serialized).not.toContain('私有标记');
+      expect(serialized).not.toContain('长文章不会混入');
+    } finally { identifiers.forEach((id) => deleteArticle(id)); }
   });
   it.each(['article', 'note', 'link', 'update'])('preserves the %s content type and destination through older clients, deletion and restoration', (contentType) => {
     const externalUrl = contentType === 'link' ? 'https://example.com/read?chapter=1&part=2' : '';

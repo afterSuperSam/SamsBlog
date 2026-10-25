@@ -2,8 +2,10 @@ import { randomUUID } from 'node:crypto';
 import { defineMiddleware } from 'astro:middleware';
 import { hashVisitorToken, recordPageView } from './lib/stats';
 import { scheduleReplyNotifications } from './lib/reply-notifications';
+import { siteConfig } from './config/site';
 
 const visitorCookie = 'samsblog-visitor';
+const securePublicSite = new URL(siteConfig.siteUrl).protocol === 'https:';
 const botPattern = /bot|crawler|spider|slurp|preview|monitor|uptime/i;
 let notificationWorkerStarted = false;
 
@@ -22,7 +24,7 @@ export const onRequest = defineMiddleware(async ({ cookies, request, url }, next
     cookies.set(visitorCookie, token, {
       httpOnly: true,
       sameSite: 'lax',
-      secure: url.protocol === 'https:',
+      secure: securePublicSite || url.protocol === 'https:',
       path: '/',
       maxAge: 60 * 60 * 24 * 365,
     });

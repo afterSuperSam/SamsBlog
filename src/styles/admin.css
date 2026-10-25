@@ -93,3 +93,12 @@
 .admin-data-table{overflow-x:auto;scrollbar-width:none}.admin-data-table table{width:100%;border-collapse:collapse;font:inherit}.admin-data-table :is(th,td){padding:14px 10px;text-align:left}.admin-data-table th{color:var(--muted);font-weight:400}.admin-data-table tr+tr{border-top:1px solid var(--line)}
 @media(hover:hover) and (pointer:fine){.admin-navigation a:hover,.admin-overview-grid>a:hover{color:var(--summer-blue);background:color-mix(in srgb,var(--summer-blue) 7%,var(--surface))}.admin-record-row button:hover{color:var(--summer-pink)}}
 @media(max-width:760px){.admin-workspace{grid-template-columns:minmax(0,1fr);gap:24px}.admin-navigation{position:static;display:flex;flex-wrap:wrap;gap:2px}.admin-navigation a{padding:8px 12px}.admin-drawer,.admin-drawer--wide{width:100vw;border-radius:0}.admin-drawer__header{padding-block:14px}.admin-overview-grid{gap:12px}.admin-overview-grid>a{padding:20px 14px}.admin-message-summary>p{flex-basis:100%}.admin-record-row{gap:10px}.article-management-item{align-items:start;gap:16px;flex-wrap:wrap}}
+
+/* 内容与友链共用轻量星标操作。 */
+:is(.article-management-actions,.admin-friend-actions) .article-star-toggle{display:inline-flex;align-items:center;gap:7px;color:var(--muted);transition:color var(--motion-feedback-duration) var(--ease-out)}
+.article-star-toggle svg{width:19px;height:19px;fill:transparent;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;transition:fill var(--motion-feedback-duration) var(--ease-out),transform var(--motion-feedback-duration) var(--ease-out)}
+:is(.article-management-actions,.admin-friend-actions) .article-star-toggle[aria-pressed="true"]{color:var(--article-star-color)}
+.article-star-toggle[aria-pressed="true"] svg{fill:color-mix(in srgb,currentColor 22%,transparent);transform:rotate(-8deg)}
+.article-star-toggle:focus-visible{outline:2px solid var(--article-star-color);outline-offset:2px;border-radius:8px}
+.article-star-toggle:disabled{opacity:.5;cursor:wait}
+@media(hover:hover) and (pointer:fine){:is(.article-management-actions,.admin-friend-actions) .article-star-toggle:hover{color:var(--article-star-color)}}

@@ -329,6 +329,14 @@ export function getDatabase() {
         DROP TABLE reply_notifications;`);
         connection.prepare('INSERT INTO schema_migrations (id,applied_at) VALUES (?,?)').run('20261025-mail-notification-outbox', new Date().toISOString());
       }
+      if (!appliedMigrations.has('20261025-article-starred')) {
+        connection.exec('ALTER TABLE blog_articles ADD COLUMN starred INTEGER NOT NULL DEFAULT 0 CHECK(starred IN (0,1))');
+        connection.prepare('INSERT INTO schema_migrations (id,applied_at) VALUES (?,?)').run('20261025-article-starred', new Date().toISOString());
+      }
+      if (!appliedMigrations.has('20261025-friend-starred')) {
+        connection.exec('ALTER TABLE friends ADD COLUMN starred INTEGER NOT NULL DEFAULT 0 CHECK(starred IN (0,1))');
+        connection.prepare('INSERT INTO schema_migrations (id,applied_at) VALUES (?,?)').run('20261025-friend-starred', new Date().toISOString());
+      }
       connection.exec('CREATE UNIQUE INDEX IF NOT EXISTS friends_active_url_idx ON friends(url) WHERE deleted_at IS NULL');
       connection.exec('CREATE INDEX IF NOT EXISTS blog_articles_type_created_idx ON blog_articles(content_type, created_at DESC, id DESC) WHERE deleted_at IS NULL');
       connection.exec('CREATE INDEX IF NOT EXISTS friends_public_idx ON friends(visible, created_at ASC)');

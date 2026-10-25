@@ -76,7 +76,8 @@ const gptTokenUsage = buildTokenUsageCalendar(new Map<string, TokenUsage>([
   ['2026-10-21', { cacheHit: 99560448, cacheMiss: 3548701, output: 412332 }],
   ['2026-10-22', { cacheHit: 144335360, cacheMiss: 3946487, output: 496262 }],
   ['2026-10-23', { cacheHit: 252651264, cacheMiss: 6406873, output: 1201421 }],
-  ['2026-10-24', { cacheHit: 144476288, cacheMiss: 2352311, output: 543238 }],
+  ['2026-10-24', { cacheHit: 496765184, cacheMiss: 7109072, output: 1871602 }],
+  ['2026-10-25', { cacheHit: 208319744, cacheMiss: 4362043, output: 936860 }],
 ]));
 ---
 
@@ -121,7 +122,7 @@ const gptTokenUsage = buildTokenUsageCalendar(new Map<string, TokenUsage>([
       </header>
       <div class="contribution-panels">
         <ContributionGraph title="GitHub 提交" eyebrow="CODE" calendar={githubContributions} href={siteConfig.social.github} inlineTotal latestContribution={latestContribution} />
-        <ContributionGraph title="ChatGPT 用量" eyebrow="TOKENS" calendar={gptTokenUsage} unit="Token" period="CCswitch 记录 · 2026-10-24（当日未完）" showUsage inlineTotal />
+        <ContributionGraph title="ChatGPT 用量" eyebrow="TOKENS" calendar={gptTokenUsage} unit="Token" period="CCswitch 记录 · 2026-10-25（当日未完）" showUsage inlineTotal />
         <ContributionGraph title="文章数量" eyebrow="ARTICLES" calendar={publicationCalendar} unit="篇" period="累计文章 · 近一年分布" inlineTotal />
       </div>
     </div>

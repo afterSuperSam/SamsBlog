@@ -7,9 +7,13 @@ const messages = listPublishedMessages(60, articleId);
 const dateLabel = (date: string) => new Date(date).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 ---
 <section class="article-discussion" id="comments" data-article-discussion data-article-id={articleId} aria-labelledby="comments-title">
-  <div class="article-reactions" role="group" aria-label="对文章表态">{[{ value: 'like', label: '喜欢', icon: '♡' }, { value: 'helpful', label: '有帮助', icon: '✓' }, { value: 'inspired', label: '有启发', icon: '↗' }].map((reaction) => <button type="button" data-reaction={reaction.value} aria-pressed="false" disabled><span aria-hidden="true">{reaction.icon}</span>{reaction.label}<b data-reaction-count></b></button>)}</div>
-  <p class="form-status" data-reaction-feedback role="status"></p>
-  <header><span class="section-kicker">COMMENTS</span><h2 id="comments-title">留下几句话</h2></header>
+  <header class="article-discussion__heading">
+    <div><span class="section-kicker">COMMENTS</span><h2 id="comments-title">留下几句话</h2></div>
+    <div class="article-discussion__actions">
+      <div class="article-reactions" role="group" aria-label="对文章表态">{[{ value: 'like', label: '喜欢', icon: '♡' }, { value: 'helpful', label: '有帮助', icon: '✓' }, { value: 'inspired', label: '有启发', icon: '↗' }].map((reaction) => <button type="button" data-reaction={reaction.value} aria-pressed="false" disabled><span aria-hidden="true">{reaction.icon}</span>{reaction.label}<b data-reaction-count></b></button>)}</div>
+      <p class="form-status" data-reaction-feedback role="status"></p>
+    </div>
+  </header>
   <form method="post" class="article-comment-form" data-article-comment novalidate>
     <div class="article-comment-form__heading"><span data-comment-target>写给这篇文章</span><button type="button" data-cancel-comment-reply hidden>取消回复</button></div>
     <label><span>怎么称呼</span><input name="nickname" minlength="2" maxlength="48" required autocomplete="off" /></label>

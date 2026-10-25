@@ -6,12 +6,13 @@ import type { APIContext, APIRoute } from 'astro';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { parseGithubContributions } from '../src/lib/contributions';
 import { serverConfig } from '../src/config/server';
-import { deleteFriend, listFriends, parseFriendInput, saveFriend } from '../src/lib/friends';
+import { deleteFriend, listFriends, parseFriendInput, saveFriend, setFriendStarred } from '../src/lib/friends';
 import { getSiteStats, hashVisitorToken, recordPageView } from '../src/lib/stats';
 import { createMessage, createAdminReply, deleteMessage, getDatabase, listAllMessages, listPublishedMessages, updateMessageStatus } from '../src/lib/db';
 import { createAdminSession } from '../src/lib/admin-auth';
 import { POST as postPublicMessage } from '../src/pages/api/guestbook/messages.json';
 import { POST as postAdminReply } from '../src/pages/api/admin/messages.json';
+import { PATCH as patchFriend } from '../src/pages/api/admin/friends.json';
 
 beforeAll(async () => {
   const dataDirectory = await mkdtemp(path.join(tmpdir(), 'samsblog-content-'));
@@ -82,6 +83,50 @@ describe('SQLite content management', () => {
     expect(listFriends({ includeHidden: true }).some((friend) => friend.id === id)).toBe(false);
     expect(getDatabase().prepare('SELECT deleted_at FROM friends WHERE id = ?').get(id)).toMatchObject({ deleted_at: expect.any(String) });
     expect(saveFriend(input)).toBeGreaterThan(id);
+  });
+
+  it('keeps starred friends first and preserves the original creation order within each group', () => {
+    const database = getDatabase();
+    const existing = listFriends()[0];
+    expect(existing.starred).toBe(false);
+    expect(database.prepare("SELECT id FROM schema_migrations WHERE id='20261025-friend-starred'").get()).toBeTruthy();
+    const ids = Array.from({ length: 4 }, (_, index) => Number(saveFriend(parseFriendInput({
+      name: `排序友链${index}`, url: `https://sort-${index}.example.com`, description: '星标排序验证', iconUrl: 'https://example.com/icon.png',
+    }))));
+    ids.forEach((id, index) => database.prepare('UPDATE friends SET created_at=? WHERE id=?').run(`2026-01-0${index + 1}T00:00:00.000Z`, id));
+    const ordered = () => listFriends().filter((friend) => ids.includes(friend.id)).map((friend) => friend.id);
+    expect(setFriendStarred(ids[3], true)).toBe(true);
+    expect(setFriendStarred(ids[1], true)).toBe(true);
+    expect(ordered()).toEqual([ids[1], ids[3], ids[0], ids[2]]);
+    const starred = listFriends().find((friend) => friend.id === ids[1])!;
+    const { starred: ignored, ...ordinaryEdit } = starred;
+    expect(saveFriend(parseFriendInput({ ...ordinaryEdit, name: '修改名称不清除星标' }))).toBe(true);
+    expect(listFriends().find((friend) => friend.id === ids[1])).toMatchObject({ starred: true, createdAt: '2026-01-02T00:00:00.000Z' });
+    setFriendStarred(ids[1], false);
+    expect(ordered()).toEqual([ids[3], ids[0], ids[1], ids[2]]);
+    expect(() => database.prepare('UPDATE friends SET starred=2 WHERE id=?').run(ids[0])).toThrow();
+    ids.forEach(deleteFriend);
+  });
+
+  it('validates star updates and never exposes hidden or deleted starred friends', async () => {
+    const input = parseFriendInput({ name: '星标边界', url: 'https://star-boundary.example.com', description: '边界验证', iconUrl: 'https://example.com/icon.png', visible: false });
+    const id = Number(saveFriend(input));
+    const request = (starred: unknown, authorized = true, origin = 'https://blog.example.com') => patchFriend({
+      request: new Request('https://blog.example.com/api/admin/friends.json', { method: 'PATCH', headers: { 'content-type': 'application/json', origin }, body: JSON.stringify({ id, action: 'star', starred }) }),
+      clientAddress: '203.0.113.170', cookies: { get: () => authorized ? { value: createAdminSession() } : undefined },
+    } as unknown as APIContext) as Promise<Response>;
+    expect((await request(true, false)).status).toBe(401);
+    expect((await request(true, true, 'https://other.example')).status).toBe(403);
+    for (const value of ['true', 1, null]) {
+      expect(() => parseFriendInput({ ...input, starred: value })).toThrow('布尔值');
+      expect((await request(value)).status).toBe(400);
+    }
+    expect((await request(true)).status).toBe(200);
+    expect(listFriends().some((friend) => friend.id === id)).toBe(false);
+    expect(listFriends({ includeHidden: true }).find((friend) => friend.id === id)?.starred).toBe(true);
+    deleteFriend(id);
+    expect((await request(false)).status).toBe(404);
+    expect(setFriendStarred(id, false)).toBe(false);
   });
 
   it('rejects incomplete HTTP addresses in every friend URL field', () => {

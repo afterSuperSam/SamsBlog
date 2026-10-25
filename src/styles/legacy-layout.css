@@ -133,7 +133,7 @@ body::before {
 
 /* 字标形状上的局部虹彩，不增加持续绘制或整块玻璃底板。 */
 .site-brand__sticker{position:relative;display:grid;max-width:98px;isolation:isolate;transform-origin:25% 75%;transition:transform var(--motion-spring-duration) var(--ease-spring),opacity .28s ease,max-width .35s var(--ease-out)}
-.site-brand__sticker::after{content:"";position:absolute;inset:0;pointer-events:none;opacity:0;background:var(--sticker-spectrum);background-size:200% 100%;background-position:var(--sticker-light,50%) center;mask:url('/media/branding/samsblog-wordmark-nav.webp') center/contain no-repeat;transition:opacity var(--motion-reorder-duration) var(--ease-out)}
+.site-brand__sticker::after{content:"";position:absolute;inset:0;pointer-events:none;opacity:0;background:var(--sticker-spectrum);background-size:200% 100%;background-position:var(--sticker-light,50%) center;mask:url('/media/branding/samsblog-wordmark.webp') center/contain no-repeat;transition:opacity var(--motion-reorder-duration) var(--ease-out)}
 .site-brand:focus-visible .site-brand__sticker::after{opacity:var(--sticker-opacity)}
 @media(hover:hover) and (pointer:fine){.site-brand:hover .site-brand__sticker::after{opacity:var(--sticker-opacity)}}
 @media(hover:hover) and (pointer:fine) and (prefers-reduced-motion:no-preference){:root:not(.motion-paused) .site-brand:hover .site-brand__sticker{transform:perspective(400px) rotateX(var(--sticker-x,0deg)) rotateY(var(--sticker-y,0deg)) translateY(-1px) scale(1.035)}}
