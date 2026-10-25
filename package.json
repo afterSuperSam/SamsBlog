@@ -1,7 +1,7 @@
 {
   "name": "samsblog",
   "type": "module",
-  "version": "1.21.2",
+  "version": "1.22.0",
   "engines": {
     "node": ">=22.12.0"
   },

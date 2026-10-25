@@ -83,10 +83,15 @@ GPT 快照已按本地 CCswitch 记录更新至2026-10-24（当日未完）：�
 1. 在域名的免费转发里添加 `blog` → 实际收件邮箱，并完成目标邮箱验证；保留转发服务要求的根域 MX。
 2. 在 [Resend Domains](https://resend.com/domains) 添加并验证 **moesam.com**。只启用发送，逐项照当前控制台添加 DKIM 与发送验证记录；不同发送通道可能使用 MX／TXT 或 CNAME，不要混套旧教程。CNAME 使用 DNS Only；名称和值以控制台为准。等待域名显示 Verified，DNS 可查询不等同于 Resend 已完成验证。根域 MX 保留 Cloudflare 等现有转发服务的记录。
 3. 同一主机名只保留一条 SPF；与转发服务已有的记录冲突时合并授权，不能再新建第二条。原网站 A／AAAA／CNAME 保持不变。按服务商指引补充 DMARC。
-4. 在服务器环境文件设置 `RESEND_API_KEY`、`MAIL_FROM=blog@moesam.com`、`MAIL_REPLY_TO=blog@moesam.com` 和已有的至少32字符 `BLOG_SECRET`，重启博客。密钥只存服务端，不填到文章或前端。
-5. 用测试评论勾选通知，后台回复后检查实际邮箱。服务商接受请求只记为“已提交”，不等同于已经到达收件箱。免费转发没有个人邮箱收件箱或 SMTP，本方案只承担博客通知与收取回复。
+4. 在服务器环境文件设置 `RESEND_API_KEY`、`MAIL_FROM=blog@moesam.com`、`MAIL_REPLY_TO=blog@moesam.com` 和已有的至少32字符 `BLOG_SECRET`。需要站长提醒时增加 `MAIL_ADMIN_TO=实际收件邮箱`，留空则关闭。密钥只存服务端，不填到文章或前端。
+5. 在 [Resend Templates](https://resend.com/templates) 创建并发布模板，分别将 ID 或别名写入 `RESEND_REPLY_TEMPLATE_ID`、`RESEND_ADMIN_TEMPLATE_ID`。当前模板别名为 `samsblog-reply-v1`、`samsblog-admin-v1`；可直接在 Resend 修改文案和排版后 Publish，保留现有变量名。模板 ID 留空时使用代码内同款信纸；单个变量超出服务商2000字符限制时也使用完整 HTML，不截断留言。模板定义由 `src/lib/reply-email.ts` 的 `createResendTemplate` 生成，云端后续修改不会自动覆盖本地后备模板。
+6. 部署代码及 `public/media/branding/mail-*` 图片并重启博客；邮件与图片链接使用 `siteConfig.rss.siteUrl`，应可从公网访问。先用 Resend 官方 `delivered@resend.dev` 测试地址验证模板，再用自己授权的测试邮箱验证实际收件。服务商接受请求只记为“已提交”，不等同于已经到达收件箱。免费转发没有个人邮箱收件箱或 SMTP，本方案只承担博客通知与收取回复。
 
-通知以持久队列发送，超时／429／5xx 退避重试，默认最多5次；首次投递前保存请求正文，重试复用正文和幂等键，超过23小时不再重试。服务重启后首次请求恢复队列。每封发送前重新核对评论、文章公开状态和通知授权；先回复再审核公开的留言会补排通知。每封邮件附签名退订链接，退订清除该评论的邮箱与订阅；完成、取消或永久失败时清除请求正文。已经交给发信服务的邮件不能撤回。API 密钥尚未配置时不会实际发信。官方设置说明：[Resend 验证域名](https://resend.com/docs/dashboard/domains/introduction)。
+通知共用持久队列，超时／429／5xx 退避重试，默认最多5次；首次投递前保存请求正文，重试复用正文和幂等键，超过23小时不再重试。原回复队列迁移时保留 ID、状态与请求快照。服务重启后首次请求恢复队列。访客回信发送前重新核对评论、文章公开状态和通知授权；先回复再审核公开的留言会补排通知。访客回信附签名退订链接，退订清除该评论的邮箱与订阅；完成、取消或永久失败时清除请求正文。已经交给发信服务的邮件不能撤回。API 密钥尚未配置时不会实际发信。官方设置说明：[Resend 验证域名](https://resend.com/docs/dashboard/domains/introduction)、[发布模板](https://resend.com/docs/api-reference/templates/publish-template)。
+
+两套邮件采用米白星空信纸，左上角为 SamsBlog 字标，右侧链接 moesam.com，边缘使用稀疏星点与粉蓝光晕。访客回信同时显示原留言和回复；站长回复使用页脚 SuperSam 手写笔迹的静态图片，访客回复保留实际昵称。正文是可复制的 HTML，并同时提供纯文本；屏蔽图片时仍可阅读、查看回复和退订。颜色取自 `global.css` 的 `--mail-*`，静态装饰位于 `public/media/branding/mail-*`；邮箱客户端可能替换字体、颜色或忽略背景图。
+
+站长提醒仅针对启用后收到的新留言、文章评论、访客回复和友链申请，附对应后台入口，不补发历史记录。后台自己回复不通知自己；发送前已隐藏／删除的留言或已处理的友链申请自动取消。访客是否订阅回信不影响站长提醒。后台“邮件通知”显示两类通知的排队、已提交或失败状态，并提供 Resend 模板管理入口。
 
 ### 订阅与跨站数据
 
@@ -154,7 +159,7 @@ Astro 构建配置按 `.env` → `.env.local` → `.env.<mode>` → `.env.<mode>
 | 留言 | `MESSAGE_COOLDOWN_SECONDS=60` |
 | 文章 | `ARTICLE_TITLE_MAX_LENGTH=160`、`ARTICLE_CONTENT_MAX_LENGTH=100000`、`ARTICLE_SUMMARY_MAX_LENGTH=500`、`ARTICLE_AUTOSAVE_MILLISECONDS=1800`、`ARTICLE_REQUEST_MAX_BYTES=1048576` |
 | 互动 | `REACTION_COOLDOWN_SECONDS=2`、`FRIEND_APPLICATION_COOLDOWN_SECONDS=600` |
-| 邮件 | `NOTIFICATION_TIMEOUT_MILLISECONDS=7000`、`NOTIFICATION_RETRY_SECONDS=60`、`NOTIFICATION_MAXIMUM_ATTEMPTS=5` |
+| 邮件 | `NOTIFICATION_TIMEOUT_MILLISECONDS=7000`、`NOTIFICATION_RETRY_SECONDS=60`、`NOTIFICATION_MAXIMUM_ATTEMPTS=5`、`NOTIFICATION_BATCH_SIZE=5`（最多20）、`NOTIFICATION_EXPIRY_HOURS=23`（最多23） |
 | 媒体 | `MEDIA_MAX_BYTES=10485760`（单张图片上限，可调低，最大10MiB） |
 | GitHub | `GITHUB_USERNAME=afterSuperSam`、`GITHUB_CACHE_SECONDS=21600`、`GITHUB_RETRY_SECONDS=60`、`GITHUB_TIMEOUT_MILLISECONDS=5000`、`GITHUB_CONCURRENCY=3`（最多6） |
 | 友链探测 | `FRIEND_STATUS_CACHE_SECONDS=300`、`FRIEND_STATUS_TIMEOUT_MILLISECONDS=5000`、`FRIEND_STATUS_SLOW_MILLISECONDS=1800`、`FRIEND_STATUS_CONCURRENCY=3`、`FRIEND_STATUS_MAX_REDIRECTS=3` |

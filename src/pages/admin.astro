@@ -10,7 +10,7 @@ import AdminSponsors from '../components/AdminSponsors.astro';
 import AdminDrawer from '../components/AdminDrawer.astro';
 import AdminStatistics from '../components/AdminStatistics.astro';
 import AdminApplications from '../components/AdminApplications.astro';
-import { listReplyNotifications, replyNotificationsConfigured } from '../lib/reply-notifications';
+import { adminNotificationsConfigured, listReplyNotifications, replyNotificationsConfigured } from '../lib/reply-notifications';
 import '../styles/guestbook.css';
 import '../styles/admin.css';
 import '../styles/admin-friends.css';
@@ -20,7 +20,7 @@ const authenticated = readAdminSession(Astro.cookies);
 const activeSection = Astro.params.section || 'overview';
 const sections = [{ id: 'overview', label: '概览' }, { id: 'articles', label: '内容' }, { id: 'media', label: '媒体' },
   { id: 'messages', label: '评论与留言' }, { id: 'friends', label: '友链' }, { id: 'applications', label: '友链申请' },
-  { id: 'projects', label: '项目' }, { id: 'sponsors', label: '赞助' }, { id: 'analytics', label: '访问统计' }, { id: 'notifications', label: '回复通知' }];
+  { id: 'projects', label: '项目' }, { id: 'sponsors', label: '赞助' }, { id: 'analytics', label: '访问统计' }, { id: 'notifications', label: '邮件通知' }];
 const messages = authenticated && activeSection === 'messages' ? listAllMessages() : [];
 const friends = authenticated && activeSection === 'friends' ? listFriends({ includeHidden: true }) : [];
 const repliesByParent = new Map<number, typeof messages>();
@@ -75,7 +75,7 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
         {activeSection === 'media' && <AdminMedia />}
         {activeSection === 'analytics' && <AdminStatistics />}
         {activeSection === 'applications' && <AdminApplications />}
-        {activeSection === 'notifications' && <section class="admin-panel"><header class="admin-panel__heading"><div><span>NOTIFICATIONS</span><h2>回复通知</h2></div></header><p>{replyNotificationsConfigured ? 'Resend 发信配置已填写。下方的“已提交”表示服务商已接受请求，实际收件仍需邮箱验证。' : '尚未启用。验证发信域名后，设置 RESEND_API_KEY、MAIL_FROM 和 BLOG_SECRET，再重启博客。访客端暂不展示邮件通知选项。'}</p><a href="https://resend.com/domains" target="_blank" rel="noopener noreferrer">打开 Resend 域名配置 ↗</a><div class="admin-data-table"><table><thead><tr><th>评论者</th><th>状态</th><th>尝试次数</th></tr></thead><tbody>{listReplyNotifications().map((notification) => <tr><td>{notification.nickname}</td><td>{{ pending: '等待发送', sent: '已提交', failed: '发送失败', cancelled: '已取消' }[notification.status]}</td><td>{notification.attempts}</td></tr>)}</tbody></table></div></section>}
+        {activeSection === 'notifications' && <section class="admin-panel"><header class="admin-panel__heading"><div><span>NOTIFICATIONS</span><h2>邮件通知</h2></div></header><p>{replyNotificationsConfigured ? 'Resend 发信配置已填写。“已提交”表示服务商已接受请求，实际收件仍需邮箱验证。' : '尚未启用。验证发信域名后，设置 RESEND_API_KEY、MAIL_FROM 和 BLOG_SECRET，再重启博客。访客端暂不展示邮件通知选项。'}</p><p>{adminNotificationsConfigured ? '站长提醒已开启：接收新留言、访客回复和友链申请；后台回复不通知自己。' : '站长提醒未开启：设置 MAIL_ADMIN_TO 后重启博客。'}</p><a href="https://resend.com/templates" target="_blank" rel="noopener noreferrer">管理 Resend 邮件模板 ↗</a><div class="admin-data-table"><table><thead><tr><th>来源</th><th>通知类型</th><th>状态</th><th>尝试次数</th></tr></thead><tbody>{listReplyNotifications().map((notification) => <tr><td>{notification.nickname}</td><td>{{ reply: '访客回信', message: '站长 · 留言', application: '站长 · 友链' }[notification.kind]}</td><td>{{ pending: '等待发送', sent: '已提交', failed: '发送失败', cancelled: '已取消' }[notification.status]}</td><td>{notification.attempts}</td></tr>)}</tbody></table></div></section>}
 
         {activeSection === 'messages' && <section class="admin-panel" id="messages">
           <header class="admin-panel__heading"><div><span>01 / VOICES</span><h2>留言</h2></div><p>审核、回复或收起访客留下的纸条。</p></header>

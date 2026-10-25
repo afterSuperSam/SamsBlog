@@ -31,6 +31,15 @@
   --quote-halo-opacity: .04;
   --quote-glow-blue: var(--glow-blue);
   --quote-glow-pink: var(--glow-pink);
+  --mail-canvas: #f5f4f1;
+  --mail-paper: #fffdf8;
+  --mail-surface: #ffffff;
+  --mail-text: #454451;
+  --mail-muted: #727482;
+  --mail-blue: #32788e;
+  --mail-pink: #ad607e;
+  --mail-glow-blue: #d8f1f8;
+  --mail-glow-pink: #ffe1ed;
   --motion-feedback-duration: 180ms;
   --motion-disclosure-duration: 260ms;
   --motion-spring-duration: 360ms;

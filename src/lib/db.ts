@@ -308,6 +308,27 @@ export function getDatabase() {
         connection.exec("ALTER TABLE reply_notifications ADD COLUMN request_payload TEXT NOT NULL DEFAULT ''");
         connection.prepare('INSERT INTO schema_migrations (id,applied_at) VALUES (?,?)').run('20261025-notification-request-payload', new Date().toISOString());
       }
+      if (!appliedMigrations.has('20261025-mail-notification-outbox')) {
+        connection.exec(`CREATE TABLE mail_notifications (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          kind TEXT NOT NULL DEFAULT 'reply' CHECK(kind IN ('reply','message','application')),
+          message_id INTEGER REFERENCES messages(id), reply_id INTEGER REFERENCES messages(id), application_id INTEGER REFERENCES friend_applications(id),
+          status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','sent','failed','cancelled')),
+          attempts INTEGER NOT NULL DEFAULT 0 CHECK(attempts >= 0), created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+          retry_at TEXT NOT NULL DEFAULT '', provider_id TEXT NOT NULL DEFAULT '', request_payload TEXT NOT NULL DEFAULT '',
+          CHECK((kind='reply' AND message_id IS NOT NULL AND reply_id IS NOT NULL AND application_id IS NULL)
+            OR (kind='message' AND message_id IS NOT NULL AND reply_id IS NULL AND application_id IS NULL)
+            OR (kind='application' AND message_id IS NULL AND reply_id IS NULL AND application_id IS NOT NULL))
+        );
+        INSERT INTO mail_notifications(id,message_id,reply_id,status,attempts,created_at,updated_at,retry_at,provider_id,request_payload)
+          SELECT id,message_id,reply_id,status,attempts,created_at,updated_at,retry_at,provider_id,request_payload FROM reply_notifications;
+        CREATE UNIQUE INDEX mail_reply_unique_idx ON mail_notifications(message_id,reply_id) WHERE kind='reply';
+        CREATE UNIQUE INDEX mail_message_unique_idx ON mail_notifications(message_id) WHERE kind='message';
+        CREATE UNIQUE INDEX mail_application_unique_idx ON mail_notifications(application_id) WHERE kind='application';
+        CREATE INDEX mail_pending_idx ON mail_notifications(retry_at,id) WHERE status='pending';
+        DROP TABLE reply_notifications;`);
+        connection.prepare('INSERT INTO schema_migrations (id,applied_at) VALUES (?,?)').run('20261025-mail-notification-outbox', new Date().toISOString());
+      }
       connection.exec('CREATE UNIQUE INDEX IF NOT EXISTS friends_active_url_idx ON friends(url) WHERE deleted_at IS NULL');
       connection.exec('CREATE INDEX IF NOT EXISTS blog_articles_type_created_idx ON blog_articles(content_type, created_at DESC, id DESC) WHERE deleted_at IS NULL');
       connection.exec('CREATE INDEX IF NOT EXISTS friends_public_idx ON friends(visible, created_at ASC)');

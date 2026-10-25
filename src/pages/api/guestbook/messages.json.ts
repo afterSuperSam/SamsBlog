@@ -2,7 +2,7 @@ import { createMessage, getDatabase, hasRecentSubmission, listPublishedMessages 
 import { fingerprintIp, getClientIp } from '../../../lib/network';
 import { HttpError, json, readJsonObject, readPositiveId, route, requireSameOrigin } from '../../../lib/http';
 import { getArticle } from '../../../lib/articles';
-import { parseNotificationEmail, queueReplyNotification, replyNotificationsConfigured } from '../../../lib/reply-notifications';
+import { parseNotificationEmail, queueAdminNotification, queueReplyNotification, replyNotificationsConfigured } from '../../../lib/reply-notifications';
 
 export const GET = route(({ url }) => {
   const articleId = url.searchParams.has('articleId') ? readPositiveId(Number(url.searchParams.get('articleId'))) : null;
@@ -34,6 +34,7 @@ export const POST = route(async ({ request, clientAddress }) => {
   const id = getDatabase().transaction(() => {
     const createdId = createMessage({ parentId, articleId, nickname, content, fingerprintHash, email: wantsNotification ? email : '', notifyReply: wantsNotification });
     if (articleId && parentId) queueReplyNotification(parentId, createdId);
+    queueAdminNotification('message', createdId);
     return createdId;
   })();
   return json({ ok: true, id, message: articleId ? '评论已发表。' : '留言已送达，审核后会公开展示。' }, 201);

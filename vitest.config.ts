@@ -7,6 +7,7 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   envDir: false,
   test: {
+    css: { include: [/global\.css\?raw$/] },
     env: {
       NODE_ENV: 'production',
       BLOG_DATA_DIR: mkdtempSync(join(tmpdir(), 'samsblog-tests-')),
@@ -16,6 +17,9 @@ export default defineConfig({
       RESEND_API_KEY: '',
       MAIL_FROM: '',
       MAIL_REPLY_TO: '',
+      MAIL_ADMIN_TO: '',
+      RESEND_REPLY_TEMPLATE_ID: '',
+      RESEND_ADMIN_TEMPLATE_ID: '',
     },
   },
 });

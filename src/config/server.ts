@@ -33,6 +33,11 @@ export const serverConfig = {
   notificationTimeoutMilliseconds: positiveInteger('NOTIFICATION_TIMEOUT_MILLISECONDS', 7000),
   notificationRetrySeconds: positiveInteger('NOTIFICATION_RETRY_SECONDS', 60),
   notificationMaximumAttempts: positiveInteger('NOTIFICATION_MAXIMUM_ATTEMPTS', 5),
+  notificationBatchSize: positiveInteger('NOTIFICATION_BATCH_SIZE', 5),
+  notificationExpiryHours: positiveInteger('NOTIFICATION_EXPIRY_HOURS', 23),
+  notificationTemplateVariableMaxLength: 2000,
+  notificationReplyTemplateId: process.env.RESEND_REPLY_TEMPLATE_ID?.trim() || '',
+  notificationAdminTemplateId: process.env.RESEND_ADMIN_TEMPLATE_ID?.trim() || '',
   articleRequestMaxBytes: positiveInteger('ARTICLE_REQUEST_MAX_BYTES', 1024 * 1024),
   mediaMaxBytes: positiveInteger('MEDIA_MAX_BYTES', 10 * 1024 * 1024),
   githubUsername: process.env.GITHUB_USERNAME || 'afterSuperSam',
@@ -50,6 +55,11 @@ export const serverConfig = {
   friendFeedMaximumEntries: positiveInteger('FRIEND_FEED_MAXIMUM_ENTRIES', 100),
   friendFeedMaximumDepth: positiveInteger('FRIEND_FEED_MAXIMUM_DEPTH', 32),
 };
+
+if (serverConfig.notificationExpiryHours > 23 || serverConfig.notificationBatchSize > 20
+  || [serverConfig.notificationReplyTemplateId, serverConfig.notificationAdminTemplateId].some((value) => value && !/^[A-Za-z0-9_-]{1,128}$/.test(value))) {
+  throw new Error('Invalid notification configuration');
+}
 
 if (serverConfig.mediaMaxBytes > 10 * 1024 * 1024) throw new Error('Invalid server configuration: MEDIA_MAX_BYTES (maximum 10 MiB)');
 if (serverConfig.githubConcurrency > 6) throw new Error('Invalid server configuration: GITHUB_CONCURRENCY (maximum 6)');
