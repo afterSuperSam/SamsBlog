@@ -73,6 +73,8 @@ const sharingImage = image || '/media/anime/hero/1719656915755.webp';
     <Footer showSignature={!bodyClass.includes('admin-page')} />
     {!bodyClass.includes('admin-page') && <div id="site-tooltip" class="site-tooltip" popover="manual" role="tooltip"></div>}
     <script>
+      import { initializePageView } from '../lib/page-view';
+      initializePageView();
       import { animateMotion as animate, createCharacters, animateCharacters } from '../lib/motion';
       import { createTooltip } from '../lib/tooltip';
       // 返回链接走原历史记录，保留文章列表的筛选结果及滚动位置。

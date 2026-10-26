@@ -347,6 +347,22 @@ export function getDatabase() {
             AND length(quote_content) BETWEEN 1 AND 500 AND instr(quote_content, char(0)) = 0))`);
         connection.prepare('INSERT INTO schema_migrations (id,applied_at) VALUES (?,?)').run('20261025-message-quotes', new Date().toISOString());
       }
+      if (!appliedMigrations.has('20261026-confirmed-page-visits')) {
+        connection.exec(`CREATE TABLE confirmed_site_visitors (
+          visitor_hash TEXT PRIMARY KEY, first_seen TEXT NOT NULL, last_seen TEXT NOT NULL,
+          page_views INTEGER NOT NULL DEFAULT 1 CHECK(page_views > 0)
+        );
+        CREATE TABLE confirmed_page_visits (
+          visitor_hash TEXT NOT NULL, path TEXT NOT NULL, viewed_at TEXT NOT NULL, PRIMARY KEY(visitor_hash,path)
+        );
+        CREATE INDEX confirmed_page_visits_time_idx ON confirmed_page_visits(viewed_at);
+        CREATE TABLE confirmed_article_daily_visitors (
+          article_id INTEGER NOT NULL REFERENCES blog_articles(id), day TEXT NOT NULL, visitor_hash TEXT NOT NULL,
+          views INTEGER NOT NULL DEFAULT 1 CHECK(views > 0), PRIMARY KEY(article_id,day,visitor_hash)
+        );
+        CREATE INDEX confirmed_article_visits_day_idx ON confirmed_article_daily_visitors(day)`);
+        connection.prepare('INSERT INTO schema_migrations (id,applied_at) VALUES (?,?)').run('20261026-confirmed-page-visits', new Date().toISOString());
+      }
       connection.exec('CREATE UNIQUE INDEX IF NOT EXISTS friends_active_url_idx ON friends(url) WHERE deleted_at IS NULL');
       connection.exec('CREATE INDEX IF NOT EXISTS blog_articles_type_created_idx ON blog_articles(content_type, created_at DESC, id DESC) WHERE deleted_at IS NULL');
       connection.exec('CREATE INDEX IF NOT EXISTS friends_public_idx ON friends(visible, created_at ASC)');

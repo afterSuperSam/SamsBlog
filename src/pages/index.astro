@@ -50,7 +50,7 @@ const hasArticles = latestArticles.length > 0;
     <div class="site-stats__panel">
       <dl>
         <div><dt>运行天数</dt><dd><span data-stat-value={siteStats.runtimeDays} aria-hidden="true">{siteStats.runtimeDays.toLocaleString('zh-CN')}</span><span class="stat-reader-value">{siteStats.runtimeDays.toLocaleString('zh-CN')}</span><small>天</small></dd></div>
-        {[['友链', siteStats.friends], ['累计访客', siteStats.visitors], ['总浏览量', siteStats.pageViews]].map(([label, value]) => <div><dt>{label}</dt><dd><span data-stat-value={value} aria-hidden="true">{Number(value).toLocaleString('zh-CN')}</span><span class="stat-reader-value">{Number(value).toLocaleString('zh-CN')}</span></dd></div>)}
+        {[['友链', siteStats.friends, 'friends'], ['累计访客', siteStats.visitors, 'visitors'], ['总浏览量', siteStats.pageViews, 'pageViews']].map(([label, value, key]) => <div><dt>{label}</dt><dd><span data-stat-value={value} data-stat-key={key} aria-hidden="true">{Number(value).toLocaleString('zh-CN')}</span><span class="stat-reader-value">{Number(value).toLocaleString('zh-CN')}</span></dd></div>)}
       </dl>
     </div>
   </section>
@@ -90,6 +90,17 @@ const hasArticles = latestArticles.length > 0;
       countFrame = 0;
       counters.forEach((counter) => { counter.element.textContent = formatter.format(counter.value); });
     };
+    document.addEventListener('site-statistics-updated', (event) => {
+      const totals = (event as CustomEvent<Record<string, number>>).detail;
+      counters.forEach((counter) => {
+        const value = totals[counter.element.dataset.statKey || ''];
+        if (!Number.isSafeInteger(value) || value < 0) return;
+        counter.value = value; counter.element.dataset.statValue = String(value);
+        const reader = counter.element.parentElement?.querySelector('.stat-reader-value');
+        if (reader) reader.textContent = formatter.format(value);
+      });
+      if (!countFrame) finishCounters();
+    });
     const startCounters = () => {
       if (started) return;
       started = true;

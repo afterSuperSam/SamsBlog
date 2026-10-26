@@ -16,6 +16,7 @@ const positiveInteger = (name: string, fallback: number) => {
 
 // 服务端行为参数与启动校验
 export const serverConfig = {
+  analyticsDeduplicationSeconds: positiveInteger('ANALYTICS_DEDUPLICATION_SECONDS', 1800),
   siteLaunchedAt: process.env.SITE_LAUNCHED_AT ?? '2026-08-22',
   sessionSeconds: positiveInteger('ADMIN_SESSION_SECONDS', 8 * 60 * 60),
   passwordMaxLength: positiveInteger('ADMIN_PASSWORD_MAX_LENGTH', 256),
@@ -62,6 +63,7 @@ if (serverConfig.notificationExpiryHours > 23 || serverConfig.notificationBatchS
 }
 
 if (serverConfig.mediaMaxBytes > 10 * 1024 * 1024) throw new Error('Invalid server configuration: MEDIA_MAX_BYTES (maximum 10 MiB)');
+if (serverConfig.analyticsDeduplicationSeconds > 86400) throw new Error('Invalid server configuration: ANALYTICS_DEDUPLICATION_SECONDS (maximum 86400)');
 if (serverConfig.githubConcurrency > 6) throw new Error('Invalid server configuration: GITHUB_CONCURRENCY (maximum 6)');
 
 if (serverConfig.friendStatusTimeoutMilliseconds > 15000

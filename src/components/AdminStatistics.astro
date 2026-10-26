@@ -8,7 +8,7 @@ const maximum = Math.max(1, ...statistics.days.map((day) => day.views));
 <section class="admin-panel">
   <header class="admin-panel__heading"><div><span>ANALYTICS</span><h2>文章访问</h2></div><nav class="admin-periods" aria-label="统计时间范围">{[7,30,90].map((days) => <a href={`/admin/analytics?days=${days}`} aria-current={days === period ? 'true' : undefined}>最近 {days} 天</a>)}</nav></header>
   <div class="admin-metrics"><p><b>{statistics.totals.views}</b> 次阅读</p><p><b>{statistics.totals.visitors}</b> 位访客</p></div>
-  <p class="admin-help">按北京时间统计。从功能启用后开始记录，访客按匿名浏览器标识去重，清除 Cookie 或更换设备会重新计数。</p>
+  <p class="admin-help">按北京时间统计。前台连续停留10秒才计入，同一浏览器同一页面30分钟内去重，排除已登录站长。新口径从升级后独立起算；旧请求计数保留但不混入。访客为匿名浏览器去重数，清除 Cookie 或更换设备会重新计数。</p>
   {statistics.totals.views > 0 && <svg class="admin-stat-chart" viewBox="0 0 600 140" role="img" aria-label={`最近 ${period} 天文章访问趋势`}><title>文章每日访问次数</title><polyline fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" points={statistics.days.map((day,index) => `${20 + index / Math.max(1, statistics.days.length - 1) * 560},${120 - day.views / maximum * 95}`).join(' ')} /></svg>}
   <div class="admin-data-table"><table><thead><tr><th>文章</th><th>阅读次数</th><th>访客数</th></tr></thead><tbody>{statistics.articles.map((article) => <tr><td>{article.status === 'published' ? <a href={`/articles/${article.id}`}>{article.title}</a> : article.title}</td><td>{article.views}</td><td>{article.visitors}</td></tr>)}</tbody></table></div>
   {!statistics.articles.length && <p class="admin-empty">还没有文章访问记录。</p>}

@@ -8,7 +8,7 @@ import { onRequest } from '../src/middleware';
 
 const statistics = vi.hoisted(() => ({ recordPageView: vi.fn(), hashVisitorToken: vi.fn(() => 'anonymous-hash') }));
 vi.mock('astro:middleware', () => ({ defineMiddleware: (middleware: unknown) => middleware }));
-vi.mock('../src/lib/stats', () => statistics);
+vi.mock('../src/lib/stats', async (original) => ({ ...await original<typeof import('../src/lib/stats')>(), ...statistics }));
 
 const componentScript = readFileSync(new URL('../src/components/NetworkStatus.astro', import.meta.url), 'utf8').match(/<script>([\s\S]*?)<\/script>/)?.[1];
 if (!componentScript) throw new Error('Network status script not found');
@@ -204,7 +204,7 @@ describe('visitor network privacy', () => {
     expect(getVisitorLocation(request)).toBe('中国 · 上海');
   });
 
-  it('counts successful public HTML responses without counting errors or JSON', async () => {
+  it('prepares cookies for public HTML but never counts page fetches', async () => {
     for (const [pathname, status, contentType, counted] of [
       ['/', 200, 'text/html; charset=utf-8', true],
       ['/about', 200, 'text/html', true],
@@ -216,10 +216,10 @@ describe('visitor network privacy', () => {
       statistics.recordPageView.mockClear();
       const url = new URL(pathname, 'https://blog.example.com');
       const cookies = { get: vi.fn(), set: vi.fn() };
-      const context = { url, cookies, request: new Request(url, { headers: { Accept: 'text/html' } }) } as unknown as Parameters<typeof onRequest>[0];
+      const context = { url, cookies, request: new Request(url, { headers: { Accept: 'text/html', 'User-Agent': 'fixture-browser' } }) } as unknown as Parameters<typeof onRequest>[0];
       const response = new Response('', { status, headers: { 'Content-Type': contentType } });
       expect(await onRequest(context, async () => response)).toBe(response);
-      expect(statistics.recordPageView).toHaveBeenCalledTimes(counted ? 1 : 0);
+      expect(statistics.recordPageView).not.toHaveBeenCalled();
       expect(cookies.set).toHaveBeenCalledTimes(counted ? 1 : 0);
       if (counted) expect(cookies.set).toHaveBeenCalledWith('samsblog-visitor', expect.any(String), expect.objectContaining({ secure: true }));
     }

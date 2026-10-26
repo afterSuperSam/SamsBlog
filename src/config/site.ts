@@ -11,6 +11,7 @@ export const siteConfig = {
   ],
   effects: { particleCount: 60, mobileParticleCount: 18, pointerTiltDegrees: 2.5, constellation: { desktopLineCount: 10, mobileLineCount: 5, desktopPointCount: 14, mobilePointCount: 8, refreshMilliseconds: 4200, fadeMilliseconds: 1100, maximumDistanceRatio: 0.26, maximumDegree: 2, scrollPeriodScreens: 2 } },
   navigation: { sectionActivationRatio: 0.35 },
+  analytics: { visibleMilliseconds: 10000 },
   network: { sampleCount: 3, timeoutMilliseconds: 5000 },
   sponsors: [
     { name: 'Aresgao', amount: 100 },
@@ -96,6 +97,8 @@ if (!Object.values(siteConfig.interactions).every((value) => Number.isSafeIntege
   || !siteConfig.articleReading.positionStorageKey || !siteConfig.articleReading.preferenceStorageKey || !siteConfig.articleReading.fontPreferenceStorageKey) {
   throw new Error('Invalid interaction configuration');
 }
+
+if (!Number.isSafeInteger(siteConfig.analytics.visibleMilliseconds) || siteConfig.analytics.visibleMilliseconds < 1000 || siteConfig.analytics.visibleMilliseconds > 60000) throw new Error('Invalid analytics configuration');
 
 if (![siteConfig.discussion.textareaMaximumLines, siteConfig.discussion.visibleReplyCount, siteConfig.discussion.collapsedContentCharacters, siteConfig.discussion.quoteMaximumCharacters, siteConfig.discussion.recentEmoticonLimit].every((value) => Number.isSafeInteger(value) && value > 0)
   || siteConfig.discussion.textareaMaximumLines > 20 || siteConfig.discussion.quoteMaximumCharacters > 500
