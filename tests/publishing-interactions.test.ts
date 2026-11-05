@@ -19,13 +19,47 @@ vi.mock('../src/lib/reply-notifications', async (original) => ({ ...await origin
 beforeAll(async () => { vi.stubEnv('BLOG_DATA_DIR', await mkdtemp(path.join(tmpdir(), 'samsblog-publishing-'))); });
 const content = { title: '互动验证', content: '正文', source: 'original', category: 'journal' };
 let sequence = 0;
-async function call(handler: APIRoute, route: string, body?: unknown, token = '11111111-1111-4111-8111-111111111111', method = 'POST', origin = 'https://blog.example.com') {
+async function call(handler: APIRoute, route: string, body?: unknown, token = '11111111-1111-4111-8111-111111111111', method = 'POST', origin = 'https://blog.example.com', clientAddress = `203.0.113.${++sequence}`) {
   return await handler({ url: new URL(route, 'https://blog.example.com'),
     request: new Request(new URL(route, 'https://blog.example.com'), { method, headers: { 'content-type': 'application/json', origin }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }),
-    clientAddress: `203.0.113.${++sequence}`,
+    clientAddress,
     cookies: { get: (name: string) => ({ value: name === 'samsblog_admin' ? createAdminSession() : token }), set: vi.fn() },
   } as unknown as APIContext) as Response;
 }
+
+describe('public submission quotas', () => {
+  const submit = (handler: APIRoute, route: string, body: unknown, clientAddress = '198.51.100.1') =>
+    call(handler, route, body, undefined, 'POST', undefined, clientAddress);
+
+  it('shares a rolling quota between guestbook messages and article comments', async () => {
+    const articleId = saveArticle({ ...content, title: '留言限流验证' });
+    const route = '/api/guestbook/messages.json';
+    const message = { nickname: '限流验证', content: '只写临时测试库' };
+    const first = await submit(postComment, route, message);
+    expect(first.status).toBe(201);
+    expect((await submit(postComment, route, { ...message, articleId })).status).toBe(201);
+    expect((await submit(postComment, route, message)).status).toBe(429);
+    expect((await submit(postComment, route, message, '198.51.100.2')).status).toBe(201);
+    const { id } = await first.json();
+    getDatabase().prepare("UPDATE messages SET created_at=datetime('now','-61 seconds') WHERE id=?").run(id);
+    expect((await submit(postComment, route, message)).status).toBe(201);
+  });
+
+  it('allows two friend applications per source and releases a slot after one hour', async () => {
+    const route = '/api/friends/applications.json';
+    const application = (number: number) => ({
+      name: '限流验证', description: '只写临时测试库', url: `https://quota-${number}.example.com/`,
+      iconUrl: 'https://assets.example.com/icon.png', rssUrl: '',
+    });
+    expect((await submit(apply, route, application(1))).status).toBe(201);
+    expect((await submit(apply, route, application(2))).status).toBe(201);
+    expect((await submit(apply, route, application(3))).status).toBe(429);
+    expect((await submit(apply, route, application(4), '198.51.100.2')).status).toBe(201);
+    getDatabase().prepare('UPDATE friend_applications SET created_at=? WHERE url=?')
+      .run(new Date(Date.now() - 3601000).toISOString(), application(1).url);
+    expect((await submit(apply, route, application(3))).status).toBe(201);
+  });
+});
 
 describe('article conversation boundaries', () => {
   it('publishes article comments immediately, retains guestbook moderation and never exposes contact details', async () => {

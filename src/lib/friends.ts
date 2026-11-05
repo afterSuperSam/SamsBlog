@@ -124,7 +124,9 @@ export function listFriendApplications(): FriendApplication[] {
 export function createFriendApplication(input: FriendInput, email: string, fingerprint: string) {
   const database = getDatabase();
   return database.transaction(() => {
-    if (database.prepare("SELECT 1 FROM friend_applications WHERE fingerprint_hash=? AND datetime(created_at)>=datetime('now',?) LIMIT 1").get(fingerprint, `-${serverConfig.friendApplicationCooldownSeconds} seconds`)) throw new HttpError(429, '申请已收到，请过一会儿再提交');
+    const windowStart = new Date(Date.now() - serverConfig.friendApplicationSubmissionWindowSeconds * 1000).toISOString();
+    if (database.prepare('SELECT 1 FROM friend_applications WHERE fingerprint_hash=? AND created_at>? LIMIT 1 OFFSET ?')
+      .get(fingerprint, windowStart, serverConfig.friendApplicationSubmissionLimit - 1)) throw new HttpError(429, '友链申请已达提交上限，请稍后再试');
     if (database.prepare('SELECT 1 FROM friends WHERE url=? AND deleted_at IS NULL').get(input.url)
       || database.prepare("SELECT 1 FROM friend_applications WHERE url=? AND status='pending' AND deleted_at IS NULL").get(input.url)) throw new HttpError(409, '这个站点已加入友链或正在等待处理');
     const now = new Date().toISOString();

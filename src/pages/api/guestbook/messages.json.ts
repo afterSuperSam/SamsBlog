@@ -1,4 +1,4 @@
-import { createMessage, getDatabase, hasRecentSubmission, listPublishedMessages } from '../../../lib/db';
+import { createMessage, getDatabase, hasReachedMessageSubmissionLimit, listPublishedMessages } from '../../../lib/db';
 import { fingerprintIp, getClientIp } from '../../../lib/network';
 import { HttpError, json, readJsonObject, readPositiveId, route, requireSameOrigin } from '../../../lib/http';
 import { getArticle } from '../../../lib/articles';
@@ -31,14 +31,14 @@ export const POST = route(async ({ request, clientAddress }) => {
   if (nickname.includes('\u0000')) throw new HttpError(400, '昵称包含不支持的字符');
   if (content.includes('\u0000')) throw new HttpError(400, '留言包含不支持的字符');
   const fingerprintHash = fingerprintIp(getClientIp(request, clientAddress));
-  if (hasRecentSubmission(fingerprintHash)) throw new HttpError(429, '提交得太快了，请稍后再试');
   const wantsNotification = body.notifyReply === true && replyNotificationsConfigured;
   if (wantsNotification && !email) throw new HttpError(400, '接收回复通知需要填写邮箱');
   const id = getDatabase().transaction(() => {
+    if (hasReachedMessageSubmissionLimit(fingerprintHash)) throw new HttpError(429, '留言和评论已达提交上限，请稍后再试');
     const createdId = createMessage({ parentId, articleId, quoteMessageId, quoteContent, nickname, content, fingerprintHash, email: wantsNotification ? email : '', notifyReply: wantsNotification });
     if (articleId && parentId) queueReplyNotification(parentId, createdId);
     queueAdminNotification('message', createdId);
     return createdId;
-  })();
+  }).immediate();
   return json({ ok: true, id, message: articleId ? '评论已发表。' : '留言已送达，审核后会公开展示。' }, 201);
 });

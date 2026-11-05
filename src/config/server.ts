@@ -24,13 +24,15 @@ export const serverConfig = {
   loginAttempts: positiveInteger('ADMIN_LOGIN_ATTEMPTS', 5),
   loginGlobalAttempts: positiveInteger('ADMIN_LOGIN_GLOBAL_ATTEMPTS', 30),
   loginTrackedAddresses: positiveInteger('ADMIN_LOGIN_TRACKED_ADDRESSES', 1000),
-  messageCooldownSeconds: positiveInteger('MESSAGE_COOLDOWN_SECONDS', 60),
+  messageSubmissionLimit: positiveInteger('MESSAGE_SUBMISSION_LIMIT', 2),
+  messageSubmissionWindowSeconds: positiveInteger('MESSAGE_SUBMISSION_WINDOW_SECONDS', 60),
   articleTitleMaxLength: positiveInteger('ARTICLE_TITLE_MAX_LENGTH', 160),
   articleContentMaxLength: positiveInteger('ARTICLE_CONTENT_MAX_LENGTH', 100000),
   articleSummaryMaxLength: positiveInteger('ARTICLE_SUMMARY_MAX_LENGTH', 500),
   articleAutosaveMilliseconds: positiveInteger('ARTICLE_AUTOSAVE_MILLISECONDS', 1800),
   reactionCooldownSeconds: positiveInteger('REACTION_COOLDOWN_SECONDS', 2),
-  friendApplicationCooldownSeconds: positiveInteger('FRIEND_APPLICATION_COOLDOWN_SECONDS', 600),
+  friendApplicationSubmissionLimit: positiveInteger('FRIEND_APPLICATION_SUBMISSION_LIMIT', 2),
+  friendApplicationSubmissionWindowSeconds: positiveInteger('FRIEND_APPLICATION_SUBMISSION_WINDOW_SECONDS', 3600),
   notificationTimeoutMilliseconds: positiveInteger('NOTIFICATION_TIMEOUT_MILLISECONDS', 7000),
   notificationRetrySeconds: positiveInteger('NOTIFICATION_RETRY_SECONDS', 60),
   notificationMaximumAttempts: positiveInteger('NOTIFICATION_MAXIMUM_ATTEMPTS', 5),
@@ -63,6 +65,10 @@ if (serverConfig.notificationExpiryHours > 23 || serverConfig.notificationBatchS
 }
 
 if (serverConfig.mediaMaxBytes > 10 * 1024 * 1024) throw new Error('Invalid server configuration: MEDIA_MAX_BYTES (maximum 10 MiB)');
+if (serverConfig.messageSubmissionLimit > 1000 || serverConfig.friendApplicationSubmissionLimit > 1000
+  || serverConfig.messageSubmissionWindowSeconds > 86400 || serverConfig.friendApplicationSubmissionWindowSeconds > 86400) {
+  throw new Error('Invalid public submission rate-limit configuration');
+}
 if (serverConfig.analyticsDeduplicationSeconds > 86400) throw new Error('Invalid server configuration: ANALYTICS_DEDUPLICATION_SECONDS (maximum 86400)');
 if (serverConfig.githubConcurrency > 6) throw new Error('Invalid server configuration: GITHUB_CONCURRENCY (maximum 6)');
 

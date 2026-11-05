@@ -174,9 +174,9 @@ Astro 构建配置按 `.env` → `.env.local` → `.env.<mode>` → `.env.<mode>
 | --- | --- |
 | 会话 | `ADMIN_SESSION_SECONDS=28800`、`ADMIN_PASSWORD_MAX_LENGTH=256` |
 | 登录限速 | `ADMIN_LOGIN_WINDOW_SECONDS=60`、`ADMIN_LOGIN_ATTEMPTS=5`、`ADMIN_LOGIN_GLOBAL_ATTEMPTS=30`、`ADMIN_LOGIN_TRACKED_ADDRESSES=1000` |
-| 留言 | `MESSAGE_COOLDOWN_SECONDS=60` |
+| 留言和文章评论（共用配额） | `MESSAGE_SUBMISSION_LIMIT=2`、`MESSAGE_SUBMISSION_WINDOW_SECONDS=60` |
 | 文章 | `ARTICLE_TITLE_MAX_LENGTH=160`、`ARTICLE_CONTENT_MAX_LENGTH=100000`、`ARTICLE_SUMMARY_MAX_LENGTH=500`、`ARTICLE_AUTOSAVE_MILLISECONDS=1800`、`ARTICLE_REQUEST_MAX_BYTES=1048576` |
-| 互动 | `REACTION_COOLDOWN_SECONDS=2`、`FRIEND_APPLICATION_COOLDOWN_SECONDS=600` |
+| 互动和友链申请 | `REACTION_COOLDOWN_SECONDS=2`；`FRIEND_APPLICATION_SUBMISSION_LIMIT=2`、`FRIEND_APPLICATION_SUBMISSION_WINDOW_SECONDS=3600` |
 | 邮件 | `NOTIFICATION_TIMEOUT_MILLISECONDS=7000`、`NOTIFICATION_RETRY_SECONDS=60`、`NOTIFICATION_MAXIMUM_ATTEMPTS=5`、`NOTIFICATION_BATCH_SIZE=5`（最多20）、`NOTIFICATION_EXPIRY_HOURS=23`（最多23） |
 | 媒体 | `MEDIA_MAX_BYTES=10485760`（单张图片上限，可调低，最大10MiB） |
 | GitHub | `GITHUB_USERNAME=afterSuperSam`、`GITHUB_CACHE_SECONDS=21600`、`GITHUB_RETRY_SECONDS=60`、`GITHUB_TIMEOUT_MILLISECONDS=5000`、`GITHUB_CONCURRENCY=3`（最多6） |
@@ -232,6 +232,10 @@ pnpm audit
 仓库无独立 e2e 套件。按 [视觉验收清单](design/README.md#验收清单) 检查生产构建；本地开发页、源码审查、单测通过均不等同于已上线或完成无障碍认证。
 
 ## 数据与部署
+
+公开写入按来源 IP 的 HMAC 指纹计数，不保存完整 IP。友链申请在滚动一小时内最多成功 2 次；留言和文章评论在滚动一分钟内合计最多成功 2 次，超额返回 HTTP 429，不入库、不排队发信。配额由 SQLite 中已接受的记录计算，服务重启不清零。旧的 `MESSAGE_COOLDOWN_SECONDS` 和 `FRIEND_APPLICATION_COOLDOWN_SECONDS` 不再生效。
+
+反代入口对两条提交路径的 POST 另设按 IP 和全站突发限流，具体参数见 `deploy/nginx.conf`；GET、缓存资源和管理路由不计入。使用 Cloudflare 时，可另设按 IP 的短窗口限流，仅匹配博客这两条 API（套餐不支持 Method 时按路径匹配）；边缘层不是精确小时／分钟配额。Tunnel 回源时，Nginx 仅从本机可信连接读取 `CF-Connecting-IP`，并重写传给应用的地址头；不得信任客户端自带的转发头。
 
 数据库为 `$BLOG_DATA_DIR/blog.sqlite`，使用 WAL、外键和 CHECK 约束。迁移在启动时按记录增量应用；新文章使用 `blog_articles`，不读取或自动发布退役的历史文章／相册表，也不在启动时删除历史表。保留数据库及备份目录。
 

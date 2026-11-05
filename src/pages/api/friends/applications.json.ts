@@ -20,6 +20,6 @@ export const POST = route(async ({ request, clientAddress, url }) => {
   getDatabase().transaction(() => {
     const id = createFriendApplication(input, parseNotificationEmail(body.email), fingerprintIp(getClientIp(request, clientAddress)));
     queueAdminNotification('application', id);
-  })();
+  }).immediate();
   return json({ ok: true, message: '申请已送达，通过后会出现在网站友链中。' }, 201);
 });

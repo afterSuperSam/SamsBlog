@@ -449,12 +449,12 @@ export function listAllMessages(limit = -1) {
   return listMessageThreads(limit, false);
 }
 
-export function hasRecentSubmission(fingerprintHash: string, seconds = serverConfig.messageCooldownSeconds) {
+export function hasReachedMessageSubmissionLimit(fingerprintHash: string) {
   const row = getDatabase()
     .prepare(`SELECT 1 FROM messages
-      WHERE fingerprint_hash = ? AND datetime(created_at) >= datetime('now', ?)
-      LIMIT 1`)
-    .get(fingerprintHash, `-${seconds} seconds`);
+      WHERE fingerprint_hash = ? AND created_at > datetime('now', ?)
+      LIMIT 1 OFFSET ?`)
+    .get(fingerprintHash, `-${serverConfig.messageSubmissionWindowSeconds} seconds`, serverConfig.messageSubmissionLimit - 1);
   return Boolean(row);
 }
 
