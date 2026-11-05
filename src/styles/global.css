@@ -49,6 +49,8 @@
   --motion-decoration-duration: 620ms;
   --article-page-width: 1120px;
   --article-reading-width: 860px;
+  --article-body-image-width: 960px;
+  --article-portrait-preview-ratio: 16 / 9;
   --article-annotated-width: 900px;
   --article-toc-width: clamp(180px,12vw,224px);
   --article-toc-gap: clamp(20px,2vw,36px);

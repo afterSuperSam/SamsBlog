@@ -10,6 +10,7 @@ class ElementStub extends EventTarget {
   currentSrc = '';
   alt = '';
   naturalWidth = 400;
+  naturalHeight = 300;
   clientWidth = 700;
   open = false;
   dataset: Record<string, string> = {};
@@ -35,8 +36,9 @@ class ElementStub extends EventTarget {
   click() { this.dispatchEvent(new Event('click', { cancelable: true })); }
 }
 
-function fixture() {
+function fixture(naturalWidth = 400, naturalHeight = 300) {
   const image = new ElementStub(); image.src = 'https://images.example/photo.webp'; image.alt = '图片说明';
+  image.naturalWidth = naturalWidth; image.naturalHeight = naturalHeight;
   const prose = new ElementStub(); prose.querySelectorAll = () => [image];
   const dialog = new ElementStub();
   const elements = Object.fromEntries(['full', 'viewport', 'zoom', 'status', 'retry', 'close', 'caption'].map((name) => [`[data-image-${name}]`, new ElementStub()]));
@@ -46,14 +48,36 @@ function fixture() {
   const body = { style: { overflow: 'auto' } };
   vi.stubGlobal('document', { body, activeElement: null, createElement: () => trigger });
   vi.stubGlobal('Image', class extends ElementStub { constructor() { super(); loaders.push(this); } });
+  let resizePreview: () => void;
+  vi.stubGlobal('ResizeObserver', class {
+    constructor(callback: (entries: { target: ElementStub }[]) => void) { resizePreview = () => callback([{ target: image }]); }
+    observe() {}
+  });
   initializeArticleImageViewer(prose as unknown as HTMLElement, dialog as unknown as HTMLDialogElement);
   trigger.click();
-  return { dialog, trigger, elements, loaders, body };
+  return { dialog, trigger, elements, loaders, body, image, resizePreview: () => resizePreview() };
 }
 
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 describe('image viewer loading and retry', () => {
+  it('classifies cached and lazy portrait previews while loading the complete original in the viewer', () => {
+    vi.useFakeTimers();
+    const cached = fixture(400, 800);
+    expect(cached.image.dataset.articlePortrait).toBe('true');
+    expect(cached.loaders[0].src).toBe(cached.image.src);
+    cached.dialog.close();
+    const lazy = fixture(0, 0);
+    expect(lazy.image.dataset.articlePortrait).toBeUndefined();
+    lazy.image.naturalWidth = 400;
+    lazy.image.naturalHeight = 800;
+    lazy.resizePreview();
+    expect(lazy.image.dataset.articlePortrait).toBe('true');
+    lazy.image.naturalHeight = 300;
+    lazy.image.dispatchEvent(new Event('load'));
+    expect(lazy.image.dataset.articlePortrait).toBe('false');
+    lazy.dialog.close();
+  });
   it('retries in place, ignores a superseded attempt, and enables zoom only after success', () => {
     vi.useFakeTimers();
     const { dialog, elements, loaders } = fixture();

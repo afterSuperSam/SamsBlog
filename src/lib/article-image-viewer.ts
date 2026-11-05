@@ -50,7 +50,16 @@ export function initializeArticleImageViewer(prose: HTMLElement, dialog: HTMLDia
     loader.src = imageAddress;
   };
   retry.addEventListener('click', loadImage);
+  const updatePreview = (image: HTMLImageElement) => {
+    image.dataset.articlePortrait = String(image.naturalHeight > image.naturalWidth);
+  };
+  const previewObserver = new ResizeObserver((entries) => {
+    entries.forEach(({ target }) => updatePreview(target as HTMLImageElement));
+  });
   prose.querySelectorAll<HTMLImageElement>('img').forEach((image) => {
+    previewObserver.observe(image);
+    image.addEventListener('load', () => updatePreview(image));
+    if (image.naturalWidth) updatePreview(image);
     const link = image.closest<HTMLAnchorElement>('a');
     // 外部目标和多图链接保留原始导航，只有明确的单图链接参与放大。
     if (link && (link.querySelectorAll('img').length !== 1 || ![image.src, image.currentSrc].includes(link.href))) return;
