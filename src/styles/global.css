@@ -13,9 +13,11 @@
 .rss-source__attribute { color: var(--summer-pink); }
 
 :root {
+  --footer-bottom-space: 28px;
   --admin-sidebar-width: 174px;
   --admin-drawer-width: 740px;
   --admin-editor-width: 1240px;
+  --admin-login-heading-size: clamp(3.5rem,7.5vw,5.75rem);
   --application-dialog-width: 1200px;
   --application-heading-size: 1.5rem;
   --application-glass-core: var(--surface);
@@ -118,8 +120,28 @@
   --project-title-glow-close: color-mix(in oklab, var(--glow-blue) 65%, transparent);
   --project-title-glow-wide: color-mix(in oklab, var(--glow-blue) 38%, transparent);
   --project-number-gap: 24px;
+  --friend-group-heading-size: clamp(24px,2.5vw,30px);
+  --friend-starred-color: var(--article-star-color);
+  --friend-recommended-color: var(--summer-orange);
+  --friend-default-color: var(--summer-blue);
+  --friend-lost-color: var(--muted);
   --friend-rss-duration: 560ms;
-  --friend-updates-inset: clamp(16px,2vw,28px);
+  --friend-deck-depth: 84px;
+  --friend-deck-scale-step: .16;
+  --friend-deck-angle: 10deg;
+  --friend-deck-roll: 1.6deg;
+  --friend-deck-front-tilt: 1.1deg;
+  --friend-deck-back-tilt: 2.4deg;
+  --friend-deck-rise: 16px;
+  --friend-deck-back-blur: 1.5px;
+  --friend-deck-card-width: 360px;
+  --friend-deck-stage-height: 480px;
+  --friend-deck-stage-clearance: 64px;
+  --friend-deck-image-height: 110px;
+  --friend-deck-perspective: 1100px;
+  --friend-deck-paper: color-mix(in srgb,var(--surface) 94%,transparent);
+  --friend-deck-edge: color-mix(in srgb,var(--line) 30%,transparent);
+  --friend-deck-shadow: color-mix(in srgb,var(--bg-deep) 24%,transparent);
   --friend-focus-scale: 1.045;
   --friend-focus-duration: 560ms;
   --friend-hover-light-strength: 12%;
@@ -163,15 +185,15 @@
   --header-bg: rgba(29, 31, 33, 0.9);
   --on-media: #fff7eb;
   --on-media-accent: #ffe6a2;
-  --hero-note-color: var(--on-media);
   --content-note-color: var(--summer-pink);
   --content-link-color: var(--summer-blue);
   --content-update-color: var(--summer-orange);
   --content-timeline-width: clamp(92px,12vw,134px);
   --media-bg: #111315;
   --flow-bg:
-    radial-gradient(ellipse at 8% 18%, color-mix(in oklab, var(--accent) 5%, transparent), transparent 38rem),
-    radial-gradient(ellipse at 92% 72%, color-mix(in oklab, var(--accent-2) 4%, transparent), transparent 44rem),
+    radial-gradient(ellipse at 8% 16%, color-mix(in oklab,var(--glow-blue) 5%,transparent), transparent 60%),
+    radial-gradient(ellipse at 94% 52%, color-mix(in oklab,var(--glow-pink) 4%,transparent), transparent 64%),
+    radial-gradient(ellipse at 44% 110%, color-mix(in oklab,var(--glow-orange) 3%,transparent), transparent 70%),
     linear-gradient(180deg, var(--bg), color-mix(in oklab, var(--bg) 98%, var(--surface) 2%) 52%, var(--bg));
   --gradient-surface:
     radial-gradient(circle at 82% 14%, color-mix(in oklab, var(--accent) 5%, transparent), transparent 40%),
@@ -228,9 +250,9 @@
   --ambient-rest-strength: .6;
   --ambient-quiet-strength: .16;
   --ambient-shift-duration: 1100ms;
-  --ambient-halo-opacity: .16;
+  --ambient-halo-opacity: .12;
   --ambient-pink-halo-size: min(65vw,840px);
-  --ambient-pink-halo-opacity: .1;
+  --ambient-pink-halo-opacity: .075;
   --ambient-halo-duration: 22s;
   --ambient-pink-halo-duration: 29s;
   --ambient-halo-travel: clamp(30px,7vw,100px);
@@ -255,78 +277,88 @@
 
 :root[data-theme="light"] {
   --quote-star-opacity: .4;
-  --quote-background: #fcfeff;
+  --quote-background: #ffffff;
   --quote-halo-opacity: .7;
-  --quote-glow-blue: #c7eff8;
-  --quote-glow-pink: #ffdeef;
-  --terrain-column: #cbdfe5;
-  --terrain-blue: #dbeaef;
-  --terrain-pink: #e2dce8;
-  --terrain-side: #b2cad3;
-  --terrain-mark: #7696a3;
+  --quote-glow-blue: #d3f3fc;
+  --quote-glow-pink: #ffe8f3;
+  --terrain-column: #d8eaf0;
+  --terrain-blue: #e7f4f8;
+  --terrain-pink: #eee7f2;
+  --terrain-side: #c6dce6;
+  --terrain-mark: #89aab9;
   --terrain-scan-strength: .3;
   --terrain-opacity: .72;
   color-scheme: light;
-  --friend-overlay-start: rgba(249,253,254,.4);
-  --friend-overlay-middle: rgba(249,253,254,.3);
-  --friend-overlay-end: rgba(249,253,254,.06);
-  --ambient-pink-halo-opacity: .34;
-  --surface-paper: #f6f0e5;
+  --friend-deck-shadow: rgba(126,187,208,.1);
+  --friend-light-glow: var(--glow-blue);
+  --friend-overlay-start: rgba(252,254,255,.4);
+  --friend-overlay-middle: rgba(252,254,255,.3);
+  --friend-overlay-end: rgba(252,254,255,.06);
+  --ambient-pink-halo-opacity: .255;
+  --surface-paper: #fffaf2;
   --article-search-cancel-color: #b94454;
-  --surface-paper-tape: rgba(205, 190, 164, 0.36);
-  --shadow-paper: 0 14px 30px rgba(93, 77, 52, 0.1), inset 0 1px rgba(255, 255, 255, 0.65);
-  --bg: #f4fbfc;
-  --bg-deep: #e7f7f8;
-  --surface: #fffefd;
-  --surface-2: #e2f6f6;
-  --text: #26393d;
-  --text-strong: #162d32;
-  --hero-note-color: var(--text-strong);
-  --text-soft: #49666b;
-  --muted: #536f74;
-  --accent: #aa6552;
-  --accent-2: #326e77;
-  --summer-blue: #247583;
-  --summer-pink: #a94062;
-  --summer-orange: #995325;
-  --article-star-color: #826024;
-  --article-star-highlight: #9a702b;
-  --article-star-glow: #c5963b33;
-  --article-star-glow-peak: #dfad4d66;
-  --glow-blue: #81d4e3;
-  --glow-pink: #f3abc8;
-  --glow-orange: #f1c194;
-  --glow-white-mix: 58%;
-  --quick-nav-idle: #497e89;
-  --quick-nav-active: #347e8e;
-  --quick-nav-glow: #b1e8f3;
+  --surface-paper-tape: rgba(235, 213, 178, 0.3);
+  --shadow-paper: 0 14px 30px rgba(119, 166, 186, 0.08), inset 0 1px rgba(255, 255, 255, 0.65);
+  --bg: #f8fcff;
+  --bg-deep: #edf8fd;
+  --surface: #ffffff;
+  --surface-2: #eef9fc;
+  --text: #30484f;
+  --text-strong: #253d46;
+  --text-soft: #516d76;
+  --muted: #58717b;
+  --accent: #a3604e;
+  --accent-2: #387585;
+  --summer-blue: #2c798d;
+  --summer-pink: #b34a70;
+  --summer-orange: #a05d2c;
+  --article-star-color: #8a682d;
+  --article-star-highlight: #96702c;
+  --article-star-glow: #efd19b33;
+  --article-star-glow-peak: #ffe0a966;
+  --glow-blue: #abe7f4;
+  --glow-pink: #ffd0e3;
+  --glow-orange: #ffe0b9;
+  --glow-white-mix: 68%;
+  --quick-nav-idle: #558997;
+  --quick-nav-active: #408598;
+  --quick-nav-glow: #c8eff9;
   --quick-nav-far-opacity: 1;
-  --project-title-hover: #368b9b;
-  --project-title-glow-close: #b6eaf580;
-  --project-title-glow-wide: #c9f0f780;
-  --login-shadow: rgba(104,175,192,.13);
-  --avatar-shadow: rgba(104,175,192,.14);
-  --brand-shadow: rgba(104,175,192,.18);
+  --project-title-hover: #3b8498;
+  --project-title-glow-close: #c8effa80;
+  --project-title-glow-wide: #def6fc80;
+  --login-shadow: rgba(126,187,208,.1);
+  --avatar-shadow: rgba(126,187,208,.11);
+  --brand-shadow: rgba(126,187,208,.13);
   --article-image-glow-opacity: .12;
-  --ambient-halo-opacity: .24;
-  --success: #366850;
+  --ambient-halo-opacity: .18;
+  --success: #3c7359;
   --danger: #ae5956;
   --project-archived-color: #b94b5e;
-  --line: rgba(58, 119, 127, 0.14);
-  --line-strong: rgba(58, 119, 127, 0.24);
+  --line: rgba(103, 151, 172, 0.14);
+  --line-strong: rgba(103, 151, 172, 0.24);
   --hover: rgba(72, 179, 190, 0.07);
-  --header-bg: rgba(244, 251, 252, 0.92);
+  --header-bg: rgba(248, 252, 255, 0.92);
   --flow-bg:
-    radial-gradient(ellipse at 9% 12%, color-mix(in srgb,var(--glow-blue) 18%,transparent), transparent 38rem),
-    radial-gradient(ellipse at 88% 26%, color-mix(in srgb,var(--glow-pink) 11%,transparent), transparent 42rem),
-    radial-gradient(ellipse at 76% 88%, color-mix(in srgb,var(--glow-orange) 10%,transparent), transparent 44rem),
-    linear-gradient(180deg, #f9fdfe 0%, #effafb 48%, #f8fcfc 100%);
+    radial-gradient(ellipse at 8% 16%, color-mix(in srgb,var(--glow-blue) 14%,transparent), transparent 60%),
+    radial-gradient(ellipse at 94% 52%, color-mix(in srgb,var(--glow-pink) 8%,transparent), transparent 64%),
+    radial-gradient(ellipse at 44% 110%, color-mix(in srgb,var(--glow-orange) 7.5%,transparent), transparent 70%),
+    linear-gradient(180deg, #fcfeff 0%, #f5fbff 48%, #fbfdff 100%);
   --gradient-surface:
     radial-gradient(circle at 82% 14%, color-mix(in srgb,var(--glow-blue) 12%,transparent), transparent 40%),
     radial-gradient(circle at 12% 88%, color-mix(in srgb,var(--glow-pink) 7%,transparent), transparent 35%),
-    linear-gradient(155deg, #fffefd, #eefafa);
-  --shadow: 0 24px 70px rgba(104, 175, 192, 0.14);
+    linear-gradient(155deg, #ffffff, #f5fcff);
+  --shadow: 0 24px 70px rgba(126, 187, 208, 0.1);
 }
+
+/* 浅色友链背光使用独立光源，文字组色仍保持可读对比。 */
+:root[data-theme="light"] [data-friend-group-key="starred"]{--friend-light-glow:#ffe3ad}
+:root[data-theme="light"] [data-friend-group-key="recommended"]{--friend-light-glow:var(--glow-orange)}
+:root[data-theme="light"] [data-friend-group-key="default"]{--friend-light-glow:var(--glow-blue)}
+:root[data-theme="light"] [data-friend-group-key="lost"]{--friend-light-glow:#dce5eb}
+:root[data-theme="light"] .friend-card::after{background:radial-gradient(ellipse at 50% 58%,color-mix(in oklab,var(--friend-light-glow) var(--friend-hover-light-strength),transparent),transparent 78%)}
+:root[data-theme="light"] .friends-layout:not(.friend-deck) .friend-card:is(:hover,:focus-within){box-shadow:0 12px 38px color-mix(in oklab,var(--friend-light-glow) var(--friend-hover-shadow-strength),transparent)}
+:root[data-theme="light"] .friend-deck .friend-card::after{background:radial-gradient(ellipse,color-mix(in oklab,var(--friend-light-glow),transparent 86%),transparent 72%)}
 
 *,
 *::before,
@@ -435,6 +467,11 @@ p {
 
 body { position: relative; isolation: isolate; }
 
+/* 微弱静态颗粒仅作为背景，不覆盖正文和图片。 */
+:root body::before{z-index:0;opacity:.025;pointer-events:none;animation:none;transition:none}
+html:root[data-theme="light"] body::before{opacity:.0125}
+@media(forced-colors:active){:root body::before{display:none}}
+
 @media (max-width: 720px) {
   :root {
     --gutter: 20px;
@@ -470,6 +507,15 @@ main { position:relative; z-index:1; }
 @keyframes quick-nav-ripple{0%{transform:scale(.8,.8);opacity:.5}100%{transform:scale(3.5,1.55);opacity:0}}
 @media(prefers-reduced-motion:reduce){.home-quick-nav :is(i,span){transition:none}.home-quick-nav a[aria-current="location"] i::after{animation:none;opacity:.15}}
 @media(max-width:760px){.home-quick-nav{display:none}}
+/* 关于页站点统计 */
+.site-stats{padding-block:16px clamp(60px,7vw,100px);scroll-margin-top:calc(var(--header-height) + 24px)}
+.site-stats__panel{font-family:var(--playful);padding:clamp(26px,4vw,48px);border-radius:28px;background:color-mix(in srgb,var(--surface) 82%,var(--surface-2))}
+.stat-reader-value{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.site-stats dd:focus-visible{text-shadow:0 0 18px color-mix(in oklab,var(--glow-blue) 35%,transparent)}
+.site-stats dl{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:24px;margin:0;text-align:center}.site-stats dl>div{min-width:0}
+.site-stats dt{font-size:var(--font-size-label);color:var(--muted)}.site-stats dd{margin:12px 0 0;font:700 clamp(28px,3vw,45px)/1.2 var(--display);color:var(--summer-orange);overflow-wrap:anywhere}.site-stats dd small{margin-left:6px;font:400 var(--font-size-small)/1 var(--playful);color:var(--muted)}.site-stats dl>div:nth-child(2) dd{color:var(--summer-blue)}.site-stats dl>div:nth-child(3) dd{color:var(--summer-pink)}.site-stats dl>div:nth-child(4) dd{color:var(--success)}
+@media(max-width:760px){.site-stats dl{grid-template-columns:repeat(2,minmax(0,1fr));gap:28px 16px}}
+
 .about-page :is(#contact,#activity,#sponsor){scroll-margin-top:calc(var(--header-height) + 24px)}
 
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}

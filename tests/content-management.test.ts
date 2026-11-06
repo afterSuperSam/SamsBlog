@@ -6,7 +6,7 @@ import type { APIContext, APIRoute } from 'astro';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { parseGithubContributions } from '../src/lib/contributions';
 import { serverConfig } from '../src/config/server';
-import { deleteFriend, listFriends, parseFriendInput, saveFriend, setFriendStarred } from '../src/lib/friends';
+import { deleteFriend, listFriends, parseFriendInput, saveFriend, setFriendRecommended, setFriendStarred } from '../src/lib/friends';
 import { getSiteStats, hashVisitorToken, recordPageView } from '../src/lib/stats';
 import { createMessage, createAdminReply, deleteMessage, getDatabase, listAllMessages, listPublishedMessages, updateMessageStatus } from '../src/lib/db';
 import { createAdminSession } from '../src/lib/admin-auth';
@@ -85,7 +85,7 @@ describe('SQLite content management', () => {
     expect(saveFriend(input)).toBeGreaterThan(id);
   });
 
-  it('keeps starred friends first and preserves the original creation order within each group', () => {
+  it('keeps starred friends first and uses stable IDs when RSS dates are missing', () => {
     const database = getDatabase();
     const existing = listFriends()[0];
     expect(existing.starred).toBe(false);
@@ -93,7 +93,7 @@ describe('SQLite content management', () => {
     const ids = Array.from({ length: 4 }, (_, index) => Number(saveFriend(parseFriendInput({
       name: `排序友链${index}`, url: `https://sort-${index}.example.com`, description: '星标排序验证', iconUrl: 'https://example.com/icon.png',
     }))));
-    ids.forEach((id, index) => database.prepare('UPDATE friends SET created_at=? WHERE id=?').run(`2026-01-0${index + 1}T00:00:00.000Z`, id));
+    ids.forEach((id, index) => database.prepare('UPDATE friends SET created_at=? WHERE id=?').run(`2026-01-0${4 - index}T00:00:00.000Z`, id));
     const ordered = () => listFriends().filter((friend) => ids.includes(friend.id)).map((friend) => friend.id);
     expect(setFriendStarred(ids[3], true)).toBe(true);
     expect(setFriendStarred(ids[1], true)).toBe(true);
@@ -101,11 +101,69 @@ describe('SQLite content management', () => {
     const starred = listFriends().find((friend) => friend.id === ids[1])!;
     const { starred: ignored, ...ordinaryEdit } = starred;
     expect(saveFriend(parseFriendInput({ ...ordinaryEdit, name: '修改名称不清除星标' }))).toBe(true);
-    expect(listFriends().find((friend) => friend.id === ids[1])).toMatchObject({ starred: true, createdAt: '2026-01-02T00:00:00.000Z' });
+    expect(listFriends().find((friend) => friend.id === ids[1])).toMatchObject({ starred: true, createdAt: '2026-01-03T00:00:00.000Z' });
     setFriendStarred(ids[1], false);
     expect(ordered()).toEqual([ids[3], ids[0], ids[1], ids[2]]);
     expect(() => database.prepare('UPDATE friends SET starred=2 WHERE id=?').run(ids[0])).toThrow();
     ids.forEach(deleteFriend);
+  });
+
+  it('groups unavailable links last and sorts each group by matching RSS dates without changing saved flags', () => {
+    const database = getDatabase();
+    expect(database.prepare("SELECT id FROM schema_migrations WHERE id='20261107-friend-groups'").get()).toBeTruthy();
+    const ids = Array.from({ length: 7 }, (_, index) => Number(saveFriend(parseFriendInput({
+      name: `分类友链${index}`, url: `https://groups-${index}.example.com`, description: '分类和订阅排序验证',
+      iconUrl: 'https://example.com/icon.png', rssUrl: `https://groups-${index}.example.com/feed`,
+      starred: index === 0 || index === 1, recommended: index < 4,
+    }))));
+    const feed = database.prepare(`INSERT INTO friend_feed_cache(friend_id,rss_url,title,entry_url,published_at,checked_at)
+      SELECT id,rss_url,'文章',url,?,? FROM friends WHERE id=?`);
+    const status = database.prepare(`INSERT INTO friend_status_cache(friend_id,url,status,checked_at)
+      SELECT id,url,?,? FROM friends WHERE id=?`);
+    const now = new Date().toISOString();
+    [null, '2026-01-01', '2026-01-02', '2026-01-03', '2026-01-04', null, '2026-01-04'].forEach((date, index) => feed.run(date, now, ids[index]));
+    status.run('offline', now, ids[1]);
+    const ordered = () => listFriends().filter((friend) => ids.includes(friend.id));
+    expect(ordered().map(({ id }) => id)).toEqual([ids[0], ids[3], ids[2], ids[4], ids[6], ids[5], ids[1]]);
+    expect(ordered().at(-1)).toMatchObject({ starred: true, recommended: true, group: 'lost', latestPublishedAt: '2026-01-01T00:00:00.000Z' });
+    for (const state of ['restricted', 'blocked']) {
+      database.prepare('UPDATE friend_status_cache SET status=? WHERE friend_id=?').run(state, ids[1]);
+      expect(ordered().at(-1)?.group).toBe('lost');
+    }
+    database.prepare('UPDATE friend_status_cache SET status=? WHERE friend_id=?').run('online', ids[1]);
+    expect(ordered()[0]).toMatchObject({ id: ids[1], group: 'starred' });
+    database.prepare('UPDATE friend_status_cache SET status=?,checked_at=? WHERE friend_id=?').run('offline', '2000-01-01', ids[1]);
+    expect(ordered()[0]?.group).toBe('starred');
+    database.prepare('UPDATE friend_status_cache SET checked_at=?,url=? WHERE friend_id=?').run(now, 'https://old.example.com/', ids[1]);
+    expect(ordered()[0]?.group).toBe('starred');
+    database.prepare('UPDATE friend_feed_cache SET rss_url=? WHERE friend_id=?').run('https://old.example.com/feed', ids[3]);
+    expect(ordered().filter(({ group }) => group === 'recommended').map(({ id }) => id)).toEqual([ids[2], ids[3]]);
+    const { recommended: ignored, ...ordinaryEdit } = ordered().find(({ id }) => id === ids[2])!;
+    saveFriend(parseFriendInput({ ...ordinaryEdit, name: '普通编辑保留推荐' }));
+    expect(ordered().find(({ id }) => id === ids[2])?.recommended).toBe(true);
+    expect(() => database.prepare('UPDATE friends SET recommended=2 WHERE id=?').run(ids[2])).toThrow();
+    expect(setFriendRecommended(ids[2], false)).toBe(true);
+    ids.forEach(deleteFriend);
+  });
+
+  it('validates recommended updates and preserves hidden and deleted boundaries', async () => {
+    const input = parseFriendInput({ name: '推荐边界', url: 'https://recommended-boundary.example.com', description: '推荐验证', iconUrl: 'https://example.com/icon.png', visible: false });
+    const id = Number(saveFriend(input));
+    const request = (recommended: unknown, authorized = true, origin = 'https://blog.example.com') => patchFriend({
+      request: new Request('https://blog.example.com/api/admin/friends.json', { method: 'PATCH', headers: { 'content-type': 'application/json', origin }, body: JSON.stringify({ id, action: 'recommend', recommended }) }),
+      clientAddress: '203.0.113.170', cookies: { get: () => authorized ? { value: createAdminSession() } : undefined },
+    } as unknown as APIContext) as Promise<Response>;
+    expect((await request(true, false)).status).toBe(401);
+    expect((await request(true, true, 'https://other.example')).status).toBe(403);
+    for (const value of ['true', 1, null]) {
+      expect(() => parseFriendInput({ ...input, recommended: value })).toThrow('布尔值');
+      expect((await request(value)).status).toBe(400);
+    }
+    expect((await request(true)).status).toBe(200);
+    expect(listFriends().some((friend) => friend.id === id)).toBe(false);
+    expect(listFriends({ includeHidden: true }).find((friend) => friend.id === id)?.recommended).toBe(true);
+    deleteFriend(id);
+    expect((await request(false)).status).toBe(404);
   });
 
   it('validates star updates and never exposes hidden or deleted starred friends', async () => {

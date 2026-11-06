@@ -3,13 +3,11 @@ import { siteConfig } from '../config/site';
 const publicAddress = (pathname: string) => new URL(pathname, siteConfig.rss.siteUrl).href;
 const information = [
   { label: '网站名称', value: siteConfig.name },
-  { label: '站长', value: siteConfig.friendApplications.ownerName },
   { label: '一句话介绍', value: siteConfig.rss.description },
   { label: '网站地址', value: siteConfig.rss.siteUrl },
   { label: '头像地址', value: publicAddress(siteConfig.friendApplications.iconUrl) },
   { label: '背景地址', value: publicAddress(siteConfig.friendApplications.backgroundUrl) },
   { label: 'RSS 地址', value: publicAddress('/rss.xml') },
-  { label: '联系邮箱', value: `${siteConfig.social.qq}@qq.com` },
 ];
 const allInformation = information.map(({ label, value }) => `${label}：${value}`).join('\n');
 ---
@@ -19,7 +17,7 @@ const allInformation = information.map(({ label, value }) => `${label}：${value
   <section class="friend-site-sheet" aria-labelledby="friend-site-title">
     <header><h2 id="friend-site-title">本站信息</h2><button type="button" class="copy-feedback" data-site-copy={allInformation} data-copy-name="全部信息"><span data-copy-label>复制全部</span></button></header>
     <div class="friend-site-layout">
-      <figure class="friend-site-preview"><a href={siteConfig.friendApplications.backgroundUrl} target="_blank" rel="noopener noreferrer" aria-label="打开本站友链背景原图"><img src={siteConfig.friendApplications.backgroundUrl} alt="SamsBlog 首页背景，夏日插画与蓝白手写字标" width="1600" height="872" loading="lazy" decoding="async" /></a><figcaption>首页背景 · 点击查看原图</figcaption></figure>
+      <figure class="friend-site-preview"><a href={siteConfig.friendApplications.backgroundUrl} target="_blank" rel="noopener noreferrer" aria-label="打开本站友链背景原图"><img src={siteConfig.friendApplications.backgroundUrl} alt="SamsBlog 首页背景，夏日插画与蓝白手写字标" width="1600" height="872" loading="lazy" decoding="async" /></a><figcaption>首页背景</figcaption></figure>
       <dl class="friend-site-details">{information.map(({ label, value }) => <div><dt>{label}</dt><dd><span class="friend-site-value">{value}</span><button type="button" class="copy-feedback" data-site-copy={value} data-copy-name={label} aria-label={`复制${label}`}><span data-copy-label>复制</span></button></dd></div>)}</dl>
     </div>
     <p class="sr-only" role="status" data-site-copy-status></p>
@@ -36,7 +34,7 @@ const allInformation = information.map(({ label, value }) => `${label}：${value
     <label class="paper-input-label"><span>网站地址</span><input name="url" type="url" required maxlength="4096" placeholder="https://…" /></label>
     <label class="paper-input-label"><span>图标地址</span><input name="iconUrl" type="url" required maxlength="4096" placeholder="https://…" /></label>
     <label class="paper-input-label"><span>一句话介绍</span><input name="description" required maxlength="240" /></label>
-    <label class="paper-input-label"><span>联系邮箱 · 可选，不公开</span><input name="email" type="text" inputmode="email" pattern="[^\s@]+@[^\s@]+\.[^\s@]+" maxlength="254" /></label>
+    <label class="paper-input-label"><span>添加邮箱（可选，作为申请成功的回信地址）</span><input name="email" type="text" inputmode="email" pattern="[^\s@]+@[^\s@]+\.[^\s@]+" maxlength="254" placeholder="邮箱不公开" /></label>
     <label class="paper-input-label"><span>RSS 地址 · 可选</span><input name="rssUrl" type="url" maxlength="4096" placeholder="https://…" /></label>
     <label hidden aria-hidden="true">网站<input name="website" tabindex="-1" autocomplete="off" /></label>
     <footer><button type="button" class="friend-application-close" data-friend-apply-close aria-label="关闭友链申请">关闭</button><button type="submit" class="friends-more" disabled>送出申请 ↗</button></footer>

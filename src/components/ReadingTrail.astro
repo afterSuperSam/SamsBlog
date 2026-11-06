@@ -7,9 +7,9 @@ const { compact = false, articles = listArticleMetadata() } = Astro.props;
 const headingId = compact ? 'home-reading-trail-title' : 'reading-trail-title';
 ---
 
-<section class:list={['reading-trail', { 'reading-trail--compact': compact }]} data-reveal data-reading-trail data-trail-articles={JSON.stringify(articles.map(({ id, title, updatedAt }) => ({ id, title, updatedAt })))} data-trail-limit={compact ? 1 : siteConfig.readingExtras.historyVisibleCount} hidden aria-labelledby={headingId}>
-  <header><h2 id={headingId}>{compact ? '之前读到' : '本机阅读路径'}</h2>{!compact && <button type="button" class="articles-more" data-trail-clear>清除记录</button>}</header>
-  <ol data-trail-list></ol><span class="sr-only" role="status" data-trail-status></span>
+<section class:list={['reading-trail', { 'reading-trail--compact': compact }]} data-reveal data-reading-trail data-trail-articles={JSON.stringify(articles.map(({ id, title, updatedAt }) => ({ id, title, updatedAt })))} data-trail-limit={compact ? 1 : siteConfig.readingExtras.historyVisibleCount} hidden aria-labelledby={compact ? headingId : undefined} aria-label={!compact ? '最近阅读记录' : undefined}>
+  {compact && <header><h2 id={headingId}>之前读到</h2></header>}
+  <ol data-trail-list></ol>
 </section>
 
 <script>
@@ -17,7 +17,6 @@ const headingId = compact ? 'home-reading-trail-title' : 'reading-trail-title';
   import { siteConfig } from '../config/site';
   document.querySelectorAll<HTMLElement>('[data-reading-trail]').forEach((trail) => {
     const list = trail.querySelector<HTMLOListElement>('[data-trail-list]')!;
-    const status = trail.querySelector<HTMLElement>('[data-trail-status]')!;
     const articles = JSON.parse(trail.dataset.trailArticles!) as { id: number; title: string; updatedAt: string }[];
     const renderTrail = () => {
       try {
@@ -36,12 +35,5 @@ const headingId = compact ? 'home-reading-trail-title' : 'reading-trail-title';
     renderTrail();
     window.addEventListener('pageshow', renderTrail);
     window.addEventListener('storage', (event) => { if (event.key === null || event.key === siteConfig.articleReading.positionStorageKey) renderTrail(); });
-    trail.querySelector('[data-trail-clear]')?.addEventListener('click', () => {
-      try {
-        localStorage.removeItem(siteConfig.articleReading.positionStorageKey); trail.hidden = true;
-        const heading = document.getElementById('articles-title');
-        heading?.setAttribute('tabindex', '-1'); heading?.focus({ preventScroll: true });
-      } catch (error) { console.warn('Reading trail clear failed', error); status.textContent = '无法清除本机记录，请检查浏览器存储设置'; }
-    });
   });
 </script>

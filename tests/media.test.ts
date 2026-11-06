@@ -25,7 +25,7 @@ const upload = (origin = 'https://blog.example.com', authorized = true, image = 
   const form = new FormData(); form.set('file', image);
   return call(POST, new Request(address, { method: 'POST', headers: { origin }, body: form }), authorized);
 };
-const mutation = (handler: APIRoute, method: string, body: unknown) => call(handler, new Request(address, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }));
+const mutation = (handler: APIRoute, method: string, body: unknown) => call(handler, new Request(address, { method, headers: { 'Content-Type': 'application/json', origin: 'https://blog.example.com' }, body: JSON.stringify(body) }));
 
 describe('authenticated image storage and media management', () => {
   it('rejects unauthenticated access and cross-origin multipart uploads', async () => {

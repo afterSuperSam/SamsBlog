@@ -14,6 +14,7 @@ import { POST as apply } from '../src/pages/api/friends/applications.json';
 import { PATCH as review } from '../src/pages/api/admin/applications.json';
 import { parseVisitorProfile } from '../src/lib/visitor-profile';
 import { siteConfig } from '../src/config/site';
+import { serverConfig } from '../src/config/server';
 
 vi.mock('../src/lib/reply-notifications', async (original) => ({ ...await original<object>(), replyNotificationsConfigured: false, queueReplyNotification: vi.fn() }));
 beforeAll(async () => { vi.stubEnv('BLOG_DATA_DIR', await mkdtemp(path.join(tmpdir(), 'samsblog-publishing-'))); });
@@ -30,6 +31,17 @@ async function call(handler: APIRoute, route: string, body?: unknown, token = '1
 describe('public submission quotas', () => {
   const submit = (handler: APIRoute, route: string, body: unknown, clientAddress = '198.51.100.1') =>
     call(handler, route, body, undefined, 'POST', undefined, clientAddress);
+
+  it('shares a request quota across public write endpoints before invalid input can reach storage', async () => {
+    const source = '198.51.100.200';
+    for (let index = 0; index < serverConfig.publicActivityLimit; index++) {
+      const handler = index % 2 ? apply : postComment;
+      const route = index % 2 ? '/api/friends/applications.json' : '/api/guestbook/messages.json';
+      expect((await submit(handler, route, {}, source)).status).toBe(400);
+    }
+    expect((await submit(postComment, '/api/guestbook/messages.json', {}, source)).status).toBe(429);
+    expect((await submit(apply, '/api/friends/applications.json', {}, source)).status).toBe(429);
+  });
 
   it('shares a rolling quota between guestbook messages and article comments', async () => {
     const articleId = saveArticle({ ...content, title: '留言限流验证' });
@@ -158,6 +170,18 @@ describe('article conversation boundaries', () => {
 });
 
 describe('reactions and visitor counting', () => {
+  it('rejects coerced reaction values and enforces source quotas across changing visitor cookies', async () => {
+    const articleId = saveArticle(content);
+    for (const reaction of [[], ['like'], {}, null, false]) {
+      expect((await call(react, '/api/articles/reactions.json', { articleId, reaction })).status).toBe(400);
+    }
+    const source = '198.51.100.201';
+    for (let index = 0; index < serverConfig.publicActivityLimit; index++) {
+      const token = `${String(index).padStart(8, '0')}-1111-4111-8111-111111111111`;
+      expect((await call(react, '/api/articles/reactions.json', { articleId, reaction: 'like' }, token, 'POST', undefined, source)).status).toBe(200);
+    }
+    expect((await call(react, '/api/articles/reactions.json', { articleId, reaction: 'like' }, undefined, 'POST', undefined, source)).status).toBe(429);
+  });
   it('stores one reaction per anonymous visitor, supports switching and cancellation', async () => {
     const articleId = saveArticle(content);
     const payload = { articleId, reaction: 'like' };

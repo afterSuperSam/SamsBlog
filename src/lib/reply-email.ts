@@ -1,7 +1,7 @@
 import globalStyles from '../styles/global.css?raw';
 import { serverConfig } from '../config/server';
 
-// 邮件内联样式从全站设计变量读取，两个通知共用一张信纸。
+// 邮件内联样式从全站设计变量读取，各类通知共用一张信纸。
 const designValue = (name: string) => {
   const value = globalStyles.match(new RegExp(`--${name}:\\s*([^;]+);`))?.[1].trim();
   if (!value || (name !== 'playful' && !/^#[\da-f]{6}$/i.test(value))) throw new Error(`Invalid email design token: ${name}`);
@@ -14,7 +14,7 @@ const palette = {
 };
 const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]!);
 const textHtml = (value: string) => escapeHtml(value).replace(/\r\n?|\n/g, '<br>');
-type EmailKind = 'reply' | 'admin';
+type EmailKind = 'reply' | 'admin' | 'application_accepted';
 
 function publicAddress(value: string) {
   const address = new URL(value);
@@ -28,6 +28,7 @@ export function createResendTemplate(kind: EmailKind, origin: string) {
   const asset = (name: string) => escapeHtml(new URL(`/media/branding/${name}`, base).href);
   const subject = kind === 'reply' ? 'SamsBlog · 你的评论收到了新的回复~' : 'SamsBlog · {{{EVENT_TEXT}}}';
   const heading = kind === 'reply' ? '你的评论收到了新的回复~' : '{{{EVENT_HTML}}}';
+  const actionLabel = kind === 'reply' ? '查看并回复' : kind === 'application_accepted' ? '查看网站友链' : '前往后台处理';
   const original = kind === 'reply' ? `<tr><td class="mail-padding" style="padding:0 28px 22px;word-break:break-word;overflow-wrap:anywhere;"><p style="margin:0 0 10px;font-size:14px;line-height:1.8;color:${palette.muted};">你此前在SamsBlog的留言</p><div style="font-size:16px;line-height:1.9;color:${palette.muted};">{{{ORIGINAL_HTML}}}</div></td></tr>` : '';
   const optOut = kind === 'reply' ? `<p style="margin:14px 0 0;font-size:12px;line-height:1.8;"><a href="{{{OPT_OUT_HTML}}}" style="display:inline-block;padding:8px 0;color:${palette.muted};text-decoration:underline;">不再接收此留言的回复通知</a></p>` : '';
   const html = `<!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light"><title>${subject}</title>
@@ -47,15 +48,15 @@ export function createResendTemplate(kind: EmailKind, origin: string) {
 <div style="margin:0 0 14px;font-size:16px;line-height:2;font-weight:600;color:${palette.blue};">{{{AUTHOR_HTML}}}</div>
 <div style="font-size:17px;line-height:1.95;color:${palette.text};">{{{CONTENT_HTML}}}</div>
 </td></tr></table></td></tr>
-<tr><td class="mail-padding" style="padding:24px 28px 28px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" bgcolor="${palette.glowBlue}" style="border-radius:24px;"><a href="{{{ACTION_HTML}}}" style="display:inline-block;padding:12px 26px;border-radius:24px;font-size:16px;line-height:1.5;font-weight:600;color:${palette.blue};text-decoration:none;">${kind === 'reply' ? '查看并回复' : '前往后台处理'} &nbsp;↗</a></td></tr></table>
+<tr><td class="mail-padding" style="padding:24px 28px 28px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" bgcolor="${palette.glowBlue}" style="border-radius:24px;"><a href="{{{ACTION_HTML}}}" style="display:inline-block;padding:12px 26px;border-radius:24px;font-size:16px;line-height:1.5;font-weight:600;color:${palette.blue};text-decoration:none;">${actionLabel} &nbsp;↗</a></td></tr></table>
 <p style="margin:26px 0 6px;font-size:13px;line-height:1.8;color:${palette.muted};">此邮件自动分发，请勿回复此邮件</p>
 <p style="margin:0;font-size:14px;line-height:1.8;color:${palette.pink};">只是一只大黄狗</p>${optOut}
 </td></tr></table><!--[if mso]></td></tr></table><![endif]--></td></tr></table></body></html>`;
   const text = kind === 'reply'
     ? '你的评论收到了新的回复~\n\n{{{GREETING_TEXT}}}\n{{{CONTEXT_TEXT}}}\n\n你此前在SamsBlog的留言\n{{{ORIGINAL_TEXT}}}\n\n{{{AUTHOR_TEXT}}}\n{{{CONTENT_TEXT}}}\n\n查看并回复：{{{ACTION_TEXT}}}\n停止接收此留言的回复通知：{{{OPT_OUT_TEXT}}}\n\n此邮件自动分发，请勿回复此邮件\n只是一只大黄狗\nhttps://moesam.com'
-    : '{{{EVENT_TEXT}}}\n\n{{{GREETING_TEXT}}}\n{{{CONTEXT_TEXT}}}\n\n{{{AUTHOR_TEXT}}}\n{{{CONTENT_TEXT}}}\n\n前往后台处理：{{{ACTION_TEXT}}}\n\n此邮件自动分发，请勿回复此邮件\n只是一只大黄狗\nhttps://moesam.com';
+    : `{{{EVENT_TEXT}}}\n\n{{{GREETING_TEXT}}}\n{{{CONTEXT_TEXT}}}\n\n{{{AUTHOR_TEXT}}}\n{{{CONTENT_TEXT}}}\n\n${actionLabel}：{{{ACTION_TEXT}}}\n\n此邮件自动分发，请勿回复此邮件\n只是一只大黄狗\nhttps://moesam.com`;
   const keys = [...new Set([...`${html}${text}${subject}`.matchAll(/\{\{\{([A-Z_]+)\}\}\}/g)].map((match) => match[1]))];
-  return { name: `SamsBlog · ${kind === 'reply' ? '评论回复' : '站长提醒'} · 浅色星空`, alias: `samsblog-${kind}-v1`, subject, html, text, variables: keys.map((key) => ({ key, type: 'string' as const })) };
+  return { name: `SamsBlog · ${kind === 'reply' ? '评论回复' : kind === 'application_accepted' ? '友链通过回信' : '站长提醒'} · 浅色星空`, alias: `samsblog-${kind}-v1`, subject, html, text, variables: keys.map((key) => ({ key, type: 'string' as const })) };
 }
 
 function renderEmail(kind: EmailKind, origin: string, variables: Record<string, string>, templateId?: string) {
@@ -102,4 +103,17 @@ export function createAdminEmail(input: { event: string; name: string; context: 
     AUTHOR_HTML: escapeHtml(input.name), AUTHOR_TEXT: input.name, CONTENT_HTML: textHtml(input.content), CONTENT_TEXT: input.content,
     ACTION_HTML: escapeHtml(input.address), ACTION_TEXT: input.address,
   }, templateId);
+}
+
+export function createApplicationAcceptedEmail(input: { name: string; address: string }) {
+  const address = publicAddress(input.address);
+  const event = '你的友链申请已通过';
+  const content = `「${input.name}」已加入 SamsBlog 的网站友链。感谢你的来访，很高兴与你交换日常！`;
+  return renderEmail('application_accepted', address.origin, {
+    EVENT_HTML: event, EVENT_TEXT: event, PREHEADER_HTML: `${escapeHtml(input.name)}已加入网站友链`,
+    GREETING_HTML: `${escapeHtml(input.name)}，你好！`, GREETING_TEXT: `${input.name}，你好！`,
+    CONTEXT_HTML: '网站友链 · 审核通过', CONTEXT_TEXT: '网站友链 · 审核通过',
+    AUTHOR_HTML: 'SamsBlog', AUTHOR_TEXT: 'SamsBlog', CONTENT_HTML: textHtml(content), CONTENT_TEXT: content,
+    ACTION_HTML: escapeHtml(input.address), ACTION_TEXT: input.address,
+  });
 }

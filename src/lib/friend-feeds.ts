@@ -3,10 +3,42 @@ import { getDatabase } from './db';
 import { listFriends } from './friends';
 import { requestFriendResource } from './friend-status';
 
-export interface FriendFeedRecord { id: number; title: string; url: string; publishedAt: string | null; checkedAt: string }
+export interface FriendFeedRecord { id: number; title: string; summary: string; url: string; publishedAt: string | null; checkedAt: string }
 export interface FriendFeedUpdate extends FriendFeedRecord { sourceName: string; sourceUrl: string }
-interface FeedEntry { title: string; url: string; publishedAt: string | null }
-interface FeedCacheRow { title: string; entry_url: string; published_at: string | null; checked_at: string }
+interface FeedEntry { title: string; summary: string; url: string; publishedAt: string | null }
+interface FeedCacheRow { title: string; summary: string; entry_url: string; published_at: string | null; checked_at: string }
+
+const summaryFields = new Set(['description', 'summary', 'encoded', 'content']);
+
+// 摘要仅保留文字，忽略脚本与样式内容，并按 Unicode 码点截短。
+function plainSummary(value: string) {
+  const entities: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', ensp: ' ', emsp: ' ', ndash: '–', mdash: '—', hellip: '…', copy: '©', reg: '®' };
+  const decoded = value.replace(/&([^;&\s]+);/g, (match, entity: string) => {
+    if (Object.hasOwn(entities, entity)) return entities[entity]!;
+    const point = /^#x[\da-f]+$/i.test(entity) ? Number.parseInt(entity.slice(2), 16) : /^#\d+$/.test(entity) ? Number(entity.slice(1)) : NaN;
+    return Number.isInteger(point) && point > 0 && point <= 0x10ffff && !(point >= 0xd800 && point <= 0xdfff) ? String.fromCodePoint(point) : match;
+  });
+  const tags = /<!--[\s\S]*?(?:-->|$)|<\/?([A-Za-z][\w:-]*)\b(?:[^"'<>]|"[^"]*"|'[^']*')*>/g;
+  const ignored = new Set(['script', 'style', 'template', 'iframe', 'object', 'svg', 'math', 'noscript']);
+  let suppressed = '';
+  let cursor = 0;
+  let text = '';
+  for (const match of decoded.matchAll(tags)) {
+    if (!suppressed) text += decoded.slice(cursor, match.index);
+    const name = match[1]?.split(':').at(-1)?.toLowerCase() || '';
+    if (suppressed) {
+      if (name === suppressed && match[0].startsWith('</')) suppressed = '';
+    } else if (ignored.has(name) && !match[0].startsWith('</') && !match[0].endsWith('/>')) {
+      suppressed = name;
+      text += ' ';
+    } else if (/^(?:p|div|br|hr|li|ul|ol|blockquote|section|article|h[1-6]|tr|td)$/.test(name)) text += ' ';
+    cursor = match.index! + match[0].length;
+  }
+  if (!suppressed) text += decoded.slice(cursor);
+  const characters = Array.from(text.replace(/[\s\u0000-\u001f\u007f]+/g, ' ').trim());
+  const maximum = serverConfig.friendFeedSummaryMaxLength;
+  return characters.length > maximum ? `${characters.slice(0, maximum - 1).join('').trimEnd()}…` : characters.join('');
+}
 
 function decodeXmlText(value: string) {
   return value.replace(/&([^;&\s]+);/g, (_match, entity: string) => {
@@ -54,7 +86,7 @@ export function parseFriendFeed(xml: string, feedUrl: string): FeedEntry | null 
   let root = '';
   let closedRoot = false;
   let entryCount = 0;
-  let active: { depth: number; title: string; link: string; dates: Record<string, string> } | null = null;
+  let active: { depth: number; title: string; link: string; dates: Record<string, string>; summaries: Record<string, string> } | null = null;
   const localName = (name: string) => name.split(':').at(-1)!.toLowerCase();
   const appendText = (value: string, cdata = false) => {
     if (!stack.length && value.trim()) throw new Error('Unexpected text outside feed root');
@@ -64,14 +96,20 @@ export function parseFriendFeed(xml: string, feedUrl: string): FeedEntry | null 
     if (field === 'title') active.title += text;
     else if (field === 'link' && stack.length === active.depth + 1) active.link += text;
     else if (['pubdate', 'date', 'published', 'updated'].includes(field)) active.dates[field] = (active.dates[field] || '') + text;
+    else if (summaryFields.has(field)) active.summaries[field] = (active.summaries[field] || '') + text;
   };
   const finishElement = (name: string) => {
     if (stack.at(-1) !== name) throw new Error('Mismatched feed XML tags');
+    if (active && stack.length > active.depth + 1) {
+      const field = localName(stack[active.depth]!);
+      if (summaryFields.has(field)) active.summaries[field] = (active.summaries[field] || '') + `</${name}>`;
+    }
     if (active && stack.length === active.depth) {
       const url = active.link.trim() ? entryUrl(active.link, feedUrl) : null;
       const title = active.title.replace(/\s+/g, ' ').trim();
       const timestamp = ['pubdate', 'date', 'published', 'updated'].map((field) => Date.parse(active!.dates[field] || '')).find(Number.isFinite);
-      if (url && title) entries.push({ title, url, publishedAt: timestamp !== undefined ? new Date(timestamp).toISOString() : null });
+      const summary = ['summary', 'description', 'encoded', 'content'].map((field) => plainSummary(active!.summaries[field] || '')).find(Boolean) || '';
+      if (url && title) entries.push({ title, summary, url, publishedAt: timestamp !== undefined ? new Date(timestamp).toISOString() : null });
       active = null;
     }
     stack.pop();
@@ -132,9 +170,13 @@ export function parseFriendFeed(xml: string, feedUrl: string): FeedEntry | null 
     if (stack.length > serverConfig.friendFeedMaximumDepth) throw new Error('Feed XML exceeds nesting limit');
     if (!active && (local === 'item' && (parent === 'channel' || root === 'rdf' && stack.length === 2) || local === 'entry' && root === 'feed' && stack.length === 2)) {
       if (++entryCount > serverConfig.friendFeedMaximumEntries) throw new Error('Feed exceeds entry limit');
-      active = { depth: stack.length, title: '', link: '', dates: Object.create(null) };
+      active = { depth: stack.length, title: '', link: '', dates: Object.create(null), summaries: Object.create(null) };
     } else if (active && local === 'link' && stack.length === active.depth + 1 && attributes.href && (!attributes.rel || attributes.rel === 'alternate')) {
       if (!active.link) active.link = attributes.href;
+    }
+    if (active && stack.length > active.depth + 1) {
+      const field = localName(stack[active.depth]!);
+      if (summaryFields.has(field)) active.summaries[field] = (active.summaries[field] || '') + `<${raw}>`;
     }
     if (selfClosing) finishElement(name);
   }
@@ -143,12 +185,12 @@ export function parseFriendFeed(xml: string, feedUrl: string): FeedEntry | null 
 }
 
 function cachedRow(id: number, rssUrl: string) {
-  return getDatabase().prepare('SELECT title,entry_url,published_at,checked_at FROM friend_feed_cache WHERE friend_id=? AND rss_url=?').get(id, rssUrl) as FeedCacheRow | undefined;
+  return getDatabase().prepare('SELECT title,summary,entry_url,published_at,checked_at FROM friend_feed_cache WHERE friend_id=? AND rss_url=?').get(id, rssUrl) as FeedCacheRow | undefined;
 }
 
 export function getCachedFriendFeed(id: number, rssUrl: string): FriendFeedRecord | null {
   const row = cachedRow(id, rssUrl);
-  return row?.title && row.entry_url ? { id, title: row.title, url: row.entry_url, publishedAt: row.published_at, checkedAt: row.checked_at } : null;
+  return row?.title && row.entry_url ? { id, title: row.title, summary: plainSummary(row.summary || ''), url: row.entry_url, publishedAt: row.published_at, checkedAt: row.checked_at } : null;
 }
 
 // 首页动态复用每个公开订阅的最新缓存，不为页面渲染等待外部网络。
@@ -161,7 +203,7 @@ export function getCachedFriendFeeds(): FriendFeedUpdate[] {
 
 async function refreshFriendFeed(friend: { id: number; rssUrl: string }) {
   const previous = cachedRow(friend.id, friend.rssUrl);
-  let entry: FeedEntry | null = previous?.title && previous.entry_url ? { title: previous.title, url: previous.entry_url, publishedAt: previous.published_at } : null;
+  let entry: FeedEntry | null = previous?.title && previous.entry_url ? { title: previous.title, summary: plainSummary(previous.summary || ''), url: previous.entry_url, publishedAt: previous.published_at } : null;
   const signal = AbortSignal.timeout(serverConfig.friendStatusTimeoutMilliseconds);
   try {
     let url = new URL(friend.rssUrl);
@@ -182,17 +224,17 @@ async function refreshFriendFeed(friend: { id: number; rssUrl: string }) {
   } catch (error) {
     console.warn('Friend feed refresh failed', { id: friend.id, error: error instanceof Error ? error.message : String(error) });
   }
-  getDatabase().prepare(`INSERT INTO friend_feed_cache(friend_id,rss_url,title,entry_url,published_at,checked_at)
-    SELECT @id,@rssUrl,@title,@url,@publishedAt,@checkedAt FROM friends WHERE id=@id AND rss_url=@rssUrl AND visible=1 AND deleted_at IS NULL
-    ON CONFLICT(friend_id) DO UPDATE SET rss_url=excluded.rss_url,title=excluded.title,entry_url=excluded.entry_url,published_at=excluded.published_at,checked_at=excluded.checked_at`)
-    .run({ ...friend, title: entry?.title || '', url: entry?.url || '', publishedAt: entry?.publishedAt ?? null, checkedAt: new Date().toISOString() });
+  getDatabase().prepare(`INSERT INTO friend_feed_cache(friend_id,rss_url,title,summary,entry_url,published_at,checked_at)
+    SELECT @id,@rssUrl,@title,@summary,@url,@publishedAt,@checkedAt FROM friends WHERE id=@id AND rss_url=@rssUrl AND visible=1 AND deleted_at IS NULL
+    ON CONFLICT(friend_id) DO UPDATE SET rss_url=excluded.rss_url,title=excluded.title,summary=excluded.summary,entry_url=excluded.entry_url,published_at=excluded.published_at,checked_at=excluded.checked_at`)
+    .run({ ...friend, title: entry?.title || '', summary: entry?.summary || '', url: entry?.url || '', publishedAt: entry?.publishedAt ?? null, checkedAt: new Date().toISOString() });
 }
 
 let pending: Promise<void> | undefined;
 
 // 公开接口只刷新后台公开的订阅，成功和失败都受同一缓存期限约束。
 export async function getFriendFeeds(): Promise<FriendFeedUpdate[]> {
-  if (pending) { await pending; return getFriendFeeds(); }
+  if (pending) { await pending; return getCachedFriendFeeds(); }
   const friends = listFriends().filter((friend) => friend.rssUrl);
   const stale = friends.filter((friend) => {
     const row = cachedRow(friend.id, friend.rssUrl);

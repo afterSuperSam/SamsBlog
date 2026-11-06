@@ -363,6 +363,63 @@ export function getDatabase() {
         CREATE INDEX confirmed_article_visits_day_idx ON confirmed_article_daily_visitors(day)`);
         connection.prepare('INSERT INTO schema_migrations (id,applied_at) VALUES (?,?)').run('20261026-confirmed-page-visits', new Date().toISOString());
       }
+      if (!appliedMigrations.has('20261107-friend-groups')) {
+        const friendColumns = connection.pragma('table_info(friends)') as Array<{ name: string }>;
+        if (!friendColumns.some((column) => column.name === 'recommended')) {
+          connection.exec('ALTER TABLE friends ADD COLUMN recommended INTEGER NOT NULL DEFAULT 0 CHECK(recommended IN (0,1))');
+        }
+        connection.exec(`CREATE TABLE IF NOT EXISTS friend_status_cache (
+            friend_id INTEGER PRIMARY KEY REFERENCES friends(id) ON DELETE CASCADE,
+            url TEXT NOT NULL,
+            status TEXT NOT NULL CHECK(status IN ('online','slow','offline','restricted','blocked')),
+            latency_milliseconds INTEGER,
+            checked_at TEXT NOT NULL
+          )`);
+        const statusColumns = connection.pragma('table_info(friend_status_cache)') as Array<{ name: string }>;
+        if (!statusColumns.some((column) => column.name === 'latency_milliseconds')) {
+          connection.exec('ALTER TABLE friend_status_cache ADD COLUMN latency_milliseconds INTEGER');
+        }
+        connection.prepare('INSERT INTO schema_migrations (id,applied_at) VALUES (?,?)').run('20261107-friend-groups', new Date().toISOString());
+      }
+      if (!appliedMigrations.has('20261107-friend-application-receipt')) {
+        const applicationColumns = connection.pragma('table_info(friend_applications)') as Array<{ name: string }>;
+        if (!applicationColumns.some((column) => column.name === 'friend_id')) {
+          connection.exec('ALTER TABLE friend_applications ADD COLUMN friend_id INTEGER REFERENCES friends(id)');
+        }
+        const notificationSchema = connection.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='mail_notifications'").get() as { sql: string };
+        if (!notificationSchema.sql.includes("'application_accepted'")) {
+          const sequence = connection.prepare("SELECT seq FROM sqlite_sequence WHERE name='mail_notifications'").get() as { seq: number } | undefined;
+          connection.exec(`CREATE TABLE mail_notifications_with_acceptance (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            kind TEXT NOT NULL DEFAULT 'reply' CHECK(kind IN ('reply','message','application','application_accepted')),
+            message_id INTEGER REFERENCES messages(id), reply_id INTEGER REFERENCES messages(id), application_id INTEGER REFERENCES friend_applications(id),
+            status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','sent','failed','cancelled')),
+            attempts INTEGER NOT NULL DEFAULT 0 CHECK(attempts >= 0), created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+            retry_at TEXT NOT NULL DEFAULT '', provider_id TEXT NOT NULL DEFAULT '', request_payload TEXT NOT NULL DEFAULT '',
+            CHECK((kind='reply' AND message_id IS NOT NULL AND reply_id IS NOT NULL AND application_id IS NULL)
+              OR (kind='message' AND message_id IS NOT NULL AND reply_id IS NULL AND application_id IS NULL)
+              OR (kind IN ('application','application_accepted') AND message_id IS NULL AND reply_id IS NULL AND application_id IS NOT NULL))
+          );
+          INSERT INTO mail_notifications_with_acceptance(id,kind,message_id,reply_id,application_id,status,attempts,created_at,updated_at,retry_at,provider_id,request_payload)
+            SELECT id,kind,message_id,reply_id,application_id,status,attempts,created_at,updated_at,retry_at,provider_id,request_payload FROM mail_notifications;
+          DROP TABLE mail_notifications;
+          ALTER TABLE mail_notifications_with_acceptance RENAME TO mail_notifications;`);
+          if (sequence) connection.prepare("UPDATE sqlite_sequence SET seq=MAX(seq,?) WHERE name='mail_notifications'").run(sequence.seq);
+        }
+        connection.exec(`CREATE UNIQUE INDEX IF NOT EXISTS mail_reply_unique_idx ON mail_notifications(message_id,reply_id) WHERE kind='reply';
+          CREATE UNIQUE INDEX IF NOT EXISTS mail_message_unique_idx ON mail_notifications(message_id) WHERE kind='message';
+          DROP INDEX IF EXISTS mail_application_unique_idx;
+          CREATE UNIQUE INDEX mail_application_unique_idx ON mail_notifications(application_id,kind) WHERE kind IN ('application','application_accepted');
+          CREATE INDEX IF NOT EXISTS mail_pending_idx ON mail_notifications(retry_at,id) WHERE status='pending';`);
+        connection.prepare('INSERT INTO schema_migrations (id,applied_at) VALUES (?,?)').run('20261107-friend-application-receipt', new Date().toISOString());
+      }
+      if (!appliedMigrations.has('20261107-friend-feed-summary')) {
+        const feedColumns = connection.pragma('table_info(friend_feed_cache)') as Array<{ name: string }>;
+        if (!feedColumns.some((column) => column.name === 'summary')) {
+          connection.exec("ALTER TABLE friend_feed_cache ADD COLUMN summary TEXT NOT NULL DEFAULT ''");
+        }
+        connection.prepare('INSERT INTO schema_migrations (id,applied_at) VALUES (?,?)').run('20261107-friend-feed-summary', new Date().toISOString());
+      }
       connection.exec('CREATE UNIQUE INDEX IF NOT EXISTS friends_active_url_idx ON friends(url) WHERE deleted_at IS NULL');
       connection.exec('CREATE INDEX IF NOT EXISTS blog_articles_type_created_idx ON blog_articles(content_type, created_at DESC, id DESC) WHERE deleted_at IS NULL');
       connection.exec('CREATE INDEX IF NOT EXISTS friends_public_idx ON friends(visible, created_at ASC)');

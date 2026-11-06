@@ -74,7 +74,7 @@ const constellationSlots = Array.from({ length: siteConfig.effects.constellation
   const constellationConfiguration = JSON.parse(ambientScene!.dataset.constellationConfig!) as {
     desktopLineCount: number; mobileLineCount: number; desktopPointCount: number; mobilePointCount: number;
     refreshMilliseconds: number; fadeMilliseconds: number; maximumDistanceRatio: number;
-    maximumDegree: number; scrollPeriodScreens: number;
+    maximumDegree: number; scrollPeriodScreens: number; connectionProbability: number;
   };
   const compactViewport = matchMedia('(max-width: 720px)');
   const points = [...document.querySelectorAll<HTMLElement>('.ambient-mote')].map((element, index) => ({
@@ -86,10 +86,12 @@ const constellationSlots = Array.from({ length: siteConfig.effects.constellation
   let activeLayer = -1;
   let scrollFrame = 0;
   const constellationIsDisabled = () => document.documentElement.classList.contains('motion-paused');
-  // 随机抽取相邻点，限制节点数量、连接距离与分叉密度。
+  // 每轮独立抽取可用线槽，再选择相邻点，保留稀疏而不固定铺满的连接。
   const drawConstellation = (layer: SVGSVGElement) => {
     const visiblePoints = compactViewport.matches ? points.filter((point) => !point.desktopOnly) : points;
-    const lineCount = compactViewport.matches ? constellationConfiguration.mobileLineCount : constellationConfiguration.desktopLineCount;
+    const maximumLineCount = compactViewport.matches ? constellationConfiguration.mobileLineCount : constellationConfiguration.desktopLineCount;
+    const lineCount = Array.from({ length: maximumLineCount }, () => Math.random() < constellationConfiguration.connectionProbability).filter(Boolean).length;
+    if (!lineCount) { layer.querySelectorAll('path').forEach((path) => path.removeAttribute('d')); return; }
     const pointCount = compactViewport.matches ? constellationConfiguration.mobilePointCount : constellationConfiguration.desktopPointCount;
     const maximumDistance = Math.hypot(viewport.width, viewport.height) * constellationConfiguration.maximumDistanceRatio;
     const candidates: { first: typeof points[number]; second: typeof points[number] }[] = [];

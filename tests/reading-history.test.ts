@@ -1,8 +1,57 @@
-import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { runInNewContext } from 'node:vm';
+import { describe, expect, it, vi } from 'vitest';
 import { parseReadingHistory, getReadingTrail, measureReadingChapters, parseReadingTypography } from '../src/lib/reading-history';
 import { siteConfig } from '../src/config/site';
 
 const record = { version: 'v1', progress: .4, heading: 'article-heading-test', offset: 20, updatedAt: 1 };
+const presentationScript = readFileSync(new URL('../public/scripts/page-presentation.js', import.meta.url), 'utf8');
+
+const restoreFontPreference = (storedFont: string | null, storageBlocked = false, article = true) => {
+  const dataset: Record<string, string> = article ? { articleFont: 'default', readingFontStorageKey: siteConfig.articleReading.fontPreferenceStorageKey } : {};
+  const warning = vi.fn();
+  const getItem = vi.fn((key: string) => {
+    if (storageBlocked) throw new Error('Storage unavailable');
+    return key === siteConfig.articleReading.fontPreferenceStorageKey ? storedFont : null;
+  });
+  const listeners = new Map<string, (event: { persisted?: boolean }) => void>();
+  runInNewContext(presentationScript, {
+    document: { documentElement: { dataset, classList: { contains: () => false, toggle: vi.fn() } }, querySelector: () => null },
+    location: { pathname: '/articles/1' },
+    matchMedia: () => ({ matches: false }),
+    localStorage: { getItem },
+    window: { addEventListener: (name: string, listener: (event: { persisted?: boolean }) => void) => listeners.set(name, listener) },
+    console: { warn: warning },
+  });
+  return { dataset, getItem, warning, listeners };
+};
+
+describe('reading font presentation', () => {
+  it.each([null, '', 'invalid', 'default'])('uses the default font when the stored preference is %s', (storedFont) => {
+    const { dataset, warning } = restoreFontPreference(storedFont);
+    expect(dataset.articleFont).toBe('default');
+    expect(warning).not.toHaveBeenCalled();
+  });
+  it('restores an explicitly selected artistic font before the first frame', () => {
+    expect(restoreFontPreference('handwritten').dataset.articleFont).toBe('handwritten');
+  });
+  it('keeps the server-rendered default when browser storage is blocked', () => {
+    const { dataset, warning } = restoreFontPreference(null, true);
+    expect(dataset.articleFont).toBe('default');
+    expect(warning).toHaveBeenCalledOnce();
+  });
+  it('does not apply the reading font preference to other pages', () => {
+    const { dataset, getItem } = restoreFontPreference('handwritten', false, false);
+    expect(dataset.articleFont).toBeUndefined();
+    expect(getItem).not.toHaveBeenCalledWith(siteConfig.articleReading.fontPreferenceStorageKey);
+  });
+  it('refreshes a manually changed preference when returning from the page cache', () => {
+    const { dataset, getItem, listeners } = restoreFontPreference(null);
+    getItem.mockImplementation((key) => key === siteConfig.articleReading.fontPreferenceStorageKey ? 'handwritten' : null);
+    listeners.get('pageshow')!({ persisted: true });
+    expect(dataset.articleFont).toBe('handwritten');
+  });
+});
 
 describe('local reading typography', () => {
   it('restores bounded sizes and supported spacing, falling back independently', () => {

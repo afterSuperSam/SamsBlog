@@ -1,19 +1,33 @@
 import { EventEmitter } from 'node:events';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import Database from 'better-sqlite3';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ lookup: vi.fn(), request: vi.fn(), listFriends: vi.fn() }));
+const mocks = vi.hoisted(() => ({ lookup: vi.fn(), request: vi.fn(), listFriends: vi.fn(), database: null as unknown as Database.Database }));
 vi.mock('node:dns/promises', () => ({ lookup: mocks.lookup }));
 vi.mock('node:http', () => ({ request: mocks.request }));
 vi.mock('node:https', () => ({ request: mocks.request }));
 vi.mock('../src/lib/friends', () => ({ listFriends: mocks.listFriends }));
+vi.mock('../src/lib/db', () => ({ getDatabase: () => mocks.database }));
+
+function friends(values: Array<{ id: number; url: string }>) {
+  mocks.database.prepare('UPDATE friends SET visible=0').run();
+  const save = mocks.database.prepare('INSERT INTO friends(id,url) VALUES (?,?) ON CONFLICT(id) DO UPDATE SET url=excluded.url,visible=1');
+  values.forEach(({ id, url }) => save.run(id, url));
+}
 
 beforeEach(() => {
   vi.restoreAllMocks();
   vi.resetModules();
   mocks.lookup.mockReset().mockResolvedValue([{ address: '93.184.216.34', family: 4 }]);
   mocks.request.mockReset();
-  mocks.listFriends.mockReset().mockReturnValue([{ id: 1, url: 'https://example.com/' }]);
+  mocks.database = new Database(':memory:');
+  mocks.database.exec(`CREATE TABLE friends(id INTEGER PRIMARY KEY,url TEXT NOT NULL,visible INTEGER NOT NULL DEFAULT 1,deleted_at TEXT);
+    CREATE TABLE friend_status_cache(friend_id INTEGER PRIMARY KEY,url TEXT NOT NULL,status TEXT NOT NULL,latency_milliseconds INTEGER,checked_at TEXT NOT NULL);`);
+  mocks.listFriends.mockReset().mockImplementation(() => mocks.database.prepare('SELECT id,url FROM friends WHERE visible=1 AND deleted_at IS NULL').all());
+  friends([{ id: 1, url: 'https://example.com/' }]);
 });
+
+afterEach(() => { mocks.database.close(); });
 
 function respond(statusCode: number, location?: string) {
   return (_url: URL, _options: unknown, callback: (response: unknown) => void) => {
@@ -91,17 +105,17 @@ describe('friend connectivity', () => {
     vi.spyOn(Date, 'now').mockReturnValue(current + 301000);
     await getFriendStatuses();
     expect(mocks.request).toHaveBeenCalledTimes(2);
-    mocks.listFriends.mockReturnValue([{ id: 1, url: 'https://other.example.com/' }]);
+    friends([{ id: 1, url: 'https://other.example.com/' }]);
     await getFriendStatuses();
     expect(mocks.request).toHaveBeenCalledTimes(3);
-    mocks.listFriends.mockReturnValue([]);
+    friends([]);
     expect(await getFriendStatuses()).toEqual([]);
   });
 
   it('caps concurrent outbound connections for a longer friend list', async () => {
     const { getFriendStatuses } = await import('../src/lib/friend-status');
     const { serverConfig } = await import('../src/config/server');
-    mocks.listFriends.mockReturnValue(Array.from({ length: 8 }, (_, index) => ({ id: index + 1, url: `https://site${index}.example.com/` })));
+    friends(Array.from({ length: 8 }, (_, index) => ({ id: index + 1, url: `https://site${index}.example.com/` })));
     let active = 0;
     let maximum = 0;
     mocks.request.mockImplementation((_url, _options, callback) => {
@@ -118,5 +132,23 @@ describe('friend connectivity', () => {
     });
     expect(await getFriendStatuses()).toHaveLength(8);
     expect(maximum).toBeLessThanOrEqual(serverConfig.friendStatusConcurrency);
+  });
+
+  it('reuses persisted results after module reload and bounds refreshes when the URL changes in flight', async () => {
+    let { getFriendStatuses } = await import('../src/lib/friend-status');
+    mocks.request.mockImplementation(respond(200));
+    await getFriendStatuses();
+    vi.resetModules();
+    ({ getFriendStatuses } = await import('../src/lib/friend-status'));
+    await getFriendStatuses();
+    expect(mocks.request).toHaveBeenCalledTimes(1);
+    friends([{ id: 1, url: 'https://changed.example.com/' }]);
+    mocks.request.mockImplementation((url, options, callback) => {
+      friends([{ id: 1, url: 'https://newest.example.com/' }]);
+      return respond(503)(url, options, callback);
+    });
+    expect(await getFriendStatuses()).toEqual([]);
+    expect(mocks.request).toHaveBeenCalledTimes(2);
+    expect(mocks.database.prepare('SELECT url FROM friend_status_cache').get()).toEqual({ url: 'https://example.com/' });
   });
 });

@@ -66,7 +66,30 @@ export const route = (handler: APIRoute): APIRoute => async (context) => {
   catch (error) { return errorResponse(error); }
 };
 
+let adminMutations = { count: 0, expiresAt: 0 };
+const publicActivities = new Map<string, { count: number; expiresAt: number }>();
+
+// 管理写操作共享额度；公开活动仅保存来源哈希，并限制跟踪规模。
+export function requirePublicActivityAllowance(fingerprint: string, now = Date.now()) {
+  for (const [key, value] of publicActivities) if (value.expiresAt <= now) publicActivities.delete(key);
+  let activity = publicActivities.get(fingerprint);
+  if (!activity) {
+    if (publicActivities.size >= serverConfig.publicActivityTrackedAddresses) throw new HttpError(429, '请求过于频繁，请稍后再试');
+    activity = { count: 0, expiresAt: now + serverConfig.publicActivityWindowSeconds * 1000 };
+    publicActivities.set(fingerprint, activity);
+  }
+  if (activity.count >= serverConfig.publicActivityLimit) throw new HttpError(429, '请求过于频繁，请稍后再试');
+  activity.count++;
+}
+
 export const adminRoute = (handler: APIRoute): APIRoute => route((context) => {
   if (!readAdminSession(context.cookies)) return json({ error: '未授权' }, 401);
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(context.request.method)) {
+    requireSameOrigin(context.request);
+    const now = Date.now();
+    if (adminMutations.expiresAt <= now) adminMutations = { count: 0, expiresAt: now + serverConfig.adminMutationWindowSeconds * 1000 };
+    if (adminMutations.count >= serverConfig.adminMutationLimit) throw new HttpError(429, '后台操作过于频繁，请稍后再试');
+    adminMutations.count++;
+  }
   return handler(context);
 });

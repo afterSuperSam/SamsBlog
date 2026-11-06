@@ -9,7 +9,7 @@ const script = component.match(/<script>([\s\S]*?)<\/script>/)?.[1];
 if (!script) throw new Error('Ambient scene script not found');
 const browserScript = transpile(script);
 
-function createAmbientScene(options: { compact?: boolean; hidden?: boolean; paused?: boolean; reduced?: boolean; positions?: number[][] } = {}) {
+function createAmbientScene(options: { compact?: boolean; hidden?: boolean; paused?: boolean; reduced?: boolean; positions?: number[][]; connectionProbability?: number } = {}) {
   const operations: string[] = [];
   const frames = new Map<number, () => void>();
   const timers = new Map<number, { callback: () => void; delay: number }>();
@@ -30,7 +30,7 @@ function createAmbientScene(options: { compact?: boolean; hidden?: boolean; paus
     classList: { contains: (name: string) => name === 'ambient-mote--desktop' && index >= siteConfig.effects.mobileParticleCount },
     style: createStyle(),
   }));
-  const scene = { dataset: { constellationConfig: JSON.stringify(siteConfig.effects.constellation) }, style: createStyle() };
+  const scene = { dataset: { constellationConfig: JSON.stringify({ ...siteConfig.effects.constellation, connectionProbability: options.connectionProbability ?? siteConfig.effects.constellation.connectionProbability }) }, style: createStyle() };
   const animations: { cancel: ReturnType<typeof vi.fn>; options: { duration: number } }[] = [];
   const layers = [0, 1].map(() => {
     const paths = Array.from({ length: siteConfig.effects.constellation.desktopLineCount }, () => ({
@@ -113,7 +113,8 @@ describe('ambient particle positioning under strict CSP', () => {
 describe('ambient scene work scheduling', () => {
   it.each([false, true])('reads geometry before initial mutations without measuring every particle (compact: %s)', (compact) => {
     const { operations, particles } = createAmbientScene({ compact });
-    expect(particles).toHaveLength(60);
+    expect(particles).toHaveLength(40);
+    expect(particles.filter((particle) => !compact || !particle.classList.contains('ambient-mote--desktop'))).toHaveLength(compact ? 12 : 40);
     const reads = Object.fromEntries(['style', 'width', 'height', 'scroll'].map((type) => [type, operations.filter((operation) => operation === `read:${type}`).length]));
     expect(reads).toEqual({ style: 0, width: 1, height: 1, scroll: 1 });
     expect(operations.lastIndexOf('read:scroll')).toBeLessThan(operations.indexOf('write'));
@@ -134,7 +135,7 @@ describe('ambient scene work scheduling', () => {
   });
 
   it.each([false, true])('preserves visible endpoints, line limits and connection distance (compact: %s)', (compact) => {
-    const scene = createAmbientScene({ compact });
+    const scene = createAmbientScene({ compact, connectionProbability: 1 });
     const configuration = siteConfig.effects.constellation;
     const visibleParticles = scene.particles.filter((particle) => !compact || !particle.classList.contains('ambient-mote--desktop'));
     const visibleCoordinates = new Set(visibleParticles.map(({ dataset }) => `${dataset.moteLeft} ${dataset.moteTop}`));
@@ -154,6 +155,23 @@ describe('ambient scene work scheduling', () => {
       expect(degrees.size).toBeLessThanOrEqual(compact ? configuration.mobilePointCount : configuration.desktopPointCount);
       expect(Math.max(...degrees.values())).toBeLessThanOrEqual(configuration.maximumDegree);
     }
+  });
+
+  it('uses connection probability to leave slots empty instead of always filling the limit', () => {
+    const disabled = createAmbientScene({ connectionProbability: 0 });
+    expect(disabled.layers.flatMap(({ paths }) => paths).every(({ connection }) => !connection)).toBe(true);
+    const sparse = createAmbientScene({ connectionProbability: .5 });
+    const counts: number[] = [];
+    for (let index = 0; index < 20; index++) {
+      counts.push(...sparse.layers.map(({ paths }) => paths.filter(({ connection }) => connection).length));
+      const [identifier, timer] = [...sparse.timers.entries()][0];
+      sparse.timers.delete(identifier);
+      timer.callback();
+    }
+    const maximum = siteConfig.effects.constellation.desktopLineCount;
+    expect(counts.every((count) => count <= maximum)).toBe(true);
+    expect(counts.reduce((total, count) => total + count, 0) / counts.length).toBeGreaterThan(maximum * .3);
+    expect(counts.reduce((total, count) => total + count, 0) / counts.length).toBeLessThan(maximum * .7);
   });
 
   it('uses the latest viewport and scroll position after resizing', () => {

@@ -32,7 +32,7 @@
 .article-editor__toolbar { display:flex; flex-wrap:wrap; gap:2px; }
 .article-editor__toolbar button { padding:6px 9px; color:var(--muted); }
 .article-editor__toolbar button:is(:hover,:focus-visible) { color:var(--summer-blue); }
-.article-editor__writing textarea { min-height:420px; resize:vertical; tab-size:2; }
+.article-editor__writing textarea { min-height:420px; resize:none; overflow-y:hidden; tab-size:2; }
 .article-editor__writing>small,.article-editor__footer>span { color:var(--muted); font-size:var(--font-size-small); overflow-wrap:anywhere; }
 .article-editor__preview { min-height:420px; min-width:0; padding:20px; border-radius:16px; background:color-mix(in srgb,var(--surface-paper) 80%,transparent); overflow-wrap:anywhere; }
 .article-preview__toolbar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 16px;margin-bottom:24px;color:var(--muted);font-size:var(--font-size-small)}

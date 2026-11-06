@@ -1,4 +1,4 @@
-/* 首页 Hero、项目、友链与统计布局 */
+/* 首页 Hero、项目与内容布局 */
 .home-hero{position:relative;display:grid;grid-template-rows:minmax(100svh,auto) clamp(120px,18svh,220px);overflow:hidden;color:var(--on-media);isolation:isolate}
 .hero-media,.hero-media__image,.hero-media__edge{position:absolute;inset:0}
 .hero-media{background:var(--media-bg);mask-image:linear-gradient(180deg,#000 55%,rgba(0,0,0,.94) 65%,rgba(0,0,0,.55) 80%,transparent 100%)}
@@ -21,7 +21,6 @@
 @media(min-width:1081px){.home-page .site-header:not(.site-header--past-hero) .site-brand__sticker{max-width:0;opacity:0;visibility:hidden;transform:translateX(-8px)}}
 .hero-sticker{position:absolute;z-index:1;pointer-events:none;color:var(--on-media);font-family:var(--playful)}
 .hero-sticker--sun{left:7%;top:22%;font-size:clamp(40px,7vw,90px);color:#ffe6a2;animation:summer-float 7s ease-in-out infinite alternate}
-.hero-sticker--note{right:6%;bottom:18%;padding:15px 22px;color:var(--hero-note-color);font-size:var(--font-size-body);transform:rotate(9deg);rotate:var(--pointer-tilt,0deg);transition:rotate .35s var(--ease-out);animation:summer-float 9s -3s ease-in-out infinite alternate}
 .section-kicker{display:block;margin-bottom:14px;color:var(--muted);font:700 var(--font-size-label)/1.5 var(--playful);letter-spacing:.15em}
 .home-page #projects .section-kicker{color:var(--home-projects-heading)}
 .home-page #latest-article .section-kicker{color:var(--home-articles-heading)}
@@ -57,7 +56,7 @@
 @media(hover:hover) and (pointer:fine){.project-tape:hover{translate:2px -3px}.project-tape:hover::after{opacity:1}}
 :root.motion-paused .project-tape{rotate:0deg;translate:none}
 @media(min-width:900px){.home-projects header{display:grid;grid-template-columns:1fr 1fr;column-gap:32px}.home-projects header>.section-kicker,.home-projects header>.section-title{grid-column:1}.project-tape{grid-column:2;grid-row:1/span 2;align-self:center;justify-self:end;margin:0 4% 0 0}}
-@media(prefers-reduced-motion:reduce){.project-tape{transform:none;rotate:0deg;translate:none!important}.hero-sticker--note{rotate:0deg}}
+@media(prefers-reduced-motion:reduce){.project-tape{transform:none;rotate:0deg;translate:none!important}}
 .project-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:clamp(24px,4vw,56px);margin-top:clamp(32px,5vw,64px)}
 .project-list article{display:grid;grid-template-columns:48px minmax(0,1fr);align-content:start;gap:var(--project-number-gap);padding-block:12px;transition:transform .6s var(--ease-link)}
 .project-list article:is(:hover,:focus-within){transform:translate(6px,-4px)}
@@ -74,21 +73,12 @@
 @media(prefers-reduced-motion:reduce){.project-list article,.project-list h3 a{transition:none}.project-list article:is(:hover,:focus-within){transform:none}}
 @media(max-width:760px){.project-list{grid-template-columns:minmax(0,1fr);gap:12px}.project-list article{padding-block:22px}.home-projects{padding-top:20px}}
 
-
-.site-stats{padding-block:16px clamp(60px,7vw,100px);scroll-margin-top:calc(var(--header-height) + 24px)}
-.site-stats__panel{font-family:var(--playful);padding:clamp(26px,4vw,48px);border-radius:28px;background:color-mix(in srgb,var(--surface) 82%,var(--surface-2))}
-.stat-reader-value{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
-.site-stats dd:focus-visible{text-shadow:0 0 18px color-mix(in oklab,var(--glow-blue) 35%,transparent)}
-.site-stats dl{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:24px;margin:0;text-align:center}.site-stats dl>div{min-width:0}
-.site-stats dt{font-size:var(--font-size-label);color:var(--muted)}.site-stats dd{margin:12px 0 0;font:700 clamp(28px,3vw,45px)/1.2 var(--display);color:var(--summer-orange);overflow-wrap:anywhere}.site-stats dd small{margin-left:6px;font:400 var(--font-size-small)/1 var(--playful);color:var(--muted)}.site-stats dl>div:nth-child(2) dd{color:var(--summer-blue)}.site-stats dl>div:nth-child(3) dd{color:var(--summer-pink)}.site-stats dl>div:nth-child(4) dd{color:var(--success)}
-
 .project-meta [hidden]{display:none}
 @keyframes summer-arrive{from{opacity:0;transform:translateY(24px);filter:blur(4px)}to{opacity:1;transform:none;filter:blur(0)}}
 @keyframes hero-breathe{from{transform:scale(1.04)}to{transform:scale(1)}}
 @keyframes summer-float{to{transform:translate3d(10px,-12px,0) rotate(9deg)}}
-@media(max-width:760px){.site-stats dl{grid-template-columns:repeat(2,minmax(0,1fr));gap:28px 16px}.hero-sticker--note{right:7%;bottom:9%;font-size:var(--font-size-label)}.hero-sticker--sun{top:18%;left:7%;font-size:42px}}
+@media(max-width:760px){.hero-sticker--sun{top:18%;left:7%;font-size:42px}}
 @media(max-width:520px){.hero-copy{width:calc(100% - 40px)}.hero-media__image{object-position:48% 58%}.hero-media__edge{background:linear-gradient(180deg,rgba(10,25,30,.35),rgba(10,25,30,.15) 25%,rgba(10,25,30,.58) 65%,var(--bg))}}
-.motion-paused .hero-sticker--note{rotate:0deg}
 
 
 /* 项目徽标与 Hover 时沿笔迹出现的双横线。 */

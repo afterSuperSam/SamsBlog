@@ -20,7 +20,7 @@ const authenticated = readAdminSession(Astro.cookies);
 const activeSection = Astro.params.section || 'overview';
 const sections = [{ id: 'overview', label: '概览' }, { id: 'articles', label: '内容' }, { id: 'media', label: '媒体' },
   { id: 'messages', label: '评论与留言' }, { id: 'friends', label: '友链' }, { id: 'applications', label: '友链申请' },
-  { id: 'projects', label: '项目' }, { id: 'sponsors', label: '赞助' }, { id: 'analytics', label: '访问统计' }, { id: 'notifications', label: '邮件通知' }];
+  { id: 'projects', label: '项目' }, { id: 'sponsors', label: '赞助' }, { id: 'notifications', label: '邮件通知' }];
 const messages = authenticated && activeSection === 'messages' ? listAllMessages() : [];
 const friends = authenticated && activeSection === 'friends' ? listFriends({ includeHidden: true }) : [];
 const repliesByParent = new Map<number, typeof messages>();
@@ -68,14 +68,13 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
         </header>
         <p class="form-status" role="status" data-admin-feedback></p>
         <div class="admin-workspace">
-        <nav class="admin-navigation" aria-label="后台分区">{sections.map((section) => <a href={section.id === 'overview' ? '/admin' : `/admin/${section.id}`} aria-current={activeSection === section.id ? 'page' : undefined}>{section.label}</a>)}</nav>
+        <nav class="admin-navigation" aria-label="后台分区">{sections.map((section) => <a href={section.id === 'overview' ? '/admin' : `/admin/${section.id}`} aria-current={activeSection === section.id || activeSection === 'analytics' && section.id === 'overview' ? 'page' : undefined}>{section.label}</a>)}</nav>
         <div class="admin-workspace__main">
-        {activeSection === 'overview' && <section class="admin-panel"><header class="admin-panel__heading"><div><span>OVERVIEW</span><h2>工作台</h2></div><p>选择分区管理，编辑操作在右侧抽屉完成。</p></header><div class="admin-overview-grid">{sections.filter((section) => section.id !== 'overview').map((section) => <a href={`/admin/${section.id}`}><span>{section.label}</span><span aria-hidden="true">↗</span></a>)}</div></section>}
+        {(activeSection === 'overview' || activeSection === 'analytics') && <AdminStatistics />}
         {activeSection === 'articles' && <AdminArticles />}
         {activeSection === 'media' && <AdminMedia />}
-        {activeSection === 'analytics' && <AdminStatistics />}
         {activeSection === 'applications' && <AdminApplications />}
-        {activeSection === 'notifications' && <section class="admin-panel"><header class="admin-panel__heading"><div><span>NOTIFICATIONS</span><h2>邮件通知</h2></div></header><p>{replyNotificationsConfigured ? 'Resend 发信配置已填写。“已提交”表示服务商已接受请求，实际收件仍需邮箱验证。' : '尚未启用。验证发信域名后，设置 RESEND_API_KEY、MAIL_FROM 和 BLOG_SECRET，再重启博客。访客端暂不展示邮件通知选项。'}</p><p>{adminNotificationsConfigured ? '站长提醒已开启：接收新留言、访客回复和友链申请；后台回复不通知自己。' : '站长提醒未开启：设置 MAIL_ADMIN_TO 后重启博客。'}</p><a href="https://resend.com/templates" target="_blank" rel="noopener noreferrer">管理 Resend 邮件模板 ↗</a><div class="admin-data-table"><table><thead><tr><th>来源</th><th>通知类型</th><th>状态</th><th>尝试次数</th></tr></thead><tbody>{listReplyNotifications().map((notification) => <tr><td>{notification.nickname}</td><td>{{ reply: '访客回信', message: '站长 · 留言', application: '站长 · 友链' }[notification.kind]}</td><td>{{ pending: '等待发送', sent: '已提交', failed: '发送失败', cancelled: '已取消' }[notification.status]}</td><td>{notification.attempts}</td></tr>)}</tbody></table></div></section>}
+        {activeSection === 'notifications' && <section class="admin-panel"><header class="admin-panel__heading"><div><span>NOTIFICATIONS</span><h2>邮件通知</h2></div></header><p>{replyNotificationsConfigured ? 'Resend 发信配置已填写。填写邮箱的友链申请审核通过后，将排队发送通过回信。“已提交”表示服务商已接受请求，实际收件仍需邮箱验证。' : '尚未启用。验证发信域名后，设置 RESEND_API_KEY、MAIL_FROM 和 BLOG_SECRET，再重启博客。访客端暂不展示邮件通知选项。'}</p><p>{adminNotificationsConfigured ? '站长提醒已开启：接收新留言、访客回复和友链申请；后台回复不通知自己。' : '站长提醒未开启：设置 MAIL_ADMIN_TO 后重启博客。'}</p><a href="https://resend.com/templates" target="_blank" rel="noopener noreferrer">管理 Resend 邮件模板 ↗</a><div class="admin-data-table"><table><thead><tr><th>来源</th><th>通知类型</th><th>状态</th><th>尝试次数</th></tr></thead><tbody>{listReplyNotifications().map((notification) => <tr><td>{notification.nickname}</td><td>{{ reply: '访客回信', message: '站长 · 留言', application: '站长 · 友链', application_accepted: '友链通过回信' }[notification.kind]}</td><td>{{ pending: '等待发送', sent: '已提交', failed: '发送失败', cancelled: '已取消' }[notification.status]}</td><td>{notification.attempts}</td></tr>)}</tbody></table></div></section>}
 
         {activeSection === 'messages' && <section class="admin-panel" id="messages">
           <header class="admin-panel__heading"><div><span>01 / VOICES</span><h2>留言</h2></div><p>审核、回复或收起访客留下的纸条。</p></header>
@@ -140,13 +139,14 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
             <label><span>图标网址</span><textarea name="iconUrl" rows="2" inputmode="url" autocapitalize="off" spellcheck="false" placeholder="https://example.com/favicon.ico" required></textarea></label>
             <label><span>背景图片网址 · 可选</span><textarea name="backgroundUrl" rows="2" inputmode="url" autocapitalize="off" spellcheck="false" placeholder="留空时使用头像虚化背景"></textarea></label>
             <label><span>RSS 地址 · 可选</span><textarea name="rssUrl" rows="2" inputmode="url" autocapitalize="off" spellcheck="false" placeholder="https://example.com/rss.xml"></textarea></label>
+            <label class="admin-friend-option"><input name="recommended" type="checkbox" />推荐友链</label>
             <button class="media-button" type="submit" disabled>＋ 导入友链</button>
             <small class="form-status" role="status" aria-live="polite" data-admin-feedback>图标和背景仅保存网址；背景留空时使用头像虚化效果。</small>
           </form>
           </AdminDrawer>
           <div class="admin-friend-list">
             {friends.map((friend) => (
-              <div class="admin-record-row" data-friend-row={friend.id} data-friend-starred={friend.starred} data-friend-created={friend.createdAt}>
+              <div class="admin-record-row" data-friend-row={friend.id} data-friend-starred={friend.starred} data-friend-recommended={friend.recommended} data-friend-lost={friend.group === 'lost'} data-friend-published={friend.latestPublishedAt || ''}>
               <div><b>{friend.name}</b><p>{friend.description}</p><p class="form-status" role="status" data-admin-feedback></p></div>
               <div class="admin-friend-actions"><button type="button" class="article-star-toggle" data-star-friend={friend.id} aria-pressed={friend.starred} aria-label={`${friend.starred ? '取消' : '添加'}星标：${friend.name}`}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.8 5.8 6.4.9-4.6 4.5 1.1 6.3-5.7-3-5.7 3 1.1-6.3L2.8 9.7l6.4-.9Z" /></svg>星标</button><button type="button" data-drawer-open={`friend-${friend.id}`}>编辑</button></div>
               <AdminDrawer id={`friend-${friend.id}`} title={`编辑 ${friend.name}`}>
@@ -160,7 +160,10 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
                   <label><span>背景图片网址 · 可选</span><textarea name="backgroundUrl" rows="2" inputmode="url" autocapitalize="off" spellcheck="false" aria-label="友链背景图片网址" placeholder="留空时使用头像虚化背景">{friend.backgroundUrl}</textarea></label>
                   <label><span>RSS 地址 · 可选</span><textarea name="rssUrl" rows="2" inputmode="url" autocapitalize="off" spellcheck="false" aria-label="友链 RSS 地址" placeholder="留空时不显示 RSS 入口">{friend.rssUrl}</textarea></label>
                 </div>
-                <label class="admin-friend-card__visible"><input name="visible" type="checkbox" checked={friend.visible} />公开</label>
+                <div class="admin-friend-card__options">
+                  <label class="admin-friend-option"><input name="visible" type="checkbox" checked={friend.visible} />公开</label>
+                  <label class="admin-friend-option"><input name="recommended" type="checkbox" checked={friend.recommended} />推荐友链</label>
+                </div>
                 <footer><button type="submit" disabled>保存</button><button type="button" data-delete-friend>删除</button></footer>
                 <p class="form-status" role="status" data-admin-feedback></p>
               </form>
@@ -369,6 +372,7 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
       backgroundUrl: data.get('backgroundUrl'),
       rssUrl: data.get('rssUrl'),
       visible: id ? data.get('visible') === 'on' : true,
+      recommended: data.get('recommended') === 'on',
     };
   };
   const friendImport = document.querySelector<HTMLFormElement>('[data-friend-import]');
@@ -394,10 +398,11 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
         button.setAttribute('aria-label', `${starred ? '取消' : '添加'}星标：${row.querySelector('b')?.textContent || ''}`);
         row.dataset.friendStarred = String(starred);
         const rows = [...list.querySelectorAll<HTMLElement>('[data-friend-row]')];
-        rows.sort((first, second) => Number(second.dataset.friendStarred === 'true') - Number(first.dataset.friendStarred === 'true')
-          || first.dataset.friendCreated!.localeCompare(second.dataset.friendCreated!) || Number(first.dataset.friendRow) - Number(second.dataset.friendRow));
+        const groupOrder = (item: HTMLElement) => item.dataset.friendLost === 'true' ? 3 : item.dataset.friendStarred === 'true' ? 0 : item.dataset.friendRecommended === 'true' ? 1 : 2;
+        rows.sort((first, second) => groupOrder(first) - groupOrder(second)
+          || (second.dataset.friendPublished || '').localeCompare(first.dataset.friendPublished || '') || Number(first.dataset.friendRow) - Number(second.dataset.friendRow));
         list.append(...rows);
-        return starred ? '已添加星标，友链已置顶。' : '已取消星标。';
+        return starred ? '已添加星标。' : '已取消星标。';
       });
       if (restoreFocus) button.focus({ preventScroll: true });
     });
@@ -411,7 +416,8 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
         form.classList.remove('is-saved');
         await sendAdminRequest('/api/admin/friends.json', 'PATCH', payload);
         form.classList.add('is-saved');
-        const summary = form.closest('.admin-record-row');
+        const summary = form.closest<HTMLElement>('.admin-record-row');
+        if (summary) summary.dataset.friendRecommended = String(payload.recommended);
         if (summary) { const heading = summary.querySelector('b'); if (heading) heading.textContent = String(payload.name || ''); const description = summary.querySelector('p'); if (description) description.textContent = String(payload.description || ''); }
         return '友链已保存。';
       });

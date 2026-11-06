@@ -3,7 +3,7 @@ import { serverConfig } from '../config/server';
 import { siteConfig } from '../config/site';
 import { getDatabase } from './db';
 import { HttpError } from './http';
-import { createAdminEmail, createReplyEmail } from './reply-email';
+import { createAdminEmail, createApplicationAcceptedEmail, createReplyEmail } from './reply-email';
 
 export function parseNotificationEmail(value: unknown) {
   if (value == null || value === '') return '';
@@ -65,10 +65,21 @@ export function queueAdminNotification(kind: 'message' | 'application', id: numb
   scheduleReplyNotifications();
 }
 
+// 审核事务中只落库，通过状态和正式友链关系共同限定回信对象。
+export function queueAcceptedFriendApplication(id: number) {
+  if (!replyNotificationsConfigured) return false;
+  const now = new Date().toISOString();
+  return getDatabase().prepare(`INSERT OR IGNORE INTO mail_notifications(kind,application_id,created_at,updated_at)
+    SELECT 'application_accepted',application.id,?,? FROM friend_applications AS application
+    JOIN friends AS friend ON friend.id=application.friend_id
+    WHERE application.id=? AND application.status='accepted' AND application.email!='' AND application.deleted_at IS NULL
+      AND friend.visible=1 AND friend.deleted_at IS NULL`).run(now, now, id).changes === 1;
+}
+
 export function listReplyNotifications() {
   return getDatabase().prepare(`SELECT n.id,n.kind,n.status,n.attempts,n.created_at AS createdAt,COALESCE(m.nickname,f.name,'') AS nickname,m.article_id AS articleId
     FROM mail_notifications n LEFT JOIN messages m ON m.id=n.message_id LEFT JOIN friend_applications f ON f.id=n.application_id
-    ORDER BY n.created_at DESC,n.id DESC LIMIT 100`).all() as Array<{ id: number; kind: 'reply' | 'message' | 'application'; status: 'pending' | 'sent' | 'failed' | 'cancelled'; attempts: number; createdAt: string; nickname: string; articleId: number | null }>;
+    ORDER BY n.created_at DESC,n.id DESC LIMIT 100`).all() as Array<{ id: number; kind: 'reply' | 'message' | 'application' | 'application_accepted'; status: 'pending' | 'sent' | 'failed' | 'cancelled'; attempts: number; createdAt: string; nickname: string; articleId: number | null }>;
 }
 
 function prepareNotification(notification: Record<string, unknown>) {
@@ -82,6 +93,13 @@ function prepareNotification(notification: Record<string, unknown>) {
     return { to: [String(notification.email)], ...createReplyEmail({ nickname: String(notification.nickname), replyNickname: String(notification.replyNickname),
       contextTitle: String(notification.title || '留言纸条'), originalContent: String(notification.originalContent), content: String(notification.content),
       isOwnerReply: notification.replyFingerprint === 'admin', address, unsubscribe }, serverConfig.notificationReplyTemplateId) };
+  }
+  if (notification.kind === 'application_accepted') {
+    if (notification.applicationDeleted || notification.applicationStatus !== 'accepted' || !notification.applicationEmail
+      || !notification.acceptedFriendId || !notification.acceptedFriendVisible || notification.acceptedFriendDeleted) return null;
+    return { to: [String(notification.applicationEmail)], ...createApplicationAcceptedEmail({
+      name: String(notification.acceptedFriendName), address: new URL('/about#friends', base).href,
+    }) };
   }
   if (!adminNotificationsConfigured) return null;
   if (notification.kind === 'message') {
@@ -125,10 +143,12 @@ export async function deliverReplyNotifications() {
       m.content AS originalContent,m.parent_id AS parentId,m.fingerprint_hash AS messageFingerprint,
       r.content,r.nickname AS replyNickname,r.fingerprint_hash AS replyFingerprint,r.deleted_at AS replyDeleted,r.status AS replyStatus,
       a.title,a.deleted_at AS articleDeleted,a.publication_status AS articleStatus,
-      f.name AS applicationName,f.url AS applicationUrl,f.description AS applicationDescription,f.email AS applicationEmail,f.status AS applicationStatus,f.deleted_at AS applicationDeleted
+      f.name AS applicationName,f.url AS applicationUrl,f.description AS applicationDescription,f.email AS applicationEmail,f.status AS applicationStatus,f.deleted_at AS applicationDeleted,
+      accepted.id AS acceptedFriendId,accepted.name AS acceptedFriendName,accepted.visible AS acceptedFriendVisible,accepted.deleted_at AS acceptedFriendDeleted
       FROM mail_notifications n LEFT JOIN messages m ON m.id=n.message_id LEFT JOIN messages r ON r.id=n.reply_id
       LEFT JOIN blog_articles a ON a.id=m.article_id
       LEFT JOIN friend_applications f ON f.id=n.application_id
+      LEFT JOIN friends accepted ON accepted.id=f.friend_id
       WHERE n.id=? AND n.status='pending'`).get(item.id) as Record<string, unknown> | undefined;
       if (!notification) continue;
       const prepared = prepareNotification(notification);

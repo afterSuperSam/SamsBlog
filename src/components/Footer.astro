@@ -20,7 +20,8 @@ import { signatureLetters } from '../lib/signature';
     </div>
     <div class="footer-notes">
     {showSignature && <div class="footer-signature" data-footer-signature data-duration={siteConfig.signature.durationMilliseconds} data-stroke-pause={siteConfig.signature.strokePauseMilliseconds} data-visibility-threshold={siteConfig.signature.visibilityThreshold} data-easing={siteConfig.signature.easing} data-settle-duration={siteConfig.signature.settleDurationMilliseconds} data-character-duration={siteConfig.signature.versionCharacterDurationMilliseconds} data-character-stagger={siteConfig.signature.versionCharacterStaggerMilliseconds}>
-      <svg data-signature-drawing viewBox="0 0 360 90" width="360" height="90" role="img" aria-label="SuperSam 手写签名">
+      <a class="footer-signature__link" href="/admin" aria-label="SuperSam，进入内容后台">
+      <svg data-signature-drawing viewBox="0 0 360 90" width="360" height="90" aria-hidden="true">
         <defs>
           {signatureLetters.map((letter, index) => <mask id={`footer-signature-mask-${index}`} maskUnits="userSpaceOnUse" x="0" y="0" width="360" height="90">
             {letter.traces.map((trace) => <path class="signature-stroke" d={trace} data-letter={letter.letter} pathLength="1" />)}
@@ -28,6 +29,7 @@ import { signatureLetters } from '../lib/signature';
         </defs>
         {signatureLetters.map((letter, index) => <path class="signature-ink" d={letter.ink} mask={`url(#footer-signature-mask-${index})`} />)}
       </svg>
+      </a>
       <span class="signature-version" aria-label={`网页版本 v${version}`}>
         {[...`v${version}`].map((character) => <span class="signature-version-character">{character}</span>)}
       </span>
@@ -35,7 +37,7 @@ import { signatureLetters } from '../lib/signature';
     </div>
     <nav aria-label="页脚导航">
       <RssSubscription />
-      <a href="/admin">管理</a>
+      <a href="https://status.moesam.com" aria-label="Status，查看服务状态">Status</a>
     </nav>
   </div>
 </footer>

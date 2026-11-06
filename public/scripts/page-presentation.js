@@ -14,7 +14,7 @@
       const savedTheme = localStorage.getItem('samsblog-theme');
       if (savedTheme === 'dark' || savedTheme === 'light') theme = savedTheme;
       paused = localStorage.getItem('samsblog-motion') === 'paused';
-      if (root.dataset.readingFontStorageKey) root.dataset.articleFont = localStorage.getItem(root.dataset.readingFontStorageKey) === 'default' ? 'default' : 'handwritten';
+      if (root.dataset.readingFontStorageKey) root.dataset.articleFont = localStorage.getItem(root.dataset.readingFontStorageKey) === 'handwritten' ? 'handwritten' : 'default';
       if (root.dataset.readingTypography) {
         const configuration = JSON.parse(root.dataset.readingTypography);
         const value = JSON.parse(localStorage.getItem(configuration.storageKey) || 'null');

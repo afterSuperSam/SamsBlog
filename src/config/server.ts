@@ -24,6 +24,11 @@ export const serverConfig = {
   loginAttempts: positiveInteger('ADMIN_LOGIN_ATTEMPTS', 5),
   loginGlobalAttempts: positiveInteger('ADMIN_LOGIN_GLOBAL_ATTEMPTS', 30),
   loginTrackedAddresses: positiveInteger('ADMIN_LOGIN_TRACKED_ADDRESSES', 1000),
+  adminMutationLimit: positiveInteger('ADMIN_MUTATION_LIMIT', 120),
+  adminMutationWindowSeconds: positiveInteger('ADMIN_MUTATION_WINDOW_SECONDS', 60),
+  publicActivityLimit: positiveInteger('PUBLIC_ACTIVITY_LIMIT', 60),
+  publicActivityWindowSeconds: positiveInteger('PUBLIC_ACTIVITY_WINDOW_SECONDS', 60),
+  publicActivityTrackedAddresses: positiveInteger('PUBLIC_ACTIVITY_TRACKED_ADDRESSES', 1000),
   messageSubmissionLimit: positiveInteger('MESSAGE_SUBMISSION_LIMIT', 2),
   messageSubmissionWindowSeconds: positiveInteger('MESSAGE_SUBMISSION_WINDOW_SECONDS', 60),
   articleTitleMaxLength: positiveInteger('ARTICLE_TITLE_MAX_LENGTH', 160),
@@ -57,6 +62,7 @@ export const serverConfig = {
   friendFeedMaximumBytes: positiveInteger('FRIEND_FEED_MAXIMUM_BYTES', 1024 * 1024),
   friendFeedMaximumEntries: positiveInteger('FRIEND_FEED_MAXIMUM_ENTRIES', 100),
   friendFeedMaximumDepth: positiveInteger('FRIEND_FEED_MAXIMUM_DEPTH', 32),
+  friendFeedSummaryMaxLength: positiveInteger('FRIEND_FEED_SUMMARY_MAX_LENGTH', 200),
 };
 
 if (serverConfig.notificationExpiryHours > 23 || serverConfig.notificationBatchSize > 20
@@ -65,6 +71,9 @@ if (serverConfig.notificationExpiryHours > 23 || serverConfig.notificationBatchS
 }
 
 if (serverConfig.mediaMaxBytes > 10 * 1024 * 1024) throw new Error('Invalid server configuration: MEDIA_MAX_BYTES (maximum 10 MiB)');
+if (serverConfig.adminMutationLimit > 10000 || serverConfig.publicActivityLimit > 10000
+  || serverConfig.adminMutationWindowSeconds > 86400 || serverConfig.publicActivityWindowSeconds > 86400
+  || serverConfig.publicActivityTrackedAddresses > 100000) throw new Error('Invalid request rate-limit configuration');
 if (serverConfig.messageSubmissionLimit > 1000 || serverConfig.friendApplicationSubmissionLimit > 1000
   || serverConfig.messageSubmissionWindowSeconds > 86400 || serverConfig.friendApplicationSubmissionWindowSeconds > 86400) {
   throw new Error('Invalid public submission rate-limit configuration');
@@ -79,7 +88,7 @@ if (serverConfig.friendStatusTimeoutMilliseconds > 15000
 }
 
 if (serverConfig.friendFeedMaximumBytes > 4 * 1024 * 1024 || serverConfig.friendFeedMaximumEntries > 500
-  || serverConfig.friendFeedMaximumDepth > 64 || serverConfig.friendFeedCacheSeconds > 86400) {
+  || serverConfig.friendFeedMaximumDepth > 64 || serverConfig.friendFeedCacheSeconds > 86400 || serverConfig.friendFeedSummaryMaxLength > 500) {
   throw new Error('Invalid friend feed configuration');
 }
 

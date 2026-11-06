@@ -1,6 +1,6 @@
 import { createMessage, getDatabase, hasReachedMessageSubmissionLimit, listPublishedMessages } from '../../../lib/db';
 import { fingerprintIp, getClientIp } from '../../../lib/network';
-import { HttpError, json, readJsonObject, readPositiveId, route, requireSameOrigin } from '../../../lib/http';
+import { HttpError, json, readJsonObject, readPositiveId, requirePublicActivityAllowance, route, requireSameOrigin } from '../../../lib/http';
 import { getArticle } from '../../../lib/articles';
 import { parseNotificationEmail, queueAdminNotification, queueReplyNotification, replyNotificationsConfigured } from '../../../lib/reply-notifications';
 
@@ -12,6 +12,8 @@ export const GET = route(({ url }) => {
 
 export const POST = route(async ({ request, clientAddress }) => {
   requireSameOrigin(request);
+  const fingerprintHash = fingerprintIp(getClientIp(request, clientAddress));
+  requirePublicActivityAllowance(fingerprintHash);
   const body = await readJsonObject(request);
   if (body.website) return json({ ok: true });
   const nickname = typeof body.nickname === 'string' ? body.nickname.trim() : '';
@@ -30,7 +32,6 @@ export const POST = route(async ({ request, clientAddress }) => {
   if (contentLength < 2 || contentLength > 500) throw new HttpError(400, '留言需要 2–500 个字符');
   if (nickname.includes('\u0000')) throw new HttpError(400, '昵称包含不支持的字符');
   if (content.includes('\u0000')) throw new HttpError(400, '留言包含不支持的字符');
-  const fingerprintHash = fingerprintIp(getClientIp(request, clientAddress));
   const wantsNotification = body.notifyReply === true && replyNotificationsConfigured;
   if (wantsNotification && !email) throw new HttpError(400, '接收回复通知需要填写邮箱');
   const id = getDatabase().transaction(() => {

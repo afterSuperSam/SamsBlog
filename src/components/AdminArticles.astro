@@ -130,6 +130,27 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
     const content = editor.elements.namedItem('content') as HTMLTextAreaElement;
     const manualSummary = editor.elements.namedItem('summary') as HTMLTextAreaElement;
     const drawer = root.querySelector<HTMLDialogElement>('#article-editor-drawer')!;
+    // 正文随内容伸展，滚动留在抽屉中，测量时保留当前阅读位置。
+    const resizeContent = () => {
+      if (!content.getClientRects().length) return;
+      const scrollContainer = drawer.querySelector<HTMLElement>('.admin-drawer__body')!;
+      const scrollTop = scrollContainer.scrollTop;
+      content.style.height = 'auto';
+      content.style.height = `${content.scrollHeight}px`;
+      content.scrollTop = 0;
+      scrollContainer.scrollTop = scrollTop;
+    };
+    let contentWidth = 0;
+    const contentObserver = new ResizeObserver(([entry]) => {
+      if (entry.contentRect.width === contentWidth) return;
+      contentWidth = entry.contentRect.width;
+      resizeContent();
+    });
+    contentObserver.observe(content);
+    content.addEventListener('input', resizeContent);
+    content.addEventListener('focus', resizeContent);
+    window.addEventListener('pageshow', resizeContent);
+    void document.fonts.ready.then(resizeContent);
     const draftStatus = editor.querySelector<HTMLElement>('[data-draft-status]')!;
     let draftId: string = crypto.randomUUID();
     let revision = 0;
@@ -154,6 +175,7 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
     const replaceContent = (text: string, start: number, end: number, selectionMode: SelectionMode = 'end') => {
       pendingContentChange = { value: content.value, start, end, inputType: 'insertText' };
       content.setRangeText(text, start, end, selectionMode);
+      resizeContent();
     };
     const cover = editor.elements.namedItem('coverUrl') as HTMLInputElement;
     const focusMediaReference = (reference: MediaReferenceTarget) => {
@@ -334,6 +356,7 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
       markSaved();
       updatePreview();
       openAdminDrawer(drawer);
+      resizeContent();
       title.focus();
     });
     const openArticle = async (button: HTMLButtonElement, reference?: MediaReferenceTarget, request = ++navigationRevision, session = editorSession) => {
@@ -372,6 +395,7 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
       savedPayload = JSON.stringify(payload());
       draftStatus.textContent = draft ? '已恢复自动保存的草稿' : '修改后自动保存为草稿';
       openAdminDrawer(drawer);
+      resizeContent();
       if (reference) focusMediaReference(reference);
       else title.focus();
     };

@@ -1,9 +1,11 @@
 import { scryptSync } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { APIContext } from 'astro';
 import { allowLoginAttempt, createAdminSession, verifyAdminPassword, verifyAdminSession } from '../src/lib/admin-auth';
 import { serverConfig } from '../src/config/server';
-import { readJsonObject, readPositiveId } from '../src/lib/http';
+import { adminRoute, json, readJsonObject, readPositiveId, readRequestBytes, requirePublicActivityAllowance } from '../src/lib/http';
 import { POST as saveFriend } from '../src/pages/api/admin/friends.json';
+import { POST as login } from '../src/pages/api/admin/login.json';
 
 afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
@@ -59,7 +61,7 @@ describe('admin boundaries', () => {
   });
 
   it('requires authorization and rejects update identifiers on create', async () => {
-    const context = (token?: string, body = '{}') => ({ request: new Request('https://blog.example.com/api/admin/friends.json', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body }), cookies: { get: () => token ? { value: token } : undefined } }) as unknown as Parameters<typeof saveFriend>[0];
+    const context = (token?: string, body = '{}') => ({ request: new Request('https://blog.example.com/api/admin/friends.json', { method: 'POST', headers: { 'Content-Type': 'application/json', origin: 'https://blog.example.com' }, body }), cookies: { get: () => token ? { value: token } : undefined } }) as unknown as Parameters<typeof saveFriend>[0];
     expect((await saveFriend(context())).status).toBe(401);
     expect((await saveFriend(context(createAdminSession(), '{"id":1}'))).status).toBe(400);
     expect((await saveFriend(context(createAdminSession(), 'null'))).status).toBe(400);
@@ -70,5 +72,62 @@ describe('admin boundaries', () => {
     for (let index = 0; index < serverConfig.loginAttempts; index++) expect(allowLoginAttempt('test-fingerprint', now)).toBe(true);
     expect(allowLoginAttempt('test-fingerprint', now)).toBe(false);
     expect(allowLoginAttempt('test-fingerprint', now + serverConfig.loginWindowSeconds * 1000)).toBe(true);
+  });
+
+  it('bounds actual streamed bytes even when the declared length is missing or false', async () => {
+    const headerCases: HeadersInit[] = [{}, { 'Content-Length': '1' }];
+    for (const headers of headerCases) {
+      const request = new Request('https://blog.example.com', { method: 'POST', headers, body: '😀'.repeat(8) });
+      await expect(readRequestBytes(request, 16)).rejects.toMatchObject({ status: 413 });
+    }
+  });
+
+  it('blocks missing or foreign origins before every authenticated mutation handler', async () => {
+    const handler = vi.fn(() => json({ ok: true }));
+    const guarded = adminRoute(handler);
+    for (const method of ['POST', 'PATCH', 'PUT', 'DELETE']) {
+      for (const origin of ['', 'https://other.example.com']) {
+        const response = await guarded({ request: new Request('https://blog.example.com/api/admin/test.json', { method, headers: origin ? { origin } : {} }),
+          cookies: { get: () => ({ value: createAdminSession() }) },
+        } as unknown as APIContext);
+        expect(response.status).toBe(403);
+      }
+    }
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it('rejects cross-origin login and counts malformed login attempts before parsing', async () => {
+    const context = (origin = 'https://blog.example.com') => ({ request: new Request('https://blog.example.com/api/admin/login.json', {
+      method: 'POST', headers: { origin, 'content-type': 'application/json' }, body: '{',
+    }), clientAddress: '198.51.100.99', cookies: { set: vi.fn() } }) as unknown as APIContext;
+    expect((await login(context('https://other.example.com'))).status).toBe(403);
+    for (let index = 0; index < serverConfig.loginAttempts; index++) expect((await login(context())).status).toBe(400);
+    expect((await login(context())).status).toBe(429);
+  });
+
+  it('caps authenticated mutations across sessions and keeps reads available', async () => {
+    let now = Date.now() + serverConfig.adminMutationWindowSeconds * 1000 + 1;
+    vi.spyOn(Date, 'now').mockImplementation(() => now);
+    const guarded = adminRoute(() => json({ ok: true }));
+    const context = (method = 'POST') => ({ request: new Request('https://blog.example.com/api/admin/test.json', { method, headers: { origin: 'https://blog.example.com' } }),
+      cookies: { get: () => ({ value: createAdminSession() }) },
+    }) as unknown as APIContext;
+    for (let index = 0; index < serverConfig.adminMutationLimit; index++) {
+      now++;
+      expect((await guarded(context())).status).toBe(200);
+    }
+    expect((await guarded(context())).status).toBe(429);
+    expect((await guarded(context('GET'))).status).toBe(200);
+    now += serverConfig.adminMutationWindowSeconds * 1000;
+    expect((await guarded(context())).status).toBe(200);
+  });
+
+  it('bounds public activity rates and tracked sources and releases expired entries', () => {
+    const now = Date.now();
+    for (let index = 0; index < serverConfig.publicActivityLimit; index++) requirePublicActivityAllowance('source-0', now);
+    expect(() => requirePublicActivityAllowance('source-0', now)).toThrow('请求过于频繁');
+    for (let index = 1; index < serverConfig.publicActivityTrackedAddresses; index++) requirePublicActivityAllowance(`source-${index}`, now);
+    expect(() => requirePublicActivityAllowance('new-source', now)).toThrow('请求过于频繁');
+    expect(() => requirePublicActivityAllowance('new-source', now + serverConfig.publicActivityWindowSeconds * 1000)).not.toThrow();
   });
 });

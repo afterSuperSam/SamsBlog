@@ -11,7 +11,7 @@ vi.mock('node:https', () => ({ request: mocks.request }));
 vi.mock('../src/lib/friends', () => ({ listFriends: mocks.listFriends }));
 vi.mock('../src/lib/db', () => ({ getDatabase: () => mocks.database }));
 
-const rss = (title = '文章', date = '2026-10-18T00:00:00Z') => `<rss><channel><item><title>${title}</title><link>/posts/latest</link>${date ? `<pubDate>${date}</pubDate>` : ''}</item></channel></rss>`;
+const rss = (title = '文章', date = '2026-10-18T00:00:00Z', summary = '') => `<rss><channel><item><title>${title}</title><link>/posts/latest</link>${date ? `<pubDate>${date}</pubDate>` : ''}${summary ? `<description><![CDATA[${summary}]]></description>` : ''}</item></channel></rss>`;
 
 function friends(values: Array<{ id: number; rssUrl: string }>) {
   mocks.listFriends.mockReturnValue(values);
@@ -48,10 +48,10 @@ beforeEach(() => {
   mocks.listFriends.mockReset();
   mocks.database = new Database(':memory:');
   mocks.database.exec(`CREATE TABLE friends(id INTEGER PRIMARY KEY,rss_url TEXT NOT NULL,visible INTEGER NOT NULL DEFAULT 1,deleted_at TEXT);
-    CREATE TABLE friend_feed_cache(friend_id INTEGER PRIMARY KEY,rss_url TEXT NOT NULL,title TEXT NOT NULL DEFAULT '',entry_url TEXT NOT NULL DEFAULT '',published_at TEXT,checked_at TEXT NOT NULL);`);
+    CREATE TABLE friend_feed_cache(friend_id INTEGER PRIMARY KEY,rss_url TEXT NOT NULL,title TEXT NOT NULL DEFAULT '',summary TEXT NOT NULL DEFAULT '',entry_url TEXT NOT NULL DEFAULT '',published_at TEXT,checked_at TEXT NOT NULL);`);
   friends([{ id: 1, rssUrl: 'https://example.com/feed.xml' }]);
 });
-afterEach(() => { mocks.database.close(); vi.useRealTimers(); });
+afterEach(() => { mocks.database.close(); vi.useRealTimers(); vi.unstubAllEnvs(); });
 
 describe('bounded RSS and Atom parsing', () => {
   it('processes long ampersand runs without consuming the next valid entity', async () => {
@@ -68,7 +68,7 @@ describe('bounded RSS and Atom parsing', () => {
       <item><title><![CDATA[New & personal]]></title><link>../new?x=1&amp;y=2</link><dc:date>2026-10-18T03:00:00Z</dc:date><description><![CDATA[<script>ignored()</script>]]></description></item>
       <item><title>Unknown date</title><link>/undated</link></item>
     </channel></rss>`;
-    expect(parseFriendFeed(xml, 'https://example.com/feeds/rss.xml')).toEqual({ title: 'New & personal', url: 'https://example.com/new?x=1&y=2', publishedAt: '2026-10-18T03:00:00.000Z' });
+    expect(parseFriendFeed(xml, 'https://example.com/feeds/rss.xml')).toEqual({ title: 'New & personal', summary: '', url: 'https://example.com/new?x=1&y=2', publishedAt: '2026-10-18T03:00:00.000Z' });
     expect(parseFriendFeed(rss('A &amp; &#x42; &quot;C&quot;', ''), 'https://example.com/feed')).toMatchObject({ title: 'A & B "C"', publishedAt: null });
   });
 
@@ -78,14 +78,14 @@ describe('bounded RSS and Atom parsing', () => {
       <title type="xhtml"><div>New <b>entry</b></div></title><link rel="self" href="/api/entry"/><link rel="alternate" href="../post?x=&quot;a&gt;b&quot;"/>
       <published>invalid</published><updated>2026-10-18T04:00:00+08:00</updated>
     </entry></feed>`;
-    expect(parseFriendFeed(xml, 'https://example.com/feeds/atom')).toEqual({ title: 'New entry', url: 'https://example.com/post?x=%22a%3Eb%22', publishedAt: '2026-10-17T20:00:00.000Z' });
+    expect(parseFriendFeed(xml, 'https://example.com/feeds/atom')).toEqual({ title: 'New entry', summary: '', url: 'https://example.com/post?x=%22a%3Eb%22', publishedAt: '2026-10-17T20:00:00.000Z' });
   });
 
   it('keeps the first undated valid item and rejects unsafe entry links', async () => {
     const { parseFriendFeed } = await import('../src/lib/friend-feeds');
     const item = (title: string, link: string) => `<item><title>${title}</title><link>${link}</link></item>`;
     const xml = `<rss><channel>${item('unsafe', 'javascript:alert(1)')}${item('credentials', 'https://user:password@example.com/')}${item('first', '/first')}${item('second', '/second')}</channel></rss>`;
-    expect(parseFriendFeed(xml, 'https://example.com/feed')).toEqual({ title: 'first', url: 'https://example.com/first', publishedAt: null });
+    expect(parseFriendFeed(xml, 'https://example.com/feed')).toEqual({ title: 'first', summary: '', url: 'https://example.com/first', publishedAt: null });
     expect(parseFriendFeed('<feed/>', 'https://example.com/feed')).toBeNull();
   });
 
@@ -97,6 +97,36 @@ describe('bounded RSS and Atom parsing', () => {
     expect(() => parseFriendFeed(`<rss>${'<x>'.repeat(serverConfig.friendFeedMaximumDepth)}${'</x>'.repeat(serverConfig.friendFeedMaximumDepth)}</rss>`, 'https://example.com/feed')).toThrow('nesting limit');
     expect(() => parseFriendFeed(`<rss>${'x'.repeat(serverConfig.friendFeedMaximumBytes)}</rss>`, 'https://example.com/feed')).toThrow('oversized');
     expect(() => parseFriendFeed(`<rss><channel>${'<item/>'.repeat(serverConfig.friendFeedMaximumEntries + 1)}</channel></rss>`, 'https://example.com/feed')).toThrow('entry limit');
+  });
+
+  it('extracts short RSS descriptions and content fallbacks as text without executable or hidden markup', async () => {
+    const { parseFriendFeed } = await import('../src/lib/friend-feeds');
+    const description = '<p>第一段&nbsp;<strong>加粗</strong> &amp; &#x1F436;</p><!--注释--><script>bad()</script><style>secret</style><iframe>隐藏</iframe><p>第二段<img src=x onerror="bad()"></p>';
+    expect(parseFriendFeed(rss('文章', '', description), 'https://example.com/feed')?.summary).toBe('第一段 加粗 & 🐶 第二段');
+    const content = rss().replace('</item>', '<content:encoded><![CDATA[<p>正文摘要</p><template>不显示</template>]]></content:encoded></item>');
+    expect(parseFriendFeed(content, 'https://example.com/feed')?.summary).toBe('正文摘要');
+    const preferred = rss('文章', '', '优先摘要').replace('</item>', '<content:encoded>正文后备</content:encoded></item>');
+    expect(parseFriendFeed(preferred, 'https://example.com/feed')?.summary).toBe('优先摘要');
+    expect(parseFriendFeed(rss('文章', '', '保留<script>未结束脚本'), 'https://example.com/feed')?.summary).toBe('保留');
+  });
+
+  it('extracts Atom HTML and XHTML summaries while retaining block spacing and skipping script descendants', async () => {
+    const { parseFriendFeed } = await import('../src/lib/friend-feeds');
+    const atom = (body: string) => `<feed><entry><title>Atom标题</title><link href="/post"/>${body}</entry></feed>`;
+    expect(parseFriendFeed(atom('<summary type="html">&lt;p&gt;摘要 &amp;amp; 内容&lt;/p&gt;</summary>'), 'https://example.com/feed')?.summary).toBe('摘要 & 内容');
+    expect(parseFriendFeed(atom('<summary type="xhtml"><div><p>第一段</p><p>第二段 <b>强调</b></p><xhtml:script>忽略脚本</xhtml:script></div></summary><content>后备</content>'), 'https://example.com/feed')?.summary).toBe('第一段 第二段 强调');
+    expect(parseFriendFeed(atom('<content type="xhtml"><div>只有正文<br/>下一行</div></content>'), 'https://example.com/feed')?.summary).toBe('只有正文 下一行');
+  });
+
+  it('limits summaries by configured Unicode code points and validates the configured ceiling', async () => {
+    vi.stubEnv('FRIEND_FEED_SUMMARY_MAX_LENGTH', '5');
+    const { parseFriendFeed } = await import('../src/lib/friend-feeds');
+    expect(parseFriendFeed(rss('文章', '', '🐶🐶🐶🐶🐶🐶'), 'https://example.com/feed')?.summary).toBe('🐶🐶🐶🐶…');
+    for (const value of ['0', '501', '2.5']) {
+      vi.resetModules();
+      vi.stubEnv('FRIEND_FEED_SUMMARY_MAX_LENGTH', value);
+      await expect(import('../src/config/server')).rejects.toThrow(/Invalid/);
+    }
   });
 });
 
@@ -134,13 +164,14 @@ describe('pinned feed requests and persistent caching', () => {
 
   it('retains valid cached metadata after failure and caches failures to prevent retry storms', async () => {
     const { getFriendFeeds } = await import('../src/lib/friend-feeds');
+    mocks.request.mockImplementation(respond(rss('文章', '2026-10-18', '<p>持久摘要</p>')));
     vi.useFakeTimers({ toFake: ['Date'] });
     const first = await getFriendFeeds();
     vi.setSystemTime(Date.now() + serverConfig.friendFeedCacheSeconds * 1000 + 1);
     mocks.request.mockImplementation(respond('', 503));
     const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const failed = await getFriendFeeds();
-    expect(failed[0]).toMatchObject({ title: first[0]!.title, url: first[0]!.url, publishedAt: first[0]!.publishedAt });
+    expect(failed[0]).toMatchObject({ title: first[0]!.title, summary: '持久摘要', url: first[0]!.url, publishedAt: first[0]!.publishedAt });
     expect(failed[0]!.checkedAt).not.toBe(first[0]!.checkedAt);
     expect(warning).toHaveBeenCalledWith('Friend feed refresh failed', expect.objectContaining({ id: 1 }));
     await getFriendFeeds();

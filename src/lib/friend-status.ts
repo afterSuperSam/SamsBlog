@@ -4,6 +4,7 @@ import { request as requestHttps } from 'node:https';
 import { isIP } from 'node:net';
 import { serverConfig } from '../config/server';
 import { listFriends } from './friends';
+import { getDatabase } from './db';
 
 export interface FriendStatus {
   id: number;
@@ -136,35 +137,49 @@ export async function checkFriendStatus(friend: { id: number; url: string }): Pr
       console.warn('Friend connectivity check failed', { id: friend.id, code });
     }
   }
-  return { id: friend.id, status, latencyMilliseconds, checkedAt: new Date().toISOString() };
+  return { id: friend.id, status, latencyMilliseconds, checkedAt: new Date(Date.now()).toISOString() };
 }
 
-let cached: { key: string; expiresAt: number; results: FriendStatus[] } | undefined;
 let pending: Promise<void> | undefined;
+
+// 页面只读取当前公开地址的有效缓存，未知和过期结果不参与失联判定。
+export function getCachedFriendStatuses(): FriendStatus[] {
+  return (getDatabase().prepare(`SELECT friends.id, cache.status,
+      cache.latency_milliseconds AS latencyMilliseconds, cache.checked_at AS checkedAt
+    FROM friends JOIN friend_status_cache AS cache ON cache.friend_id=friends.id AND cache.url=friends.url
+    WHERE friends.visible=1 AND friends.deleted_at IS NULL ORDER BY friends.id`).all() as FriendStatus[])
+    .filter((result) => {
+      const checkedAt = Date.parse(result.checkedAt);
+      return Number.isFinite(checkedAt) && checkedAt <= Date.now() && Date.now() - checkedAt < serverConfig.friendStatusCacheSeconds * 1000;
+    });
+}
 
 // 共用检测任务与短期缓存，公开请求不能指定任意探测地址
 export async function getFriendStatuses(): Promise<FriendStatus[]> {
-  const friends = listFriends();
-  if (!friends.length) return [];
-  const key = JSON.stringify(friends.map(({ id, url }) => [id, url]));
-  if (cached?.key === key && cached.expiresAt > Date.now()) return cached.results;
   if (pending) {
     await pending;
-    return getFriendStatuses();
+    return getCachedFriendStatuses();
   }
+  const cachedIds = new Set(getCachedFriendStatuses().map(({ id }) => id));
+  const friends = listFriends().filter(({ id }) => !cachedIds.has(id));
+  if (!friends.length) return getCachedFriendStatuses();
   pending = (async () => {
-    const results: FriendStatus[] = [];
     let next = 0;
     const worker = async () => {
       while (next < friends.length) {
         const friend = friends[next++]!;
-        results.push(await checkFriendStatus(friend));
+        const result = await checkFriendStatus(friend);
+        getDatabase().prepare(`INSERT INTO friend_status_cache(friend_id,url,status,latency_milliseconds,checked_at)
+          SELECT @id,@url,@status,@latencyMilliseconds,@checkedAt FROM friends
+          WHERE id=@id AND url=@url AND visible=1 AND deleted_at IS NULL
+          ON CONFLICT(friend_id) DO UPDATE SET url=excluded.url,status=excluded.status,
+            latency_milliseconds=excluded.latency_milliseconds,checked_at=excluded.checked_at`)
+          .run({ ...result, url: friend.url });
       }
     };
     await Promise.all(Array.from({ length: Math.min(friends.length, serverConfig.friendStatusConcurrency) }, worker));
-    cached = { key, expiresAt: Date.now() + serverConfig.friendStatusCacheSeconds * 1000, results };
   })();
   try { await pending; }
   finally { pending = undefined; }
-  return getFriendStatuses();
+  return getCachedFriendStatuses();
 }

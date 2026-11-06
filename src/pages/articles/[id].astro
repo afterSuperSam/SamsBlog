@@ -31,7 +31,7 @@ const articleMetadata = article ? {
 const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 ---
 
-{article ? <BaseLayout title={article.title} description={article.summary || articleExcerpt(article.content)} image={article.coverUrl || undefined} articleMetadata={articleMetadata} bodyClass="article-page">
+{article ? <BaseLayout title={article.title} description={article.summary || articleExcerpt(article.content)} image={article.coverUrl || undefined} articleMetadata={articleMetadata} bodyClass="article-page article-reading-mode">
   <article class="article-reading shell" data-article-reading data-article-id={article.id} data-article-version={article.updatedAt}>
     <div class="article-reading__lead">
     <a class="articles-more article-reading__back" href="/content"><span aria-hidden="true">←</span> 回到内容</a>
@@ -45,8 +45,7 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
     </header>
     {article.coverUrl && <img class="article-reading__cover" src={article.coverUrl} alt="文章首图" referrerpolicy="no-referrer" fetchpriority="high" />}
     <div class="article-reading__tools" data-reading-tools hidden>
-      <button type="button" data-reading-mode data-tooltip="收窄正文宽度，减淡背景干扰" aria-pressed="false">舒适阅读</button>
-      <button type="button" data-reading-font data-tooltip="在系统默认字体与本站艺术字体之间切换" aria-pressed="false">使用默认字体</button>
+      <button type="button" data-reading-font data-tooltip="在系统默认字体与本站艺术字体之间切换" aria-pressed="false">切换艺术字体</button>
       <button type="button" data-reading-resume data-tooltip="回到这台设备上次读到的位置" hidden>继续阅读</button>
       <div class="article-typography" role="group" aria-label="正文字号与行距">
         <button type="button" data-reading-size="decrease" aria-label="缩小正文字号">A−</button>

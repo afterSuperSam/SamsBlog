@@ -223,6 +223,107 @@ it('clears snapshots on permanent failure and expiry instead of retaining notifi
   warning.mockRestore();
 });
 
+it('queues acceptance receipts once only for approved applications with an email and renders safe public links', async () => {
+  const friends = await import('../src/lib/friends');
+  const send = vi.fn().mockResolvedValue(new Response(JSON.stringify({ id: 'acceptance-fixture' })));
+  vi.stubGlobal('fetch', send);
+  const create = (suffix: string, email: string) => friends.createFriendApplication(friends.parseFriendInput({
+    name: '<img src=x onerror=alert(1)> & 站点', url: `https://receipt-${suffix}.example.com`, description: '友链申请', iconUrl: 'https://example.com/icon.png',
+  }), email, `receipt-${suffix}`);
+  const id = create('approved', 'applicant@example.com');
+  friends.reviewFriendApplication(id, true, {});
+  expect(send).not.toHaveBeenCalled();
+  expect(() => friends.reviewFriendApplication(id, true, {})).toThrow('已经处理');
+  expect(notifications.queueAcceptedFriendApplication(id)).toBe(false);
+  const declined = create('declined', 'declined@example.com');
+  friends.reviewFriendApplication(declined, false, {});
+  const empty = create('empty', '');
+  friends.reviewFriendApplication(empty, true, {});
+  expect(database.getDatabase().prepare("SELECT application_id FROM mail_notifications WHERE kind='application_accepted'").all()).toEqual([{ application_id: id }]);
+  const application = database.getDatabase().prepare('SELECT friend_id FROM friend_applications WHERE id=?').get(id) as { friend_id: number };
+  expect(friends.listFriends().find((friend) => friend.id === application.friend_id)?.name).toContain('& 站点');
+  expect(JSON.stringify(friends.listFriends())).not.toContain('applicant@example.com');
+  expect(JSON.stringify(notifications.listReplyNotifications())).not.toContain('applicant@example.com');
+  await notifications.deliverReplyNotifications();
+  expect(send).toHaveBeenCalledTimes(1);
+  const body = JSON.parse(send.mock.calls[0][1].body);
+  expect(body.to).toEqual(['applicant@example.com']);
+  expect(body.subject).toContain('友链申请已通过');
+  expect(body.html).toContain('&lt;img src=x onerror=alert(1)&gt; &amp; 站点');
+  expect(body.html).toContain('查看网站友链');
+  expect(body.html).toContain('/about#friends');
+  expect(body.text).toContain('查看网站友链：');
+  expect(body.html).not.toMatch(/<img src=x|前往后台处理|\/admin\//);
+  expect(body).not.toHaveProperty('template');
+  await notifications.deliverReplyNotifications();
+  expect(send).toHaveBeenCalledTimes(1);
+});
+
+it('rolls back approval and its new friend if acceptance queue insertion fails', async () => {
+  const friends = await import('../src/lib/friends');
+  const id = friends.createFriendApplication(friends.parseFriendInput({ name: '原子审核', url: 'https://receipt-atomic.example.com', description: '原子入队', iconUrl: 'https://example.com/icon.png' }), 'atomic@example.com', 'receipt-atomic');
+  const connection = database.getDatabase();
+  connection.exec("CREATE TRIGGER reject_acceptance_receipt BEFORE INSERT ON mail_notifications WHEN NEW.kind='application_accepted' BEGIN SELECT RAISE(ABORT,'receipt fixture failure'); END");
+  try {
+    expect(() => friends.reviewFriendApplication(id, true, {})).toThrow('receipt fixture failure');
+    expect(connection.prepare('SELECT status,friend_id FROM friend_applications WHERE id=?').get(id)).toEqual({ status: 'pending', friend_id: null });
+    expect(friends.listFriends().some((friend) => friend.url === 'https://receipt-atomic.example.com/')).toBe(false);
+  } finally { connection.exec('DROP TRIGGER reject_acceptance_receipt'); }
+});
+
+it('cancels receipts for deleted applications and hidden or replaced friends using the original friend ID', async () => {
+  const friends = await import('../src/lib/friends');
+  const send = vi.fn();
+  vi.stubGlobal('fetch', send);
+  const connection = database.getDatabase();
+  for (const mode of ['hidden', 'replaced', 'deleted-application']) {
+    const input = friends.parseFriendInput({ name: `失效回信${mode}`, url: `https://receipt-${mode}.example.com`, description: '取消验证', iconUrl: 'https://example.com/icon.png' });
+    const id = friends.createFriendApplication(input, 'cancelled@example.com', `receipt-${mode}`);
+    friends.reviewFriendApplication(id, true, {});
+    const { friend_id: friendId } = connection.prepare('SELECT friend_id FROM friend_applications WHERE id=?').get(id) as { friend_id: number };
+    if (mode === 'hidden') connection.prepare('UPDATE friends SET visible=0 WHERE id=?').run(friendId);
+    else if (mode === 'replaced') { friends.deleteFriend(friendId); friends.saveFriend(input); }
+    else connection.prepare('UPDATE friend_applications SET deleted_at=? WHERE id=?').run(new Date().toISOString(), id);
+    await notifications.deliverReplyNotifications();
+    expect(connection.prepare("SELECT status,request_payload FROM mail_notifications WHERE kind='application_accepted' AND application_id=?").get(id))
+      .toEqual({ status: 'cancelled', request_payload: '' });
+  }
+  expect(send).not.toHaveBeenCalled();
+});
+
+it('sends acceptance receipts without an admin address and retries the exact snapshot without reverting approval', async () => {
+  vi.stubEnv('MAIL_ADMIN_TO', '');
+  vi.resetModules();
+  const isolatedDatabase = (await import('../src/lib/db')).getDatabase();
+  const isolatedNotifications = await import('../src/lib/reply-notifications');
+  const friends = await import('../src/lib/friends');
+  const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  const send = vi.fn().mockRejectedValueOnce(new TypeError('fixture network failure')).mockResolvedValueOnce(new Response(JSON.stringify({ id: 'receipt-retry' })));
+  vi.stubGlobal('fetch', send);
+  try {
+    expect(isolatedNotifications.adminNotificationsConfigured).toBe(false);
+    const id = friends.createFriendApplication(friends.parseFriendInput({ name: '重试回信', url: 'https://receipt-retry.example.com', description: '邮件失败不影响审核', iconUrl: 'https://example.com/icon.png' }), 'retry-receipt@example.com', 'receipt-retry');
+    friends.reviewFriendApplication(id, true, {});
+    await isolatedNotifications.deliverReplyNotifications();
+    expect(isolatedDatabase.prepare('SELECT status FROM friend_applications WHERE id=?').get(id)).toEqual({ status: 'accepted' });
+    const first = send.mock.calls[0][1];
+    expect(first.headers['Idempotency-Key']).toContain('application_accepted');
+    isolatedDatabase.prepare('UPDATE friends SET name=? WHERE id=(SELECT friend_id FROM friend_applications WHERE id=?)').run('发送后的改名', id);
+    isolatedDatabase.prepare("UPDATE mail_notifications SET retry_at='' WHERE kind='application_accepted' AND application_id=?").run(id);
+    await isolatedNotifications.deliverReplyNotifications();
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(send.mock.calls[1][1].body).toBe(first.body);
+    expect(send.mock.calls[1][1].headers['Idempotency-Key']).toBe(first.headers['Idempotency-Key']);
+    expect(isolatedDatabase.prepare("SELECT status,attempts,request_payload FROM mail_notifications WHERE kind='application_accepted' AND application_id=?").get(id))
+      .toEqual({ status: 'sent', attempts: 2, request_payload: '' });
+  } finally {
+    isolatedDatabase.close();
+    vi.stubEnv('MAIL_ADMIN_TO', 'owner@example.com');
+    vi.resetModules();
+    warning.mockRestore();
+  }
+});
+
 it('migrates the previous reply queue without changing delivery identity or retry snapshots', async () => {
   const parent = database.createMessage({ nickname: '迁移测试', content: '旧留言', fingerprintHash: 'migration' });
   const reply = database.createAdminReply(parent, '旧回复');
@@ -236,7 +337,7 @@ it('migrates the previous reply queue without changing delivery identity or retr
     created_at: '2026-10-25T00:00:00.000Z', updated_at: '2026-10-25T00:05:00.000Z',
     retry_at: '2026-10-25T00:10:00.000Z', provider_id: 'migration-fixture', request_payload: '{"subject":"旧的请求正文"}' };
   connection.prepare('INSERT INTO reply_notifications VALUES (@id,@message_id,@reply_id,@status,@attempts,@created_at,@updated_at,@retry_at,@provider_id,@request_payload)').run(legacy);
-  connection.exec("DROP TABLE mail_notifications; DELETE FROM schema_migrations WHERE id='20261025-mail-notification-outbox'");
+  connection.exec("DROP TABLE mail_notifications; DELETE FROM schema_migrations WHERE id IN ('20261025-mail-notification-outbox','20261107-friend-application-receipt')");
   connection.close();
   vi.resetModules();
   const migrated = (await import('../src/lib/db')).getDatabase();

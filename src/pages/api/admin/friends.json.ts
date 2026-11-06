@@ -1,4 +1,4 @@
-import { deleteFriend, listFriends, parseFriendInput, saveFriend, setFriendStarred } from '../../../lib/friends';
+import { deleteFriend, listFriends, parseFriendInput, saveFriend, setFriendRecommended, setFriendStarred } from '../../../lib/friends';
 import { adminRoute, HttpError, json, readJsonObject, readPositiveId, requireSameOrigin } from '../../../lib/http';
 
 export const GET = adminRoute(() => json({ friends: listFriends({ includeHidden: true }) }));
@@ -13,6 +13,10 @@ export const POST = adminRoute(async ({ request }) => {
 export const PATCH = adminRoute(async ({ request }) => {
   const body = await readJsonObject(request);
   const id = readPositiveId(body.id);
+  if (body.action === 'recommend') {
+    requireSameOrigin(request);
+    return setFriendRecommended(id, body.recommended) ? json({ ok: true, id, recommended: body.recommended }) : json({ error: '友链不存在' }, 404);
+  }
   if (body.action === 'star') {
     requireSameOrigin(request);
     return setFriendStarred(id, body.starred) ? json({ ok: true, id, starred: body.starred }) : json({ error: '友链不存在' }, 404);

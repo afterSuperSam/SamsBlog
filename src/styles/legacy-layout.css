@@ -438,7 +438,7 @@ body::before {
 .reveal-character { display:inline-block; }
 [data-reveal].reveal-pending .reveal-character { opacity:0; }
 
-.site-footer { position:relative; z-index:1; display:block; padding:84px var(--gutter) 44px; border:0; background:linear-gradient(180deg,transparent 0%,color-mix(in srgb,var(--surface) 18%,transparent) 32%,color-mix(in srgb,var(--surface) 70%,transparent) 76%,var(--surface) 100%); }
+.site-footer { position:relative; z-index:1; display:block; padding:84px var(--gutter) var(--footer-bottom-space); border:0; background:linear-gradient(180deg,transparent 0%,color-mix(in srgb,var(--surface) 18%,transparent) 32%,color-mix(in srgb,var(--surface) 70%,transparent) 76%,var(--surface) 100%); }
 
 .footer-main { display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); align-items:center; gap:28px; max-width:var(--max); margin:0 auto; }
 .footer-notes { grid-column:2; display:flex; align-items:center; justify-self:center; gap:16px; min-width:0; }
@@ -453,6 +453,8 @@ body::before {
 .footer-signature { position:relative; isolation:isolate; display:flex; align-items:center; gap:var(--signature-version-gap); width:max-content; margin:0; justify-self:center; color:var(--signature-ink); transition:color .35s var(--ease-out); }
 .footer-signature::before { content:""; position:absolute; z-index:-1; inset:-12px -22px; border-radius:50%; background:radial-gradient(ellipse,var(--signature-hover-glow),transparent 72%); filter:blur(12px); opacity:0; transform:scale(.8); transition:opacity .4s var(--ease-out),transform .6s var(--ease-out); pointer-events:none; }
 .footer-signature svg { display:block; flex:none; width:var(--signature-width); height:auto; overflow:visible; }
+.footer-signature__link { display:inline-flex; align-items:center; justify-content:center; min-width:44px; min-height:44px; border-radius:8px; color:inherit; }
+.footer-signature__link:focus-visible { outline:2px solid var(--summer-blue); outline-offset:4px; color:var(--summer-blue); }
 .signature-version { display:inline-flex; white-space:nowrap; color:var(--signature-version-color); font:700 var(--signature-version-size)/1 var(--playful); letter-spacing:.025em; transition:color .35s var(--ease-out); }
 .signature-version-character { display:inline-block; }
 .signature-ink { fill:currentColor; stroke:currentColor; stroke-width:.2; stroke-linejoin:round; }

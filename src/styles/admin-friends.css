@@ -49,8 +49,9 @@
 .admin-friend-card__icon { position:relative; display:grid; width:68px; height:68px; place-items:center; overflow:hidden; border-radius:22px 13px 24px 15px; background:color-mix(in oklab,var(--friend-accent) 15%,var(--surface)); color:var(--friend-accent); font:700 1.35rem/1 var(--playful); }
 .admin-friend-card__icon img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
 .admin-friend-card__fields { grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
-.admin-friend-card__visible { grid-column:2; display:flex; align-items:center; gap:8px; color:var(--text-soft); font-size:.875rem; }
-.admin-friend-card__visible input { width:auto; min-height:0; }
+.admin-friend-card__options { grid-column:2; display:flex; align-items:center; flex-wrap:wrap; gap:12px 24px; }
+.admin-friend-option,.admin-friend-import .admin-friend-option { display:flex; align-items:center; gap:8px; min-height:44px; color:var(--text-soft); font-size:.875rem; }
+.admin-friend-option input,.admin-friend-import .admin-friend-option input { width:auto; min-height:0; padding:0; accent-color:var(--friend-recommended-color); }
 .admin-friend-card footer { grid-column:2; display:flex; flex-wrap:wrap; gap:12px; }
 .admin-friend-card>.form-status { grid-column:1/-1; }
 .admin-friend-card footer button { padding:9px 12px; border:0;   color:var(--text); font-family:var(--playful); cursor:pointer;  background:transparent; }
@@ -61,5 +62,5 @@
   .admin-friend-card{grid-template-columns:58px minmax(0,1fr)}.admin-friend-card__icon{width:58px;height:58px}
 }
 @media(max-width:680px){
-  .admin-friend-import{grid-template-columns:minmax(0,1fr);padding:20px}.admin-friend-import>small{grid-column:1}.admin-friend-card{grid-template-columns:minmax(0,1fr)}.admin-friend-card__icon{width:48px;height:48px}.admin-friend-card__fields{grid-template-columns:minmax(0,1fr)}.admin-friend-card__visible,.admin-friend-card footer{grid-column:1}
+  .admin-friend-import{grid-template-columns:minmax(0,1fr);padding:20px}.admin-friend-import>small{grid-column:1}.admin-friend-card{grid-template-columns:minmax(0,1fr)}.admin-friend-card__icon{width:48px;height:48px}.admin-friend-card__fields{grid-template-columns:minmax(0,1fr)}.admin-friend-card__options,.admin-friend-card footer{grid-column:1}
 }

@@ -1,9 +1,11 @@
 import { readAdminSession } from '../../lib/admin-auth';
-import { HttpError, json, readRequestBytes, requireSameOrigin, route } from '../../lib/http';
+import { HttpError, json, readRequestBytes, requirePublicActivityAllowance, requireSameOrigin, route } from '../../lib/http';
+import { fingerprintIp, getClientIp } from '../../lib/network';
 import { getSiteStats, hashVisitorToken, humanPageRequest, publicPagePath, recordConfirmedPageView, validVisitorToken, visitorCookie } from '../../lib/stats';
 
-export const POST = route(async ({ request, cookies }) => {
+export const POST = route(async ({ request, cookies, clientAddress }) => {
   requireSameOrigin(request);
+  requirePublicActivityAllowance(fingerprintIp(getClientIp(request, clientAddress)));
   const token = cookies.get(visitorCookie)?.value;
   if (!validVisitorToken(token) || !humanPageRequest(request) || readAdminSession(cookies)) return json({ counted: false });
   if (request.headers.get('content-type')?.split(';', 1)[0] !== 'application/json') throw new HttpError(415, '请求格式不正确');

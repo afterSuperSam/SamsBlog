@@ -3,13 +3,11 @@ import FriendsSection from '../components/FriendsSection.astro';
 import GuestbookSection from '../components/GuestbookSection.astro';
 import ArticleList from '../components/ArticleList.astro';
 import BaseLayout from '../layouts/BaseLayout.astro';
-import { getSiteStats } from '../lib/stats';
 import { listHomepageArticles } from '../lib/articles';
 import { siteConfig } from '../config/site';
 import ProjectsSection from '../components/ProjectsSection.astro';
 import '../styles/home.css';
 
-const siteStats = getSiteStats();
 const latestArticles = listHomepageArticles();
 const hasArticles = latestArticles.length > 0;
 
@@ -21,10 +19,9 @@ const hasArticles = latestArticles.length > 0;
   ...(hasArticles ? [{ href: '#latest-article', label: '内容' }] : []),
   { href: '#guestbook', label: '留言', description: '留言纸条' },
   { href: '#friends', label: '友链' },
-  { href: '#site-stats', label: '统计', description: '站点统计' },
 ]}>
 
-  <section class="home-hero" id="home" data-pointer-tilt={siteConfig.effects.pointerTiltDegrees}>
+  <section class="home-hero" id="home">
     <div class="hero-media" aria-hidden="true">
       <picture>
         <source media="(min-aspect-ratio: 4/3)" srcset="/media/anime/hero/1753341045990-1920x1080.webp" width="1920" height="1080" />
@@ -36,7 +33,6 @@ const hasArticles = latestArticles.length > 0;
       <h1 class="hero-title-heading"><img src="/media/branding/samsblog-wordmark.webp" alt={siteConfig.name} width="480" height="179" class="hero-wordmark" fetchpriority="high" /></h1>
     </div>
     <span class="hero-sticker hero-sticker--sun" aria-hidden="true">✷</span>
-    <span class="hero-sticker hero-sticker--note" aria-hidden="true">Scroll down<br />to see more ↓</span>
   </section>
 
   <ProjectsSection />
@@ -46,100 +42,19 @@ const hasArticles = latestArticles.length > 0;
   <GuestbookSection />
 
   <FriendsSection featured />
-  <section class="site-stats shell" id="site-stats" aria-label="站点统计" data-reveal data-statistics-config={JSON.stringify(siteConfig.statistics)}>
-    <div class="site-stats__panel">
-      <dl>
-        <div><dt>运行天数</dt><dd><span data-stat-value={siteStats.runtimeDays} aria-hidden="true">{siteStats.runtimeDays.toLocaleString('zh-CN')}</span><span class="stat-reader-value">{siteStats.runtimeDays.toLocaleString('zh-CN')}</span><small>天</small></dd></div>
-        {[['友链', siteStats.friends, 'friends'], ['累计访客', siteStats.visitors, 'visitors'], ['总浏览量', siteStats.pageViews, 'pageViews']].map(([label, value, key]) => <div><dt>{label}</dt><dd><span data-stat-value={value} data-stat-key={key} aria-hidden="true">{Number(value).toLocaleString('zh-CN')}</span><span class="stat-reader-value">{Number(value).toLocaleString('zh-CN')}</span></dd></div>)}
-      </dl>
-    </div>
-  </section>
 </BaseLayout>
 
 <script>
   const pointerMotion = matchMedia('(hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference)');
   document.querySelectorAll<HTMLElement>('[data-pointer-tilt]').forEach((surface) => {
-    const target = surface.querySelector<HTMLElement>('.hero-sticker--note') || surface;
     surface.addEventListener('pointermove', (event) => {
       if (!pointerMotion.matches || event.pointerType !== 'mouse' || document.documentElement.classList.contains('motion-paused')) return;
       const bounds = surface.getBoundingClientRect();
       const degrees = Number(surface.dataset.pointerTilt);
-      target.style.setProperty('--pointer-tilt', `${(2 * (event.clientX - bounds.left) / bounds.width - 1) * degrees}deg`);
+      surface.style.setProperty('--pointer-tilt', `${(2 * (event.clientX - bounds.left) / bounds.width - 1) * degrees}deg`);
     });
-    const resetTilt = () => target.style.removeProperty('--pointer-tilt');
+    const resetTilt = () => surface.style.removeProperty('--pointer-tilt');
     surface.addEventListener('pointerleave', resetTilt);
     pointerMotion.addEventListener('change', resetTilt);
   });
-
-
-  // 统计在首次进入视野时从零增长，读屏始终读取真实数值。
-  const statisticsSection = document.querySelector<HTMLElement>('[data-statistics-config]');
-  const statisticsPanel = statisticsSection?.querySelector<HTMLElement>('.site-stats__panel');
-  if (statisticsSection && statisticsPanel) {
-    const configuration = JSON.parse(statisticsSection.dataset.statisticsConfig!) as {
-      countDurationMilliseconds: number; countStaggerMilliseconds: number; easingPower: number; visibilityThreshold: number;
-    };
-    const counters = [...statisticsPanel.querySelectorAll<HTMLElement>('[data-stat-value]')].map((element) => ({ element, value: Number(element.dataset.statValue), displayed: -1 }));
-    const formatter = new Intl.NumberFormat('zh-CN');
-    const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
-    const motionIsDisabled = () => reducedMotion.matches || document.documentElement.classList.contains('motion-paused');
-    let countFrame = 0;
-    let started = false;
-    const finishCounters = () => {
-      cancelAnimationFrame(countFrame);
-      countFrame = 0;
-      counters.forEach((counter) => { counter.element.textContent = formatter.format(counter.value); });
-    };
-    document.addEventListener('site-statistics-updated', (event) => {
-      const totals = (event as CustomEvent<Record<string, number>>).detail;
-      counters.forEach((counter) => {
-        const value = totals[counter.element.dataset.statKey || ''];
-        if (!Number.isSafeInteger(value) || value < 0) return;
-        counter.value = value; counter.element.dataset.statValue = String(value);
-        const reader = counter.element.parentElement?.querySelector('.stat-reader-value');
-        if (reader) reader.textContent = formatter.format(value);
-      });
-      if (!countFrame) finishCounters();
-    });
-    const startCounters = () => {
-      if (started) return;
-      started = true;
-      if (motionIsDisabled()) { finishCounters(); return; }
-      const start = performance.now();
-      const update = (now: number) => {
-        if (motionIsDisabled()) { finishCounters(); return; }
-        let complete = true;
-        counters.forEach((counter, index) => {
-          const elapsed = now - start - index * configuration.countStaggerMilliseconds;
-          const progress = Math.max(0, Math.min(1, elapsed / configuration.countDurationMilliseconds));
-          const eased = progress < .5 ? Math.pow(2 * progress, configuration.easingPower) / 2 : 1 - Math.pow(2 * (1 - progress), configuration.easingPower) / 2;
-          const value = Math.round(counter.value * eased);
-          if (value !== counter.displayed) {
-            counter.element.textContent = formatter.format(value);
-            counter.displayed = value;
-          }
-          if (progress < 1) complete = false;
-        });
-        if (complete) finishCounters();
-        else countFrame = requestAnimationFrame(update);
-      };
-      counters.forEach((counter) => { counter.element.textContent = '0'; });
-      countFrame = requestAnimationFrame(update);
-    };
-    if ('IntersectionObserver' in window) {
-      const observer = new IntersectionObserver((entries) => {
-        if (!entries.some((entry) => entry.isIntersecting && entry.intersectionRatio >= configuration.visibilityThreshold)) return;
-        observer.disconnect();
-        startCounters();
-      }, { threshold: configuration.visibilityThreshold });
-      observer.observe(statisticsPanel);
-    }
-    const syncMotion = () => {
-      if (!motionIsDisabled()) return;
-      finishCounters();
-    };
-    reducedMotion.addEventListener('change', syncMotion);
-    new MutationObserver(syncMotion).observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
-  }
-
 </script>
