@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { onRequest } from '../src/middleware';
 import { createAdminSession } from '../src/lib/admin-auth';
+import { readerFlowCookieName } from '../src/lib/readers';
 
 vi.mock('astro:middleware', () => ({ defineMiddleware: (handler: unknown) => handler }));
 vi.mock('../src/lib/reply-notifications', () => ({ scheduleReplyNotifications: vi.fn() }));
@@ -10,7 +11,7 @@ const token = '11111111-1111-4111-8111-111111111111';
 function context(path = '/about', headers: Record<string, string> = {}, values: Record<string,string> = {}) {
   const url = new URL(path, 'https://blog.example.com');
   return { url, request: new Request(url, { headers: { accept: 'text/html', 'user-agent': 'fixture-browser', 'sec-fetch-dest': 'document', ...headers } }),
-    cookies: { get: (name: string) => values[name] ? { value: values[name] } : undefined, set: vi.fn() },
+    cookies: { get: (name: string) => values[name] ? { value: values[name] } : undefined, set: vi.fn(), delete: vi.fn() },
   } as unknown as Parameters<typeof onRequest>[0];
 }
 const page = () => new Response('<html>fixture</html>', { headers: { 'content-type': 'text/html' } });
@@ -45,5 +46,33 @@ describe('public page view statistics boundary', () => {
   });
   it('does not catch failures from page rendering', async () => {
     await expect(onRequest(context(), async () => { throw new Error('render failed'); })).rejects.toThrow('render failed');
+  });
+
+  it('prevents shared caching of reader-personalized pages even before login', async () => {
+    for (const path of ['/', '/reader', '/articles/123']) {
+      const response = page();
+      response.headers.set('Vary', 'Accept-Encoding');
+      const result = await onRequest(context(path), async () => response);
+      if (!(result instanceof Response)) throw new Error('Middleware did not return a response');
+      expect(result.headers.get('Cache-Control')).toBe('private, no-store');
+      expect(result.headers.get('Vary')).toBe('Accept-Encoding, Cookie');
+    }
+  });
+
+  it('removes OAuth query parameters through a server redirect before home rendering or visitor tracking', async () => {
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const callback = context('/?code=fixture-code&state=invalid');
+      const next = vi.fn(async () => page());
+      const response = await onRequest(callback, next);
+      if (!(response instanceof Response)) throw new Error('Middleware did not return a response');
+      expect(next).not.toHaveBeenCalled();
+      expect(response.status).toBe(303);
+      expect(response.headers.get('Location')).toBe('/reader?error=oauth');
+      expect(response.headers.get('Referrer-Policy')).toBe('no-referrer');
+      expect(await response.text()).toBe('');
+      expect(callback.cookies.set).not.toHaveBeenCalled();
+      expect(callback.cookies.delete).toHaveBeenCalledWith(readerFlowCookieName, expect.objectContaining({ path: '/', secure: true }));
+    } finally { warning.mockRestore(); }
   });
 });

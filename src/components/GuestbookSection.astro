@@ -1,6 +1,7 @@
 ---
 import { listPublishedMessages } from '../lib/db';
 import { replyNotificationsConfigured } from '../lib/reply-notifications';
+import { readReaderSession } from '../lib/readers';
 import PaperCheckbox from './PaperCheckbox.astro';
 import FriendApplication from './FriendApplication.astro';
 import MessageBody from './MessageBody.astro';
@@ -9,6 +10,7 @@ import MessageSignature from './MessageSignature.astro';
 import '../styles/guestbook.css';
 
 const messages = listPublishedMessages();
+const reader = readReaderSession(Astro.cookies);
 const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' });
 ---
 
@@ -29,9 +31,10 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
           </span>
           <h3>写一张小纸条</h3>
         </div>
+        <p class="reader-comment-identity">{reader ? <>以读者 <b>{reader.displayName}</b> 的身份留言 · <a href="/reader">查看身份</a></> : <>匿名留言审核后公开，也可以先 <a href="/reader">登录读者身份</a>。</>}</p>
         <label class="paper-input-label">
           <span>怎么称呼你</span>
-          <input name="nickname" type="text" minlength="2" maxlength="48" data-character-maximum="24" autocomplete="off" spellcheck="false" placeholder="2–24 个字符" aria-required="true" aria-describedby="message-form-status" />
+          <input name="nickname" type="text" minlength="2" maxlength="48" data-character-maximum="24" autocomplete="off" spellcheck="false" placeholder="2–24 个字符" aria-required="true" aria-describedby="message-form-status" value={reader?.displayName || ''} readonly={Boolean(reader)} />
         </label>
         <label class="paper-input-label">
           <span>想说的话</span>
@@ -211,7 +214,7 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
   form?.addEventListener('submit', async (event) => {
     event.preventDefault();
     if (submitting || nickname?.dataset.composing === 'true' || textarea?.dataset.composing === 'true') return;
-    const invalidField = [nickname, textarea].find((field) => field && (field.value.includes('\0') || Array.from(field.value.trim()).length < field.minLength || Array.from(field.value.trim()).length > Number(field.dataset.characterMaximum)));
+    const invalidField = [nickname, textarea].find((field) => field && !field.readOnly && (field.value.includes('\0') || Array.from(field.value.trim()).length < field.minLength || Array.from(field.value.trim()).length > Number(field.dataset.characterMaximum)));
     if (invalidField) {
       const label = invalidField.name === 'nickname' ? '称呼' : '留言';
       if (status) {
@@ -238,7 +241,7 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
       visitor?.save();
       // 只清空本次送出后未变化的字段，不打断等待期间的新输入或中文组词。
       [nickname, textarea].forEach((field) => {
-        if (!field || (field === nickname && visitor?.enabled()) || field.dataset.composing === 'true' || field.value !== data.get(field.name)) return;
+        if (!field || field.readOnly || (field === nickname && visitor?.enabled()) || field.dataset.composing === 'true' || field.value !== data.get(field.name)) return;
         field.value = '';
         field.dispatchEvent(new Event('input', { bubbles: true }));
       });

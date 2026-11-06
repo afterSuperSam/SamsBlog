@@ -4,12 +4,22 @@ import { humanPageRequest, publicPagePath, validVisitorToken, visitorCookie } fr
 import { readAdminSession } from './lib/admin-auth';
 import { scheduleReplyNotifications } from './lib/reply-notifications';
 import { siteConfig } from './config/site';
+import { blogsClubCallback } from './lib/reader-oauth';
 
 const securePublicSite = new URL(siteConfig.siteUrl).protocol === 'https:';
 let notificationWorkerStarted = false;
 
 export const onRequest = defineMiddleware(async ({ cookies, request, url }, next) => {
+  if (request.method === 'GET' && url.pathname === '/' && ['code', 'state', 'error'].some((name) => url.searchParams.has(name))) {
+    return blogsClubCallback({ cookies, url });
+  }
   const response = await next();
+  if (response.headers.get('content-type')?.includes('text/html')
+    && (url.pathname === '/' || url.pathname === '/reader' || url.pathname.startsWith('/articles/'))) {
+    response.headers.set('Cache-Control', 'private, no-store');
+    const vary = response.headers.get('Vary');
+    if (!vary?.split(',').some((value) => value.trim().toLowerCase() === 'cookie')) response.headers.set('Vary', vary ? `${vary}, Cookie` : 'Cookie');
+  }
   if (!notificationWorkerStarted) { notificationWorkerStarted = true; scheduleReplyNotifications(); }
   const documentRequest = !request.headers.get('sec-fetch-dest') || request.headers.get('sec-fetch-dest') === 'document';
   // HTML 请求只准备匿名身份，真实浏览由可见页面延时确认，不在这里累加。

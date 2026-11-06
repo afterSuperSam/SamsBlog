@@ -1,11 +1,67 @@
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parseReadingHistory, getReadingTrail, measureReadingChapters, parseReadingTypography } from '../src/lib/reading-history';
 import { siteConfig } from '../src/config/site';
+import { initializeExplanations, revealArticleTarget } from '../src/lib/reading-extras';
+import { animateMotion } from '../src/lib/motion';
+
+vi.mock('../src/lib/motion', () => ({ animateContentHeight: vi.fn(), animateMotion: vi.fn() }));
+afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks(); });
 
 const record = { version: 'v1', progress: .4, heading: 'article-heading-test', offset: 20, updatedAt: 1 };
 const presentationScript = readFileSync(new URL('../public/scripts/page-presentation.js', import.meta.url), 'utf8');
+
+describe('reading targets inside collapsed explanations', () => {
+  it('cancels an in-flight closing animation before revealing the reading target', async () => {
+    const summary = Object.assign(new EventTarget(), { offsetHeight: 20 });
+    const prose = { contains: () => true, querySelectorAll: () => [details] };
+    class DetailsStub {
+      open = true;
+      dataset: Record<string, string> = {};
+      parentElement = prose;
+      scrollHeight = 100;
+      querySelector = () => summary;
+      getBoundingClientRect = () => ({ height: 100 });
+    }
+    const details = new DetailsStub();
+    vi.stubGlobal('HTMLDetailsElement', DetailsStub);
+    vi.stubGlobal('document', { documentElement: {} });
+    vi.stubGlobal('getComputedStyle', () => ({ getPropertyValue: () => 'linear' }));
+    let finish!: () => void;
+    const animation = { playState: 'running', finished: new Promise<void>((resolve) => { finish = resolve; }), cancel: vi.fn(() => finish()) };
+    vi.mocked(animateMotion).mockReturnValueOnce(animation as unknown as Animation);
+    initializeExplanations(prose as unknown as HTMLElement);
+    summary.dispatchEvent(new Event('click', { cancelable: true }));
+    expect(details.open).toBe(true);
+    expect(revealArticleTarget(prose as unknown as HTMLElement, { parentElement: details } as unknown as HTMLElement)).toBe(true);
+    await animation.finished;
+    expect(animation.cancel).toHaveBeenCalledOnce();
+    expect(details.open).toBe(true);
+  });
+  it('reveals nested explanations before navigation and leaves unrelated disclosures closed', () => {
+    class ElementStub {
+      constructor(public parentElement: ElementStub | null = null) {}
+      contains(target: ElementStub | null): boolean {
+        return !!target && (target === this || this.contains(target.parentElement));
+      }
+    }
+    class DetailsStub extends ElementStub { open = false; }
+    vi.stubGlobal('HTMLDetailsElement', DetailsStub);
+    const outside = new DetailsStub();
+    const prose = new ElementStub(outside);
+    const outer = new DetailsStub(prose);
+    const inner = new DetailsStub(new ElementStub(outer));
+    const heading = new ElementStub(inner);
+    expect(revealArticleTarget(prose as unknown as HTMLElement, heading as unknown as HTMLElement)).toBe(true);
+    expect([outer.open, inner.open, outside.open]).toEqual([true, true, false]);
+    expect(revealArticleTarget(prose as unknown as HTMLElement, heading as unknown as HTMLElement)).toBe(false);
+    const unrelated = new ElementStub(outside);
+    expect(revealArticleTarget(prose as unknown as HTMLElement, unrelated as unknown as HTMLElement)).toBe(false);
+    expect(revealArticleTarget(prose as unknown as HTMLElement, prose as unknown as HTMLElement)).toBe(false);
+    expect(outside.open).toBe(false);
+  });
+});
 
 const restoreFontPreference = (storedFont: string | null, storageBlocked = false, article = true) => {
   const dataset: Record<string, string> = article ? { articleFont: 'default', readingFontStorageKey: siteConfig.articleReading.fontPreferenceStorageKey } : {};

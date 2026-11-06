@@ -420,6 +420,40 @@ export function getDatabase() {
         }
         connection.prepare('INSERT INTO schema_migrations (id,applied_at) VALUES (?,?)').run('20261107-friend-feed-summary', new Date().toISOString());
       }
+      if (!appliedMigrations.has('20261107-reader-accounts')) {
+        connection.exec(`CREATE TABLE readers (
+          id INTEGER PRIMARY KEY AUTOINCREMENT, display_name TEXT NOT NULL CHECK(length(display_name) BETWEEN 2 AND 24),
+          avatar_url TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+        );
+        CREATE TABLE reader_identities (
+          provider TEXT NOT NULL CHECK(provider IN ('blogsclub','email')), subject TEXT NOT NULL,
+          reader_id INTEGER NOT NULL REFERENCES readers(id), PRIMARY KEY(provider,subject)
+        );
+        CREATE TABLE reader_sessions (
+          token_hash TEXT PRIMARY KEY, reader_id INTEGER NOT NULL REFERENCES readers(id),
+          created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL
+        );
+        CREATE INDEX reader_sessions_expiry_idx ON reader_sessions(expires_at);
+        CREATE TABLE reader_oauth_states (
+          state_hash TEXT PRIMARY KEY, browser_hash TEXT NOT NULL,
+          created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL
+        );
+        CREATE INDEX reader_oauth_expiry_idx ON reader_oauth_states(expires_at);
+        CREATE TABLE reader_email_codes (
+          email_hash TEXT PRIMARY KEY, code_hash TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0 CHECK(attempts>=0),
+          created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL
+        );
+        CREATE INDEX reader_email_expiry_idx ON reader_email_codes(expires_at);
+        CREATE TABLE reader_auth_limits (
+          key TEXT PRIMARY KEY, count INTEGER NOT NULL CHECK(count>0), expires_at INTEGER NOT NULL
+        );
+        CREATE INDEX reader_auth_limits_expiry_idx ON reader_auth_limits(expires_at);
+        ALTER TABLE messages ADD COLUMN reader_id INTEGER REFERENCES readers(id);
+        ALTER TABLE confirmed_site_visitors ADD COLUMN reader_id INTEGER REFERENCES readers(id);
+        CREATE INDEX messages_reader_idx ON messages(reader_id);
+        CREATE INDEX confirmed_visitors_reader_idx ON confirmed_site_visitors(reader_id);`);
+        connection.prepare('INSERT INTO schema_migrations (id,applied_at) VALUES (?,?)').run('20261107-reader-accounts', new Date().toISOString());
+      }
       connection.exec('CREATE UNIQUE INDEX IF NOT EXISTS friends_active_url_idx ON friends(url) WHERE deleted_at IS NULL');
       connection.exec('CREATE INDEX IF NOT EXISTS blog_articles_type_created_idx ON blog_articles(content_type, created_at DESC, id DESC) WHERE deleted_at IS NULL');
       connection.exec('CREATE INDEX IF NOT EXISTS friends_public_idx ON friends(visible, created_at ASC)');
@@ -516,6 +550,7 @@ export function hasReachedMessageSubmissionLimit(fingerprintHash: string) {
 }
 
 export function createMessage(input: {
+  readerId?: number | null;
   parentId?: number | null;
   articleId?: number | null;
   quoteMessageId?: number | null;
@@ -527,6 +562,8 @@ export function createMessage(input: {
   fingerprintHash: string;
 }) {
   const articleId = input.articleId || null;
+  const reader = input.readerId == null ? undefined : getDatabase().prepare('SELECT display_name FROM readers WHERE id=? AND deleted_at IS NULL').get(input.readerId) as { display_name: string } | undefined;
+  if (input.readerId != null && !reader) throw new HttpError(401, '读者登录已失效，请重新登录');
   if (articleId && !getDatabase().prepare("SELECT 1 FROM blog_articles WHERE id = ? AND deleted_at IS NULL AND publication_status = 'published'").get(articleId)) throw new HttpError(404, '文章不存在');
   if (input.parentId) {
     const parent = getDatabase().prepare(`SELECT id FROM messages WHERE id = ? AND article_id IS ? AND parent_id IS NULL AND deleted_at IS NULL AND status = 'published'`).get(input.parentId, articleId);
@@ -548,9 +585,9 @@ export function createMessage(input: {
     if (!source.content.includes(quoteContent)) throw new HttpError(400, '引用内容必须来自所选评论原文');
   }
   const result = getDatabase()
-    .prepare(`INSERT INTO messages (parent_id, article_id, nickname, content, fingerprint_hash, status, email, notify_reply, quote_message_id, quote_content)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-    .run(input.parentId || null, articleId, input.nickname, input.content, input.fingerprintHash, articleId ? 'published' : 'pending', input.email || '', Number(Boolean(input.email && input.notifyReply)), quoteMessageId, quoteContent);
+    .prepare(`INSERT INTO messages (parent_id, article_id, nickname, content, fingerprint_hash, status, email, notify_reply, quote_message_id, quote_content, reader_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(input.parentId || null, articleId, reader?.display_name ?? input.nickname, input.content, input.fingerprintHash, reader ? 'published' : 'pending', input.email || '', Number(Boolean(input.email && input.notifyReply)), quoteMessageId, quoteContent, input.readerId ?? null);
   return Number(result.lastInsertRowid);
 }
 

@@ -243,7 +243,13 @@ export async function getFriendFeeds(): Promise<FriendFeedUpdate[]> {
   if (stale.length) {
     pending = (async () => {
       let next = 0;
-      const worker = async () => { while (next < stale.length) await refreshFriendFeed(stale[next++]!); };
+      const worker = async () => {
+        while (next < stale.length) {
+          const friend = stale[next++]!;
+          if (!getDatabase().prepare('SELECT 1 FROM friends WHERE id=? AND rss_url=? AND visible=1 AND deleted_at IS NULL').get(friend.id, friend.rssUrl)) continue;
+          await refreshFriendFeed(friend);
+        }
+      };
       await Promise.all(Array.from({ length: Math.min(stale.length, serverConfig.friendStatusConcurrency) }, worker));
     })();
     try { await pending; }

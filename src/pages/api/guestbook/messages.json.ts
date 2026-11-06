@@ -3,6 +3,7 @@ import { fingerprintIp, getClientIp } from '../../../lib/network';
 import { HttpError, json, readJsonObject, readPositiveId, requirePublicActivityAllowance, route, requireSameOrigin } from '../../../lib/http';
 import { getArticle } from '../../../lib/articles';
 import { parseNotificationEmail, queueAdminNotification, queueReplyNotification, replyNotificationsConfigured } from '../../../lib/reply-notifications';
+import { readReaderSession } from '../../../lib/readers';
 
 export const GET = route(({ url }) => {
   const articleId = url.searchParams.has('articleId') ? readPositiveId(Number(url.searchParams.get('articleId'))) : null;
@@ -10,13 +11,14 @@ export const GET = route(({ url }) => {
   return json({ messages: listPublishedMessages(60, articleId) });
 });
 
-export const POST = route(async ({ request, clientAddress }) => {
+export const POST = route(async ({ request, clientAddress, cookies }) => {
   requireSameOrigin(request);
   const fingerprintHash = fingerprintIp(getClientIp(request, clientAddress));
   requirePublicActivityAllowance(fingerprintHash);
   const body = await readJsonObject(request);
   if (body.website) return json({ ok: true });
-  const nickname = typeof body.nickname === 'string' ? body.nickname.trim() : '';
+  const reader = readReaderSession(cookies);
+  const nickname = reader?.displayName ?? (typeof body.nickname === 'string' ? body.nickname.trim() : '');
   const content = typeof body.content === 'string' ? body.content.trim() : '';
   const parentId = body.parentId == null ? null : readPositiveId(body.parentId);
   const articleId = body.articleId == null ? null : readPositiveId(body.articleId);
@@ -36,10 +38,10 @@ export const POST = route(async ({ request, clientAddress }) => {
   if (wantsNotification && !email) throw new HttpError(400, '接收回复通知需要填写邮箱');
   const id = getDatabase().transaction(() => {
     if (hasReachedMessageSubmissionLimit(fingerprintHash)) throw new HttpError(429, '留言和评论已达提交上限，请稍后再试');
-    const createdId = createMessage({ parentId, articleId, quoteMessageId, quoteContent, nickname, content, fingerprintHash, email: wantsNotification ? email : '', notifyReply: wantsNotification });
-    if (articleId && parentId) queueReplyNotification(parentId, createdId);
+    const createdId = createMessage({ parentId, articleId, quoteMessageId, quoteContent, nickname, content, fingerprintHash, readerId: reader?.id, email: wantsNotification ? email : '', notifyReply: wantsNotification });
+    if (reader && parentId) queueReplyNotification(parentId, createdId);
     queueAdminNotification('message', createdId);
     return createdId;
   }).immediate();
-  return json({ ok: true, id, message: articleId ? '评论已发表。' : '留言已送达，审核后会公开展示。' }, 201);
+  return json({ ok: true, id, status: reader ? 'published' : 'pending', message: reader ? '已公开发表。' : '留言已送达，审核后会公开展示。' }, 201);
 });

@@ -62,7 +62,7 @@ function inlineMarkdown(text: string, baseUrl?: string, depth = 0, allowLinks = 
   let codeRunIndex = 0;
   let result = '';
   let plain = '';
-  const flush = () => { result += escapeHtml(plain); plain = ''; };
+  const flush = () => { result += escapeHtml(plain).replace(/ {2,}\n/g, '<br>'); plain = ''; };
   for (let index = 0; index < text.length;) {
     if (text[index] === '\\' && /[\\`*{}\[\]()#+\-.!_~>]/.test(text[index + 1] || '')) {
       plain += text[index + 1]; index += 2; continue;
@@ -225,7 +225,7 @@ function renderBlocks(markdown: string, baseUrl?: string, depth = 0, concealSpoi
     const body = [line];
     index += 1;
     while (index < lines.length && !startsBlock(lines[index]) && !/^:::(?:details|aside)\s+.+$/.test(lines[index])) body.push(lines[index++]);
-    result.push(`<p>${inlineMarkdown(body.join('\n'), baseUrl).replace(/ {2,}\n/g, '<br>')}</p>`);
+    result.push(`<p>${inlineMarkdown(body.join('\n'), baseUrl)}</p>`);
   }
   return result.join('\n');
 }

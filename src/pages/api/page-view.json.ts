@@ -1,4 +1,5 @@
 import { readAdminSession } from '../../lib/admin-auth';
+import { readReaderSession } from '../../lib/readers';
 import { HttpError, json, readRequestBytes, requirePublicActivityAllowance, requireSameOrigin, route } from '../../lib/http';
 import { fingerprintIp, getClientIp } from '../../lib/network';
 import { getSiteStats, hashVisitorToken, humanPageRequest, publicPagePath, recordConfirmedPageView, validVisitorToken, visitorCookie } from '../../lib/stats';
@@ -14,7 +15,7 @@ export const POST = route(async ({ request, cookies, clientAddress }) => {
   catch (error) { if (error instanceof SyntaxError) throw new HttpError(400, '请求内容无法解析'); throw error; }
   const path = body && typeof body === 'object' && 'path' in body && typeof body.path === 'string' ? publicPagePath(body.path) : null;
   if (!path) throw new HttpError(400, '页面地址不正确');
-  const counted = recordConfirmedPageView(hashVisitorToken(token), path);
+  const counted = recordConfirmedPageView(hashVisitorToken(token), path, new Date(), readReaderSession(cookies)?.id);
   if (path !== '/') return json({ counted });
   const { visitors, pageViews } = getSiteStats();
   return json({ counted, totals: { visitors, pageViews } });

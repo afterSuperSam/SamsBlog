@@ -8,6 +8,7 @@ export const siteConfig = {
     { href: '/', label: '首页' },
     { href: '/content', label: '内容' },
     { href: '/about', label: '关于' },
+    { href: '/reader', label: '读者' },
   ],
   effects: { particleCount: 40, mobileParticleCount: 12, pointerTiltDegrees: 2.5, constellation: { desktopLineCount: 6, mobileLineCount: 3, desktopPointCount: 10, mobilePointCount: 6, connectionProbability: 0.5, refreshMilliseconds: 4200, fadeMilliseconds: 1100, maximumDistanceRatio: 0.26, maximumDegree: 2, scrollPeriodScreens: 2 } },
   navigation: { sectionActivationRatio: 0.35 },

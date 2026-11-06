@@ -33,11 +33,11 @@ export async function readRequestBytes(request: Request, maximumBytes: number): 
   return Buffer.concat(chunks);
 }
 
-export async function readJsonObject(request: Request): Promise<Record<string, unknown>> {
+export async function readJsonObject(request: Request, maximumBytes = serverConfig.articleRequestMaxBytes): Promise<Record<string, unknown>> {
   const mediaType = request.headers.get('content-type')?.split(';', 1)[0]?.trim().toLowerCase();
   if (mediaType !== 'application/json') throw new HttpError(415, '请求格式不正确');
   let body: unknown;
-  const bytes = await readRequestBytes(request, serverConfig.articleRequestMaxBytes);
+  const bytes = await readRequestBytes(request, maximumBytes);
   try { body = JSON.parse(bytes.toString('utf8')); }
   catch { throw new HttpError(400, '请求内容无法解析'); }
   if (!body || typeof body !== 'object' || Array.isArray(body)) throw new HttpError(400, '请求内容必须是对象');

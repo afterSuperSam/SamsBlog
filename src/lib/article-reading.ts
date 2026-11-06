@@ -2,7 +2,7 @@ import { initializeArticleImageViewer } from './article-image-viewer';
 import { siteConfig } from '../config/site';
 import { motionDisabled } from './motion';
 import { readReadingHistory, saveReadingHistory, measureReadingChapters, parseReadingTypography, type ReadingPosition } from './reading-history';
-import { initializeReadingExtras } from './reading-extras';
+import { initializeReadingExtras, revealArticleTarget } from './reading-extras';
 
 const root = document.querySelector<HTMLElement>('[data-article-reading]');
 const prose = root?.querySelector<HTMLElement>('[data-article-prose]');
@@ -68,8 +68,10 @@ if (root && prose) {
   const headerOffset = () => Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--header-height')) + 24;
   resume.addEventListener('click', () => {
     if (!saved) return;
-    const heading = saved.heading ? document.getElementById(saved.heading) : undefined;
-    const top = heading && prose.contains(heading)
+    const target = saved.heading ? document.getElementById(saved.heading) : undefined;
+    const heading = target && prose.contains(target) ? target : undefined;
+    revealArticleTarget(prose, heading);
+    const top = heading
       ? heading.getBoundingClientRect().top + window.scrollY + saved.offset - headerOffset()
       : prose.getBoundingClientRect().top + window.scrollY + saved.progress * prose.offsetHeight - headerOffset();
     window.scrollTo({ top: Math.max(0, top), behavior: motionDisabled() ? 'instant' : 'smooth' });
@@ -122,6 +124,7 @@ if (root && prose) {
     event.preventDefault();
     if (!tocSidebar && toc) toc.open = false;
     if (location.hash !== link.hash) history.pushState(history.state, '', link.hash);
+    revealArticleTarget(prose, heading);
     heading.scrollIntoView({ block: 'start', behavior: motionDisabled() ? 'instant' : 'smooth' });
     heading.tabIndex = -1;
     heading.focus({ preventScroll: true });

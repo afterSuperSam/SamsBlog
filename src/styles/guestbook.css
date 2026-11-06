@@ -304,3 +304,5 @@
 .article-discussion :is(button,a):focus-visible{outline:2px solid var(--summer-blue);outline-offset:4px}
 @media(hover:hover) and (pointer:fine){.article-reactions button:hover{color:var(--summer-pink);background:color-mix(in srgb,var(--summer-pink) 8%,var(--surface))}.article-comment button:hover{color:var(--summer-pink)}}
 @media(max-width:480px){.article-comment{padding:16px}.article-comment>header{gap:8px}.article-comment time{font-size:.85rem}.article-reactions{gap:8px}.article-reactions button{padding:8px 6px;gap:6px;font-size:var(--font-size-small)}.article-reactions button>span{font-size:1.25em}}
+/* 登录身份仅说明服务端当前读者，不替换用户填写的通知邮箱。 */
+.reader-comment-identity{font:400 var(--font-size-small)/1.8 var(--playful);color:var(--text-soft);margin:0 0 14px;overflow-wrap:anywhere}.reader-comment-identity a{color:var(--summer-blue);text-decoration:underline;text-underline-offset:4px}.reader-comment-identity a:focus-visible{outline:2px solid var(--summer-blue);outline-offset:4px}.article-comment-form>.reader-comment-identity{grid-column:1/-1}.reader-comment-identity b{font-weight:400;color:var(--text)}

@@ -48,6 +48,15 @@ describe('friend connectivity', () => {
     expect(isPublicFriendAddress('2606:4700:4700::1111')).toBe(true);
   });
 
+  it('rejects the expanded IPv6 documentation range in canonical and padded forms', async () => {
+    const { isPublicFriendAddress, checkFriendStatus } = await import('../src/lib/friend-status');
+    for (const address of ['3fff::1', '3FFF:0000::1', '3fff:fff:ffff:ffff:ffff:ffff:ffff:ffff']) {
+      expect(isPublicFriendAddress(address)).toBe(false);
+      expect((await checkFriendStatus({ id: 1, url: `http://[${address}]/` })).status).toBe('blocked');
+    }
+    expect(mocks.request).not.toHaveBeenCalled();
+  });
+
   it('rejects unsafe destinations before sending any HTTP request', async () => {
     const { checkFriendStatus } = await import('../src/lib/friend-status');
     for (const url of ['http://127.0.0.1/', 'http://[::1]/', 'http://2130706433/', 'https://example.com:8443/', 'file:///etc/passwd', 'https://user:password@example.com/']) {
@@ -132,6 +141,22 @@ describe('friend connectivity', () => {
     });
     expect(await getFriendStatuses()).toHaveLength(8);
     expect(maximum).toBeLessThanOrEqual(serverConfig.friendStatusConcurrency);
+  });
+
+  it.each(['hidden', 'deleted', 'changed'])('does not start queued checks after a friend is %s', async (change) => {
+    const { getFriendStatuses } = await import('../src/lib/friend-status');
+    const { serverConfig } = await import('../src/config/server');
+    const queuedId = serverConfig.friendStatusConcurrency + 1;
+    friends(Array.from({ length: queuedId }, (_, index) => ({ id: index + 1, url: `https://site${index}.example.com/` })));
+    mocks.request.mockImplementation((url, options, callback) => respond(200)(url, options, (response) => {
+      if (change === 'hidden') mocks.database.prepare('UPDATE friends SET visible=0 WHERE id=?').run(queuedId);
+      else if (change === 'deleted') mocks.database.prepare("UPDATE friends SET deleted_at='2026-11-07' WHERE id=?").run(queuedId);
+      else mocks.database.prepare("UPDATE friends SET url='https://replacement.example.com/' WHERE id=?").run(queuedId);
+      callback(response);
+    }));
+    await getFriendStatuses();
+    expect(mocks.request).toHaveBeenCalledTimes(serverConfig.friendStatusConcurrency);
+    expect(mocks.request.mock.calls.map(([url]) => url.href)).not.toContain(`https://site${queuedId - 1}.example.com/`);
   });
 
   it('reuses persisted results after module reload and bounds refreshes when the URL changes in flight', async () => {

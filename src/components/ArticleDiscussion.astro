@@ -1,6 +1,7 @@
 ---
 import { listPublishedMessages } from '../lib/db';
 import { replyNotificationsConfigured } from '../lib/reply-notifications';
+import { readReaderSession } from '../lib/readers';
 import PaperCheckbox from './PaperCheckbox.astro';
 import MessageBody from './MessageBody.astro';
 import MessageReplies from './MessageReplies.astro';
@@ -8,6 +9,7 @@ import MessageSignature from './MessageSignature.astro';
 import '../styles/guestbook.css';
 const { articleId } = Astro.props as { articleId: number };
 const messages = listPublishedMessages(60, articleId);
+const reader = readReaderSession(Astro.cookies);
 const dateLabel = (date: string) => new Date(date).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 ---
 <section class="article-discussion" id="comments" data-article-discussion data-article-id={articleId} aria-labelledby="comments-title">
@@ -22,7 +24,8 @@ const dateLabel = (date: string) => new Date(date).toLocaleString('zh-CN', { tim
   <form method="post" class="article-comment-form" data-article-comment novalidate>
     <div class="article-comment-form__heading"><span data-comment-target>写给这篇文章</span><button type="button" data-cancel-comment-reply hidden>取消回复</button></div>
     <blockquote class="comment-quote" data-comment-quote hidden><b data-comment-quote-name></b><p data-comment-quote-content></p></blockquote>
-    <label><span>怎么称呼</span><input name="nickname" minlength="2" maxlength="48" required autocomplete="off" /></label>
+    <p class="reader-comment-identity">{reader ? <>以读者 <b>{reader.displayName}</b> 的身份留言 · <a href="/reader">查看身份</a></> : <>匿名评论审核后公开，也可以先 <a href="/reader">登录读者身份</a>。</>}</p>
+    <label><span>怎么称呼</span><input name="nickname" minlength="2" maxlength="48" required autocomplete="off" value={reader?.displayName || ''} readonly={Boolean(reader)} /></label>
     <label class="article-comment-form__body"><span>想说的话</span><textarea name="content" rows="3" minlength="2" maxlength="1000" data-character-maximum="500" required></textarea></label>
     <label><span>邮箱 · 可选，不公开</span><input name="email" type="text" inputmode="email" maxlength="254" autocomplete="off" /></label>
     <div class="visitor-preferences">
@@ -101,18 +104,19 @@ const dateLabel = (date: string) => new Date(date).toLocaleString('zh-CN', { tim
       const email = field('email')!.value.trim();
       const notifyReply = Boolean((field('notifyReply') as HTMLInputElement)?.checked && email);
       const body = { articleId, parentId, quoteMessageId, quoteContent, nickname: field('nickname')!.value.trim(), content: content.value.trim(), email: notifyReply ? email : '', notifyReply, website: field('website')!.value };
-      const invalidName = [...body.nickname].length < 2 || [...body.nickname].length > 24;
+      const invalidName = !(field('nickname') as HTMLInputElement).readOnly && ([...body.nickname].length < 2 || [...body.nickname].length > 24);
       if (invalidName || [...body.content].length < 2 || [...body.content].length > 500) { setFeedbackText(feedback, invalidName ? '称呼需要 2–24 个字符。' : '评论需要 2–500 个字符。'); (invalidName ? field('nickname')! : content).focus(); return; }
       submit.disabled = true; setFeedbackText(feedback, '正在送出…');
       let posted = false;
       try {
-        const published = await requestJson<{ error?: string; id?: number }>('/api/guestbook/messages.json', 'POST', body, '评论暂时无法送出，输入仍保留。'); posted = true;
+        const published = await requestJson<{ error?: string; id?: number; status?: string; message?: string }>('/api/guestbook/messages.json', 'POST', body, '评论暂时无法送出，输入仍保留。'); posted = true;
         visitor.save();
         if (!composing && content.value.trim() === body.content) {
           content.value = ''; inputTools.resize(); refreshCaret();
           if (parentId === body.parentId && quoteMessageId === body.quoteMessageId && quoteContent === body.quoteContent) resetReply();
         }
-        setFeedbackText(feedback, '评论已发表，谢谢你的分享。');
+        if (published.status !== 'published') { setFeedbackText(feedback, published.message || '评论已送达，审核后会公开展示。'); return; }
+        setFeedbackText(feedback, published.message || '评论已发表，谢谢你的分享。');
         const result = await requestJson<{ error?: string; messages: MessageRecord[] }>(`/api/guestbook/messages.json?articleId=${articleId}`, 'GET', undefined, '评论已发表，刷新后可查看。');
         renderCommentList(root.querySelector<HTMLElement>('[data-comment-list]')!, result.messages, published.id);
         root.querySelector<HTMLElement>('[data-comments-empty]')!.hidden = result.messages.length > 0;

@@ -18,6 +18,11 @@
   --admin-drawer-width: 740px;
   --admin-editor-width: 1240px;
   --admin-login-heading-size: clamp(3.5rem,7.5vw,5.75rem);
+  --reader-width: 940px;
+  --reader-paper: #303133;
+  --reader-accent: #a7ddec;
+  --reader-pink: #f2b8cf;
+  --reader-line: #727577;
   --application-dialog-width: 1200px;
   --application-heading-size: 1.5rem;
   --application-glass-core: var(--surface);
@@ -276,6 +281,10 @@
 }
 
 :root[data-theme="light"] {
+  --reader-paper: #fffaf2;
+  --reader-accent: #285e70;
+  --reader-pink: #9f4267;
+  --reader-line: #8c9da2;
   --quote-star-opacity: .4;
   --quote-background: #ffffff;
   --quote-halo-opacity: .7;

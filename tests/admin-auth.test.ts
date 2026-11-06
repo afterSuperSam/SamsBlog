@@ -1,6 +1,6 @@
-import { scryptSync } from 'node:crypto';
+import { createHmac, scryptSync } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { APIContext } from 'astro';
+import type { APIContext, APIRoute } from 'astro';
 import { allowLoginAttempt, createAdminSession, verifyAdminPassword, verifyAdminSession } from '../src/lib/admin-auth';
 import { serverConfig } from '../src/config/server';
 import { adminRoute, json, readJsonObject, readPositiveId, readRequestBytes, requirePublicActivityAllowance } from '../src/lib/http';
@@ -129,5 +129,74 @@ describe('admin boundaries', () => {
     for (let index = 1; index < serverConfig.publicActivityTrackedAddresses; index++) requirePublicActivityAllowance(`source-${index}`, now);
     expect(() => requirePublicActivityAllowance('new-source', now)).toThrow('请求过于频繁');
     expect(() => requirePublicActivityAllowance('new-source', now + serverConfig.publicActivityWindowSeconds * 1000)).not.toThrow();
+  });
+
+  it('rejects signed malformed payloads and expiration at the exact deadline', () => {
+    const secret = 'temporary-session-secret-at-least-32-characters';
+    vi.stubEnv('BLOG_SECRET', secret);
+    const now = Date.now();
+    vi.spyOn(Date, 'now').mockReturnValue(now);
+    const signed = (value: string) => {
+      const payload = Buffer.from(value).toString('base64url');
+      return `${payload}.${createHmac('sha256', secret).update(payload).digest('base64url')}`;
+    };
+    for (const value of ['{', 'null', '[]', '{}', '{"exp":"9999999999999"}', '{"exp":1e999}', JSON.stringify({ exp: now })]) {
+      expect(verifyAdminSession(signed(value))).toBe(false);
+    }
+    expect(verifyAdminSession(signed(JSON.stringify({ exp: now + 1 })))).toBe(true);
+    const token = createAdminSession();
+    vi.stubEnv('BLOG_SECRET', 'rotated-session-secret-at-least-32-characters');
+    expect(verifyAdminSession(token)).toBe(false);
+  });
+
+  it('checks every real admin endpoint before parsing bodies or running data handlers', async () => {
+    const modules = import.meta.glob<Record<string, APIRoute>>('../src/pages/api/admin/*.json.ts', { eager: true });
+    const cookieWrite = vi.fn();
+    let checked = 0;
+    for (const [filename, handlers] of Object.entries(modules)) {
+      if (filename.endsWith('/login.json.ts')) continue;
+      for (const [method, handler] of Object.entries(handlers)) {
+        if (!['GET', 'HEAD', 'OPTIONS', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) continue;
+        const mutation = !['GET', 'HEAD', 'OPTIONS'].includes(method);
+        const url = new URL(`https://blog.example.com/api/admin/${filename.split('/').at(-1)!.replace(/\.ts$/, '')}`);
+        const context = (token?: string, origin?: string) => ({
+          url, request: new Request(url, { method, headers: { 'content-type': 'application/json', ...(origin ? { origin } : {}) },
+            ...(mutation ? { body: '{' } : {}), }),
+          cookies: { get: () => token ? { value: token } : undefined, set: cookieWrite, delete: cookieWrite },
+        }) as unknown as APIContext;
+        for (const token of [undefined, 'forged.token']) {
+          const response = await handler(context(token, url.origin));
+          expect(response.status, `${filename} ${method}`).toBe(401);
+          expect(response.headers.get('Cache-Control')).toBe('no-store');
+        }
+        if (mutation) {
+          for (const origin of [undefined, 'null', 'https://other.example.com', `${url.origin}.attacker.example`]) {
+            expect((await handler(context(createAdminSession(), origin))).status, `${filename} ${method}`).toBe(403);
+          }
+        }
+        checked++;
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
+    expect(cookieWrite).not.toHaveBeenCalled();
+  });
+
+  it('reserves source and global login quotas before concurrent requests parse their bodies', async () => {
+    let now = Date.now() + serverConfig.loginWindowSeconds * 10000;
+    vi.spyOn(Date, 'now').mockImplementation(() => now);
+    const attempt = (clientAddress: string) => login({
+      request: new Request('https://blog.example.com/api/admin/login.json', {
+        method: 'POST', headers: { origin: 'https://blog.example.com', 'content-type': 'application/json' }, body: '{',
+      }), clientAddress, cookies: { set: vi.fn() },
+    } as unknown as APIContext);
+    const sourceResponses = await Promise.all(Array.from({ length: serverConfig.loginAttempts * 2 }, () => attempt('198.51.100.20')));
+    expect(sourceResponses.filter((response) => response.status === 400)).toHaveLength(serverConfig.loginAttempts);
+    expect(sourceResponses.filter((response) => response.status === 429)).toHaveLength(serverConfig.loginAttempts);
+    now += serverConfig.loginWindowSeconds * 1000;
+    const globalResponses = await Promise.all(Array.from({ length: serverConfig.loginGlobalAttempts * 2 }, (_, index) => attempt(`2001:db8::${index + 1}`)));
+    expect(globalResponses.filter((response) => response.status === 400)).toHaveLength(serverConfig.loginGlobalAttempts);
+    expect(globalResponses.filter((response) => response.status === 429)).toHaveLength(serverConfig.loginGlobalAttempts);
+    now += serverConfig.loginWindowSeconds * 1000;
+    expect((await attempt('198.51.100.20')).status).toBe(400);
   });
 });

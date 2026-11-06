@@ -60,6 +60,26 @@ it('queues consented replies once, retries with the same key, cancels hidden rep
   warning.mockRestore();
 });
 
+it('keeps anonymous article replies private and queues their visitor email only after approval', async () => {
+  const { saveArticle } = await import('../src/lib/articles');
+  const articleId = saveArticle({ title: '待审回复通知', content: '测试正文', source: 'original', category: 'journal' });
+  const parent = database.createMessage({ articleId, nickname: '订阅作者', content: '原评论', email: 'moderation@example.com', notifyReply: true, fingerprintHash: 'moderation-parent' });
+  database.updateMessageStatus(parent, 'published');
+  const reply = database.createMessage({ articleId, parentId: parent, nickname: '匿名回复者', content: '待审核的回复', fingerprintHash: 'moderation-child' });
+  const send = vi.fn().mockImplementation(async () => Response.json({ id: 'moderation-fixture' }));
+  vi.stubGlobal('fetch', send);
+  notifications.queueReplyNotification(parent, reply);
+  await notifications.deliverReplyNotifications();
+  expect(send).not.toHaveBeenCalled();
+  expect(database.listPublishedMessages(60, articleId)[0].replies).toEqual([]);
+  database.updateMessageStatus(reply, 'published');
+  notifications.queuePublishedThreadReplies(reply);
+  notifications.queuePublishedThreadReplies(reply);
+  await notifications.deliverReplyNotifications();
+  expect(send).toHaveBeenCalledTimes(1);
+  expect(database.listPublishedMessages(60, articleId)[0].replies?.[0].id).toBe(reply);
+});
+
 it('escapes untrusted notification text and rejects unsafe or mismatched action addresses', async () => {
   const { createReplyEmail } = await import('../src/lib/reply-email');
   const input = { nickname: '<img src=x onerror=alert(1)>', replyNickname: 'A & B', contextTitle: '<script>title</script>', originalContent: '<img src=x onerror=alert(2)>',
@@ -173,6 +193,7 @@ it('keeps the same persisted provider payload across retries when the article ti
   const { saveArticle } = await import('../src/lib/articles');
   const articleId = saveArticle({ title: '原题目', content: '测试正文', source: 'original', category: 'journal' });
   const parent = database.createMessage({ articleId, nickname: '文章访客', content: '评论内容', email: 'article@example.com', notifyReply: true, fingerprintHash: 'article-notification' });
+  database.updateMessageStatus(parent, 'published');
   const reply = database.createAdminReply(parent, '文章回复');
   notifications.queueReplyNotification(parent, reply);
   const send = vi.fn().mockRejectedValueOnce(new DOMException('Timed out', 'TimeoutError'))

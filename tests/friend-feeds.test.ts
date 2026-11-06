@@ -216,6 +216,21 @@ describe('pinned feed requests and persistent caching', () => {
     expect(mocks.lookup).toHaveBeenCalledTimes(2);
   });
 
+  it.each(['hidden', 'deleted', 'changed'])('does not start queued refreshes after a friend is %s', async (change) => {
+    const { getFriendFeeds } = await import('../src/lib/friend-feeds');
+    const queuedId = serverConfig.friendStatusConcurrency + 1;
+    friends(Array.from({ length: queuedId }, (_, index) => ({ id: index + 1, rssUrl: `https://site${index}.example.com/feed` })));
+    mocks.request.mockImplementation((url, options, callback) => respond()(url, options, (response) => {
+      if (change === 'hidden') mocks.database.prepare('UPDATE friends SET visible=0 WHERE id=?').run(queuedId);
+      else if (change === 'deleted') mocks.database.prepare("UPDATE friends SET deleted_at='2026-11-07' WHERE id=?").run(queuedId);
+      else mocks.database.prepare("UPDATE friends SET rss_url='https://replacement.example.com/feed' WHERE id=?").run(queuedId);
+      callback(response);
+    }));
+    await getFriendFeeds();
+    expect(mocks.request).toHaveBeenCalledTimes(serverConfig.friendStatusConcurrency);
+    expect(mocks.request.mock.calls.map(([url]) => url.href)).not.toContain(`https://site${queuedId - 1}.example.com/feed`);
+  });
+
   it('rejects truncated response streams before publishing partial metadata', async () => {
     const { requestFriendResource } = await import('../src/lib/friend-status');
     mocks.request.mockImplementation((_url, _options, callback) => {

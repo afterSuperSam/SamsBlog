@@ -100,3 +100,5 @@
 .article-star-toggle:focus-visible{outline:2px solid var(--article-star-color);outline-offset:2px;border-radius:8px}
 .article-star-toggle:disabled{opacity:.5;cursor:wait}
 @media(hover:hover) and (pointer:fine){:is(.article-management-actions,.admin-friend-actions) .article-star-toggle:hover{color:var(--article-star-color)}}
+/* 后台访客记录只展示匿名短编号与累计访问，窄屏保留键盘滚动。 */
+.admin-visitors{margin-top:48px;scroll-margin-top:110px}.admin-visitor-table table{min-width:700px}.admin-visitor-table td{font-size:var(--font-size-small)}.admin-visitor-table time{white-space:nowrap}.admin-visitor-id{font-family:var(--article-code-font);overflow-wrap:anywhere}.admin-visitor-table td:last-child{max-width:200px;overflow-wrap:anywhere}.admin-visitor-table:focus-visible{outline:2px solid var(--summer-blue);outline-offset:4px}.admin-visitor-pagination{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-top:18px;font-size:var(--font-size-small)}.admin-visitor-pagination a{display:inline-flex;align-items:center;min-height:44px;color:var(--summer-blue)}.admin-visitor-pagination [aria-disabled]{color:var(--muted)}

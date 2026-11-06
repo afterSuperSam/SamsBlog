@@ -4,6 +4,7 @@ import { siteConfig } from '../src/config/site';
 import { isLongMessage, renderCommentList } from '../src/lib/comment-rendering';
 import type { MessageRecord } from '../src/lib/db';
 import { animateMotion } from '../src/lib/motion';
+import { rememberVisitor } from '../src/lib/visitor-profile';
 
 vi.mock('../src/lib/motion', () => ({ animateMotion: vi.fn() }));
 
@@ -70,6 +71,27 @@ function key(target: ElementStub, type: string, properties: Record<string, unkno
 }
 
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.mocked(animateMotion).mockReset(); });
+
+describe('reader identity and private visitor preferences', () => {
+  it('keeps the remembered anonymous name and notification email separate from the signed-in reader', () => {
+    let stored = JSON.stringify({ nickname: '原来的称呼', email: 'notifications@example.com' });
+    vi.stubGlobal('localStorage', { getItem: () => stored, setItem: (_key: string, value: string) => { stored = value; } });
+    const nickname = { value: '已登录读者', readOnly: true };
+    const email = { value: '' };
+    const remember = Object.assign(new EventTarget(), { checked: true });
+    const status = { textContent: '' };
+    const form = {
+      elements: { namedItem: (name: string) => name === 'nickname' ? nickname : email },
+      querySelector: (selector: string) => selector === '[data-remember-visitor]' ? remember : status,
+    };
+    const visitor = rememberVisitor(form as unknown as HTMLFormElement);
+    expect(nickname.value).toBe('已登录读者');
+    expect(email.value).toBe('notifications@example.com');
+    email.value = 'new-notification@example.com';
+    visitor.save();
+    expect(JSON.parse(stored)).toEqual({ nickname: '原来的称呼', email: 'new-notification@example.com' });
+  });
+});
 
 describe('comment list refresh', () => {
   it('uses trusted owner identity, folds long replies, retains quotes and reveals the submitted reply', () => {

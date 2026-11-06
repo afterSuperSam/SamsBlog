@@ -17,6 +17,7 @@ const positiveInteger = (name: string, fallback: number) => {
 // 服务端行为参数与启动校验
 export const serverConfig = {
   analyticsDeduplicationSeconds: positiveInteger('ANALYTICS_DEDUPLICATION_SECONDS', 1800),
+  analyticsVisitorPageSize: positiveInteger('ANALYTICS_VISITOR_PAGE_SIZE', 20),
   siteLaunchedAt: process.env.SITE_LAUNCHED_AT ?? '2026-08-22',
   sessionSeconds: positiveInteger('ADMIN_SESSION_SECONDS', 8 * 60 * 60),
   passwordMaxLength: positiveInteger('ADMIN_PASSWORD_MAX_LENGTH', 256),
@@ -71,6 +72,7 @@ if (serverConfig.notificationExpiryHours > 23 || serverConfig.notificationBatchS
 }
 
 if (serverConfig.mediaMaxBytes > 10 * 1024 * 1024) throw new Error('Invalid server configuration: MEDIA_MAX_BYTES (maximum 10 MiB)');
+if (serverConfig.analyticsVisitorPageSize > 100) throw new Error('Invalid analytics visitor page size');
 if (serverConfig.adminMutationLimit > 10000 || serverConfig.publicActivityLimit > 10000
   || serverConfig.adminMutationWindowSeconds > 86400 || serverConfig.publicActivityWindowSeconds > 86400
   || serverConfig.publicActivityTrackedAddresses > 100000) throw new Error('Invalid request rate-limit configuration');

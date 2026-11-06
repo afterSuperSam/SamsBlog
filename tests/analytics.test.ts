@@ -6,13 +6,15 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { getDatabase } from '../src/lib/db';
 import { saveArticle, withdrawArticle } from '../src/lib/articles';
 import { createAdminSession } from '../src/lib/admin-auth';
-import { getSiteStats, getArticleAnalytics, recordConfirmedPageView, hashVisitorToken } from '../src/lib/stats';
+import { getSiteStats, getArticleAnalytics, getVisitorAnalytics, recordConfirmedPageView, hashVisitorToken } from '../src/lib/stats';
 import { POST } from '../src/pages/api/page-view.json';
 import { initializePageView } from '../src/lib/page-view';
 import { serverConfig } from '../src/config/server';
 import { siteConfig } from '../src/config/site';
 
 beforeAll(async () => { vi.stubEnv('BLOG_DATA_DIR', await mkdtemp(path.join(tmpdir(), 'samsblog-analytics-'))); });
+const readerSession = vi.hoisted(() => ({ value: null as { id: number; displayName: string; avatarUrl: null } | null }));
+vi.mock('../src/lib/readers', () => ({ readReaderSession: () => readerSession.value }));
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 const token = '11111111-1111-4111-8111-111111111111';
 const submit = (body: unknown = { path: '/' }, values: Record<string,string> = { 'samsblog-visitor': token }, headers: Record<string,string> = {}) => POST({
@@ -56,6 +58,49 @@ describe('confirmed analytics', () => {
     expect(getArticleAnalytics().articles.find((entry) => entry.id === id)).toMatchObject({ views: 1, visitors: 1 });
     withdrawArticle(id);
     expect(recordConfirmedPageView(hashVisitorToken('another'), `/articles/${id}`)).toBe(false);
+  });
+});
+
+describe('anonymous visitor analytics and reader association', () => {
+  it('associates only a verified session without transferring browser history or adding duplicate views', async () => {
+    const database = getDatabase();
+    const create = (name: string) => Number(database.prepare('INSERT INTO readers(display_name,created_at,updated_at) VALUES (?,?,?)').run(name, new Date().toISOString(), new Date().toISOString()).lastInsertRowid);
+    const first = create('读者甲'); const second = create('读者乙');
+    const visitorToken = '33333333-3333-4333-8333-333333333333';
+    const values = { 'samsblog-visitor': visitorToken };
+    const hash = hashVisitorToken(visitorToken);
+    expect(await (await submit({ path: '/about', readerId: first }, values)).json()).toEqual({ counted: true });
+    expect(database.prepare('SELECT reader_id FROM confirmed_site_visitors WHERE visitor_hash=?').get(hash)).toEqual({ reader_id: null });
+    try {
+      readerSession.value = { id: first, displayName: '读者甲', avatarUrl: null };
+      expect(await (await submit({ path: '/about' }, values)).json()).toEqual({ counted: false });
+      readerSession.value = { id: second, displayName: '读者乙', avatarUrl: null };
+      expect(await (await submit({ path: '/content' }, values)).json()).toEqual({ counted: true });
+      readerSession.value = null;
+      await submit({ path: '/content', readerId: first }, values);
+      expect(database.prepare('SELECT reader_id,page_views FROM confirmed_site_visitors WHERE visitor_hash=?').get(hash)).toEqual({ reader_id: second, page_views: 2 });
+      expect(getVisitorAnalytics().visitors.find((visitor) => visitor.visitorId === hash.slice(0, 12))).toMatchObject({ pageViews: 2, lastReaderDisplayName: '读者乙' });
+      database.prepare('UPDATE readers SET deleted_at=? WHERE id=?').run(new Date().toISOString(), second);
+      expect(getVisitorAnalytics().visitors.find((visitor) => visitor.visitorId === hash.slice(0, 12))?.lastReaderDisplayName).toBeNull();
+    } finally { readerSession.value = null; }
+  });
+
+  it('bounds pagination and sorts cumulative browser counts without exposing complete hashes', () => {
+    const database = getDatabase();
+    const insert = database.prepare('INSERT INTO confirmed_site_visitors(visitor_hash,first_seen,last_seen,page_views) VALUES (?,?,?,?)');
+    for (let index = 0; index < serverConfig.analyticsVisitorPageSize + 2; index++) {
+      insert.run(hashVisitorToken(`pagination-${index}`), '2020-01-01T00:00:00Z', new Date(Date.UTC(2026, 10, index + 1)).toISOString(), 1000 + index);
+    }
+    const recent = getVisitorAnalytics();
+    const views = getVisitorAnalytics({ sort: 'views' });
+    expect(recent.visitors).toHaveLength(serverConfig.analyticsVisitorPageSize);
+    expect(views.visitors[0].pageViews).toBe(1000 + serverConfig.analyticsVisitorPageSize + 1);
+    expect(views.visitors[0].firstSeen).toBe('2020-01-01T00:00:00Z');
+    expect(getVisitorAnalytics({ page: 999999 }).page).toBe(recent.totalPages);
+    expect(getVisitorAnalytics({ page: NaN }).page).toBe(1);
+    expect(getVisitorAnalytics({ page: 2 }).visitors.map((visitor) => visitor.visitorId).some((id) => recent.visitors.some((visitor) => visitor.visitorId === id))).toBe(false);
+    expect(JSON.stringify(views)).not.toMatch(/visitor_hash|reader_id|email|user.agent|fingerprint/);
+    expect(views.visitors.every((visitor) => visitor.visitorId.length === 12)).toBe(true);
   });
 });
 

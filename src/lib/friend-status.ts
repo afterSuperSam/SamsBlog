@@ -32,6 +32,7 @@ export function isPublicFriendAddress(address: string): boolean {
     const first = Number.parseInt(address.split(':')[0]!, 16);
     return first >= 0x2000 && first <= 0x3fff && first !== 0x2002
       && !(first === 0x2001 && Number.parseInt(address.split(':')[1] || '0', 16) <= 0x1ff)
+      && !(first === 0x3fff && Number.parseInt(address.split(':')[1] || '0', 16) <= 0xfff)
       && !/^2001:0?db8:/i.test(address) && !address.includes('%');
   }
   return false;
@@ -168,6 +169,7 @@ export async function getFriendStatuses(): Promise<FriendStatus[]> {
     const worker = async () => {
       while (next < friends.length) {
         const friend = friends[next++]!;
+        if (!getDatabase().prepare('SELECT 1 FROM friends WHERE id=? AND url=? AND visible=1 AND deleted_at IS NULL').get(friend.id, friend.url)) continue;
         const result = await checkFriendStatus(friend);
         getDatabase().prepare(`INSERT INTO friend_status_cache(friend_id,url,status,latency_milliseconds,checked_at)
           SELECT @id,@url,@status,@latencyMilliseconds,@checkedAt FROM friends

@@ -51,6 +51,8 @@ export function initializeInlineContent(container: ParentNode) {
   });
 }
 
+const explanationOpeners = new WeakMap<HTMLDetailsElement, () => boolean>();
+
 // 原生 details 保留无脚本阅读；增强只负责展开与收起的高度过渡。
 export function initializeExplanations(container: HTMLElement) {
   container.querySelectorAll<HTMLDetailsElement>('.article-explanation').forEach((details) => {
@@ -59,8 +61,15 @@ export function initializeExplanations(container: HTMLElement) {
     const summary = details.querySelector('summary')!;
     let expanded = details.open;
     let animation: Animation | undefined;
+    let generation = 0;
+    explanationOpeners.set(details, () => {
+      const changed = !details.open || !expanded;
+      generation++; expanded = true; animation?.cancel(); animation = undefined; details.open = true;
+      return changed;
+    });
     summary.addEventListener('click', (event) => {
       event.preventDefault();
+      const currentGeneration = ++generation;
       if (animation?.playState !== 'running') expanded = details.open;
       const height = details.getBoundingClientRect().height;
       animation?.cancel(); expanded = !expanded; details.open = true;
@@ -70,7 +79,7 @@ export function initializeExplanations(container: HTMLElement) {
         duration: siteConfig.interactions.feedbackResizeMilliseconds,
         easing: getComputedStyle(document.documentElement).getPropertyValue('--ease-out').trim(),
       });
-      const settle = () => { if (expanded === targetExpanded) details.open = targetExpanded; };
+      const settle = () => { if (generation === currentGeneration) details.open = targetExpanded; };
       if (animation) void animation.finished.then(settle, settle); else settle();
     });
   });
@@ -146,19 +155,29 @@ function drawQuoteBackground(context: CanvasRenderingContext2D, width: number, h
   context.restore();
 }
 
+// 目录、阅读断点与地址锚点在定位前展开正文内的折叠祖先。
+export function revealArticleTarget(prose: HTMLElement, target: HTMLElement | null | undefined) {
+  if (!target || target === prose || !prose.contains(target)) return false;
+  let opened = false;
+  let ancestor = target.parentElement;
+  while (ancestor && ancestor !== prose) {
+    if (ancestor instanceof HTMLDetailsElement) {
+      const reveal = explanationOpeners.get(ancestor);
+      if (reveal) opened = reveal() || opened;
+      else if (!ancestor.open) { ancestor.open = true; opened = true; }
+    }
+    ancestor = ancestor.parentElement;
+  }
+  return opened;
+}
+
 export function initializeReadingExtras(root: HTMLElement, prose: HTMLElement) {
   initializeExplanations(prose);
   const revealHash = () => {
     let identifier: string;
     try { identifier = decodeURIComponent(location.hash.slice(1)); } catch { return; }
     const target = document.getElementById(identifier);
-    let opened = false;
-    let ancestor = target?.parentElement;
-    while (ancestor && prose.contains(ancestor)) {
-      if (ancestor instanceof HTMLDetailsElement && !ancestor.open) { ancestor.open = true; opened = true; }
-      ancestor = ancestor.parentElement;
-    }
-    if (opened) target?.scrollIntoView({ block: 'start', behavior: 'instant' });
+    if (revealArticleTarget(prose, target)) target?.scrollIntoView({ block: 'start', behavior: 'instant' });
   };
   revealHash(); window.addEventListener('hashchange', revealHash);
 
