@@ -35,15 +35,16 @@ const friendStatusTimeout = Math.ceil(allFriends.length / serverConfig.friendSta
     {!featured && <h3 class="friend-group__title" id={`friend-group-${group.key}`}>{group.title}</h3>}
     <div class:list={['friend-grid', { 'friend-deck__stage': featured }]} data-friend-deck-stage={featured ? '' : undefined}>
       {group.friends.map((friend) => (
-        <article class="friend-card" data-friend-card={friend.id} data-friend-group-key={friend.group} data-reordered={featured ? 'true' : undefined}>
-          <img class:list={['friend-card__background', { 'is-avatar-background': !friend.backgroundUrl }]} src={friend.backgroundUrl || friend.iconUrl} alt="" loading="lazy" referrerpolicy="no-referrer" data-friend-background data-fallback={friend.iconUrl} draggable={featured ? false : undefined} />
-          <span class="friend-card__icon"><b>{friend.name.slice(0, 1)}</b><img src={friend.iconUrl} alt="" loading="lazy" referrerpolicy="no-referrer" data-friend-icon draggable={featured ? false : undefined} /></span>
+        <article class="friend-card c2-shape" data-friend-card={friend.id} data-friend-group-key={friend.group} data-reordered={featured ? 'true' : undefined}>
+          <span class="friend-card__paper c2-surface" aria-hidden="true"></span>
+          <span class="friend-card__media c2-clip"><img class:list={['friend-card__background', { 'is-avatar-background': !friend.backgroundUrl }]} src={friend.backgroundUrl || friend.iconUrl} alt="" loading="lazy" referrerpolicy="no-referrer" data-friend-background data-fallback={friend.iconUrl} draggable={featured ? false : undefined} /></span>
+          <span class="friend-card__icon c2-clip"><b>{friend.name.slice(0, 1)}</b><img src={friend.iconUrl} alt="" loading="lazy" referrerpolicy="no-referrer" data-friend-icon draggable={featured ? false : undefined} /></span>
           <div class="friend-card__body">
             <div class="friend-card__heading">
               <a class="friend-card__copy" href={friend.url} target="_blank" rel="noopener noreferrer"><strong class:list={{ 'starred-text': friend.starred }}>{friend.name}</strong></a>
               {friend.starred && <span class="friend-card__star starred-text" role="img" aria-label="星标友链">★</span>}
               {friend.rssUrl &&
-                <a class="friend-card__rss" href={friend.rssUrl} target="_blank" rel="noopener noreferrer" aria-label={`订阅 ${friend.name} 的 RSS`}>
+                <a class="friend-card__rss c2-shape" href={friend.rssUrl} target="_blank" rel="noopener noreferrer" aria-label={`订阅 ${friend.name} 的 RSS`}>
                 <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="19" r="1.5" /><path pathLength="1" d="M5 11a8 8 0 0 1 8 8" /><path pathLength="1" d="M5 5a14 14 0 0 1 14 14" /></svg><span>RSS</span>
                 </a>
               }

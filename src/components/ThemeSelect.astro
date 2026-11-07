@@ -18,8 +18,8 @@ const identifier = `theme-select-${randomUUID()}`;
   <button class="theme-select__trigger" type="button" role="combobox" aria-haspopup="listbox" aria-expanded="false" aria-controls={`${identifier}-options`} aria-labelledby={`${identifier}-label ${identifier}-value`} data-theme-select-trigger>
     <span id={`${identifier}-value`} data-theme-select-value>{options.find((option) => option.value === value)?.label || options[0]?.label || ''}</span><span aria-hidden="true">⌄</span>
   </button>
-  <div class="theme-select__options" role="listbox" id={`${identifier}-options`} aria-labelledby={`${identifier}-label`} hidden data-theme-select-options>
-    {options.map((option, index) => <button type="button" role="option" id={`${identifier}-option-${index}`} aria-selected={option.value === value} tabindex="-1" data-value={option.value}>{option.label}<span aria-hidden="true">✓</span></button>)}
+  <div class="theme-select__options c2-surface" role="listbox" id={`${identifier}-options`} aria-labelledby={`${identifier}-label`} hidden data-theme-select-options>
+    {options.map((option, index) => <button class="c2-surface" type="button" role="option" id={`${identifier}-option-${index}`} aria-selected={option.value === value} tabindex="-1" data-value={option.value}>{option.label}<span aria-hidden="true">✓</span></button>)}
   </div>
 </div>
 

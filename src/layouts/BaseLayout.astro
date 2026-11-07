@@ -6,6 +6,8 @@ import { siteConfig } from '../config/site';
 import { version } from '../../package.json';
 import '../styles/global.css';
 import '../styles/legacy-layout.css';
+import '../styles/surfaces.css';
+import { createReaderSurfacePath } from '../lib/reader-surface-geometry';
 import AmbientScene from '../components/AmbientScene.astro';
 
 interface Props {
@@ -62,6 +64,7 @@ const sharingImage = image || '/media/anime/hero/1719656915755.webp';
     <script is:inline src={`/scripts/page-presentation.js?v=${version}`} {...{ blocking: 'render' }}></script>
   </head>
   <body class={bodyClass} data-reveal-config={!bodyClass.includes('admin-page') ? JSON.stringify(siteConfig.reveal) : undefined}>
+    <svg class="public-surface-definitions" aria-hidden="true" focusable="false"><defs><clipPath id="public-c2-cell" clipPathUnits="objectBoundingBox"><path d={createReaderSurfacePath(1, 1, .35)} /></clipPath></defs></svg>
     <a class="skip-link" href="#main-content">跳到主要内容</a>
     {!bodyClass.includes('admin-page') && <div class="reading-progress" aria-hidden="true" data-reading-progress hidden></div>}
     {!bodyClass.includes('admin-page') && <AmbientScene />}
@@ -74,7 +77,7 @@ const sharingImage = image || '/media/anime/hero/1719656915755.webp';
       <span id="page-content-ready" hidden></span>
     </main>
     <Footer showSignature={!bodyClass.includes('admin-page')} />
-    {!bodyClass.includes('admin-page') && <div id="site-tooltip" class="site-tooltip" popover="manual" role="tooltip"></div>}
+    {!bodyClass.includes('admin-page') && <div id="site-tooltip" class="site-tooltip c2-surface" popover="manual" role="tooltip"></div>}
     <script>
       import { initializePageView } from '../lib/page-view';
       initializePageView();

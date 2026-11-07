@@ -1,5 +1,6 @@
 ---
 import '../../styles/global.css';
+import '../../styles/surfaces.css';
 import { readReaderSession } from '../../lib/readers';
 
 Astro.response.headers.set('Cache-Control', 'private, no-store');
@@ -13,7 +14,7 @@ const completed = Astro.url.searchParams.getAll('result').length === 1
 <html lang="zh-CN">
   <head><meta charset="utf-8" /><meta name="viewport" content="width=device-width" /><title>读者登录 · SamsBlog</title></head>
   <body>
-    <main class="oauth-completion" data-oauth-completion data-result={completed ? 'success' : 'error'}>
+    <main class="oauth-completion c2-surface" data-oauth-completion data-result={completed ? 'success' : 'error'}>
       <span class="section-kicker">SamsBlog</span>
       <h1>{completed ? '登录已完成' : '这次登录未完成'}</h1>
       <p>{completed ? '请返回原来的页面查看登录状态。' : '请返回原来的页面重新选择登录方式。'}</p>

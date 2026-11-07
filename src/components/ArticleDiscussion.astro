@@ -12,18 +12,18 @@ const messages = listPublishedMessages(60, articleId);
 const reader = readReaderSession(Astro.cookies);
 const dateLabel = (date: string) => new Date(date).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 ---
-<section class="article-discussion" id="comments" data-article-discussion data-article-id={articleId} aria-labelledby="comments-title">
+<section class="article-discussion c2-surface" id="comments" data-article-discussion data-article-id={articleId} aria-labelledby="comments-title">
   <MessageSignature />
   <header class="article-discussion__heading">
     <div><span class="section-kicker">COMMENTS</span><h2 id="comments-title">留下几句话</h2></div>
     <div class="article-discussion__actions">
-      <div class="article-reactions" role="group" aria-label="对文章表态">{[{ value: 'like', label: '喜欢', icon: '♡' }, { value: 'helpful', label: '有帮助', icon: '✓' }, { value: 'inspired', label: '有启发', icon: '↗' }].map((reaction) => <button type="button" data-reaction={reaction.value} aria-pressed="false" disabled><span aria-hidden="true">{reaction.icon}</span>{reaction.label}<b data-reaction-count></b></button>)}</div>
+      <div class="article-reactions" role="group" aria-label="对文章表态">{[{ value: 'like', label: '喜欢', icon: '♡' }, { value: 'helpful', label: '有帮助', icon: '✓' }, { value: 'inspired', label: '有启发', icon: '↗' }].map((reaction) => <button class="c2-surface" type="button" data-reaction={reaction.value} aria-pressed="false" disabled><span aria-hidden="true">{reaction.icon}</span>{reaction.label}<b data-reaction-count></b></button>)}</div>
       <p class="form-status" data-reaction-feedback role="status"></p>
     </div>
   </header>
-  <form method="post" class="article-comment-form" data-article-comment data-reader-authenticated={String(Boolean(reader))} novalidate>
+  <form method="post" class="article-comment-form c2-surface" data-article-comment data-reader-authenticated={String(Boolean(reader))} novalidate>
     <div class="article-comment-form__heading"><span data-comment-target>写给这篇文章</span><button type="button" data-cancel-comment-reply hidden>取消回复</button></div>
-    <blockquote class="comment-quote" data-comment-quote hidden><b data-comment-quote-name></b><p data-comment-quote-content></p></blockquote>
+    <blockquote class="comment-quote c2-surface" data-comment-quote hidden><b data-comment-quote-name></b><p data-comment-quote-content></p></blockquote>
     <p class="reader-comment-identity"><span data-comment-reader hidden={!reader}>以读者 <b>{reader?.displayName}</b> 的身份留言</span><span data-comment-anonymous hidden={Boolean(reader)}>匿名评论审核后公开，也可以先 <a href="/reader">登录读者身份</a>。</span></p>
     <label data-comment-nickname hidden={Boolean(reader)}><span>怎么称呼</span><input name="nickname" minlength="2" maxlength="48" required autocomplete="off" value={reader?.displayName || ''} readonly={Boolean(reader)} /></label>
     <label class="article-comment-form__body"><span>想说的话</span><textarea name="content" rows="3" minlength="2" maxlength="1000" data-character-maximum="500" required></textarea></label>
@@ -37,7 +37,7 @@ const dateLabel = (date: string) => new Date(date).toLocaleString('zh-CN', { tim
     <footer><button type="submit" class="articles-more" disabled>发表</button></footer>
     <p class="form-status" data-comment-feedback role="status" aria-live="polite"></p>
   </form>
-  <div class="article-comments" data-comment-list>{messages.map((message) => <article class="article-comment" id={`comment-${message.id}`} data-message-id={message.id} data-comment-root={message.id} data-message-name={message.nickname}><header><b>{message.nickname}</b><time datetime={message.createdAt}>{dateLabel(message.createdAt)}</time><button type="button" data-comment-reply={message.id} data-comment-message={message.id} data-comment-name={message.nickname}>回复</button></header><MessageBody content={message.content} /><MessageReplies replies={message.replies} parentId={message.id} interactive /></article>)}</div>
+  <div class="article-comments" data-comment-list>{messages.map((message) => <article class="article-comment c2-surface" id={`comment-${message.id}`} data-message-id={message.id} data-comment-root={message.id} data-message-name={message.nickname}><header><b>{message.nickname}</b><time datetime={message.createdAt}>{dateLabel(message.createdAt)}</time><button type="button" data-comment-reply={message.id} data-comment-message={message.id} data-comment-name={message.nickname}>回复</button></header><MessageBody content={message.content} /><MessageReplies replies={message.replies} parentId={message.id} interactive /></article>)}</div>
   <p class="article-comments-empty" data-comments-empty hidden={messages.length > 0}>还没有评论，写下第一句话吧。</p>
   <noscript><p>发表评论和表态需要启用 JavaScript。</p></noscript>
 </section>

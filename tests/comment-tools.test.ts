@@ -106,9 +106,9 @@ describe('comment list refresh', () => {
     expect(nodes.filter((node) => node.tagName === 'svg')).toHaveLength(1);
     expect(nodes.find((node) => node.tagName === 'use')?.attributes.href).toBe('#message-owner-signature');
     expect(nodes.find((node) => node.id === 'comment-1')?.querySelector('b')?.textContent).toBe('SuperSam');
-    expect(nodes.filter((node) => node.className === 'comment-quote')).toHaveLength(5);
-    expect(nodes.find((node) => node.className === 'message-collapse')?.open).toBe(false);
-    expect(nodes.find((node) => node.className === 'message-replies-more')?.open).toBe(true);
+    expect(nodes.filter((node) => node.className.split(/\s+/).includes('comment-quote'))).toHaveLength(5);
+    expect(nodes.find((node) => node.className.split(/\s+/).includes('message-collapse'))?.open).toBe(false);
+    expect(nodes.find((node) => node.className.split(/\s+/).includes('message-replies-more'))?.open).toBe(true);
     expect(nodes.filter((node) => node.textContent === '<script>纯文本</script>')).toHaveLength(4);
     expect(nodes.find((node) => node.id === 'comment-6')?.querySelector('button')?.dataset).toMatchObject({ commentReply: '1', commentMessage: '6' });
   });

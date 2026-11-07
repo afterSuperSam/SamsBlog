@@ -106,19 +106,19 @@ const modelTokenUsage = buildTokenUsageCalendar(new Map<string, TokenUsage>([
       </header>
     </div>
     <nav class="shell about-links" aria-label="个人链接">
-      <a class="about-link" href={siteConfig.social.bilibili} target="_blank" rel="noreferrer">
+      <a class="about-link c2-shape" href={siteConfig.social.bilibili} target="_blank" rel="noreferrer">
         <span class="about-link__icon"><SocialIcon name="bilibili" /></span>
         <span class="about-link__copy"><strong>Bilibili</strong><small>动态与视频</small></span>
       </a>
-      <a class="about-link" href={siteConfig.social.github} target="_blank" rel="noreferrer">
+      <a class="about-link c2-shape" href={siteConfig.social.github} target="_blank" rel="noreferrer">
         <span class="about-link__icon"><SocialIcon name="github" /></span>
         <span class="about-link__copy"><strong>GitHub</strong><small>afterSuperSam</small></span>
       </a>
-      <button class="about-link" type="button" data-about-copy-qq data-qq={siteConfig.social.qq} aria-label={`复制 QQ 号 ${siteConfig.social.qq}`}>
+      <button class="about-link c2-shape" type="button" data-about-copy-qq data-qq={siteConfig.social.qq} aria-label={`复制 QQ 号 ${siteConfig.social.qq}`}>
         <span class="about-link__icon"><SocialIcon name="qq" /></span>
         <span class="about-link__copy"><strong>QQ</strong><small role="status" data-about-qq-label>{siteConfig.social.qq}</small></span>
       </button>
-      <a class="about-link" href="https://moesam.com" target="_blank" rel="noreferrer">
+      <a class="about-link c2-shape" href="https://moesam.com" target="_blank" rel="noreferrer">
         <span class="about-link__icon"><SocialIcon name="town" /></span>
         <span class="about-link__copy"><strong>楹雾镇</strong><small>moesam.com</small></span>
       </a>
@@ -155,7 +155,7 @@ const modelTokenUsage = buildTokenUsageCalendar(new Map<string, TokenUsage>([
           <ol>{sponsors.map((sponsor) => {
             const avatarUrl = sponsorAvatarUrl(sponsor);
             return <li>
-            <span class="sponsor-avatar" aria-hidden="true"><span>{Array.from(sponsor.name)[0]}</span>{avatarUrl && <img src={avatarUrl} width={siteConfig.sponsorPresentation.avatarSizePixels} height={siteConfig.sponsorPresentation.avatarSizePixels} loading="lazy" decoding="async" referrerpolicy="no-referrer" alt="" data-sponsor-avatar />}</span>
+            <span class="sponsor-avatar c2-clip" aria-hidden="true"><span>{Array.from(sponsor.name)[0]}</span>{avatarUrl && <img src={avatarUrl} width={siteConfig.sponsorPresentation.avatarSizePixels} height={siteConfig.sponsorPresentation.avatarSizePixels} loading="lazy" decoding="async" referrerpolicy="no-referrer" alt="" data-sponsor-avatar />}</span>
             <span>{sponsor.name}</span><strong>¥{sponsor.amount}</strong>
           </li>})}</ol>
         </div>
@@ -165,7 +165,7 @@ const modelTokenUsage = buildTokenUsageCalendar(new Map<string, TokenUsage>([
   </section>
   <FriendsSection />
   <section class="site-stats shell" id="site-stats" aria-label="站点统计" data-reveal data-statistics-config={JSON.stringify(siteConfig.statistics)}>
-    <div class="site-stats__panel">
+    <div class="site-stats__panel c2-surface">
       <dl>
         <div><dt>运行天数</dt><dd><span data-stat-value={siteStats.runtimeDays} aria-hidden="true">{siteStats.runtimeDays.toLocaleString('zh-CN')}</span><span class="stat-reader-value">{siteStats.runtimeDays.toLocaleString('zh-CN')}</span><small>天</small></dd></div>
         {[['友链', siteStats.friends, 'friends'], ['累计访客', siteStats.visitors, 'visitors'], ['总浏览量', siteStats.pageViews, 'pageViews']].map(([label, value, key]) => <div><dt>{label}</dt><dd><span data-stat-value={value} data-stat-key={key} aria-hidden="true">{Number(value).toLocaleString('zh-CN')}</span><span class="stat-reader-value">{Number(value).toLocaleString('zh-CN')}</span></dd></div>)}

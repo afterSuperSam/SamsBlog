@@ -73,16 +73,16 @@ const legacyFilters = [filters.source && `来源：${filters.source === 'origina
             </>;
           })}
         </div>
-        {!featured && <p class="articles-empty" data-article-empty hidden={matchedArticles.length > 0}><span aria-hidden="true">{articles.length ? '⌕' : '✎'}</span><span>{articles.length ? '还没有找到这样的内容，试试其他关键词或重置筛选' : '纸页已经铺好，等下一次落笔'}</span></p>}
+        {!featured && <p class="articles-empty c2-surface" data-article-empty hidden={matchedArticles.length > 0}><span aria-hidden="true">{articles.length ? '⌕' : '✎'}</span><span>{articles.length ? '还没有找到这样的内容，试试其他关键词或重置筛选' : '纸页已经铺好，等下一次落笔'}</span></p>}
         {!featured && <p class="article-results" role="status" aria-live="polite" data-article-results>共 {matchedArticles.length} 条内容</p>}
       </div>
       {!featured && articles.length > 0 && <aside class="article-filters" data-article-filters aria-label="内容筛选与排序">
-        <nav class="article-catalog__views" aria-label="内容展示方式">{[{ value: 'list', label: '全部' }, { value: 'archive', label: '归档' }].map((option) => <a href={filterHref('view', option.value)} data-filter-name="view" data-filter-value={option.value} aria-current={filters.view === option.value ? 'true' : undefined}>{option.label}</a>)}</nav>
+        <nav class="article-catalog__views" aria-label="内容展示方式">{[{ value: 'list', label: '全部' }, { value: 'archive', label: '归档' }].map((option) => <a class="c2-surface" href={filterHref('view', option.value)} data-filter-name="view" data-filter-value={option.value} aria-current={filters.view === option.value ? 'true' : undefined}>{option.label}</a>)}</nav>
         <button class="article-filters__toggle" type="button" aria-expanded="false" aria-controls="article-filter-groups" data-filter-toggle><span data-filter-summary>{selectedFilters}</span><span aria-hidden="true">⌄</span></button>
         <div class="article-filters__body" id="article-filter-groups"><div class="article-filters__groups">
           {filterGroups.map((group) => <fieldset class="article-filters__group">
             <legend>{group.label}</legend>
-            <div class="article-filters__options">{group.options.map((option) => <a href={filterHref(group.name, option.value)} data-filter-name={group.name} data-filter-value={option.value} aria-current={filters[group.name as keyof typeof filters] === option.value ? 'true' : undefined}>{option.label}<span aria-hidden="true">✧</span></a>)}</div>
+            <div class="article-filters__options">{group.options.map((option) => <a class="c2-surface" href={filterHref(group.name, option.value)} data-filter-name={group.name} data-filter-value={option.value} aria-current={filters[group.name as keyof typeof filters] === option.value ? 'true' : undefined}>{option.label}<span aria-hidden="true">✧</span></a>)}</div>
           </fieldset>)}
         </div></div>
       </aside>}

@@ -36,14 +36,14 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
     <div class="article-reading__lead">
     <a class="articles-more article-reading__back" href="/content"><span aria-hidden="true">←</span> 回到内容</a>
     <header class="article-reading__heading">
-      <div class="article-tags"><span>{article.source === 'original' ? '原创' : '搬运'}</span><span>{article.category === 'discussion' ? '杂谈' : '日志'}</span></div>
+      <div class="article-tags"><span class="c2-surface">{article.source === 'original' ? '原创' : '搬运'}</span><span class="c2-surface">{article.category === 'discussion' ? '杂谈' : '日志'}</span></div>
       <h1 id="article-start" class:list={{ 'article-title--starred': article.starred }}>{article.title}</h1>
       {article.tags.length > 0 && <nav class="article-keywords" aria-label="文章标签">{article.tags.map((tag) => <a href={`/content?${new URLSearchParams({ tag })}`}># {tag}</a>)}</nav>}
       <div class="article-reading__dates"><span>写于 <time datetime={article.createdAt}>{dateLabel(article.createdAt)}</time></span><span>编辑于 <time datetime={article.updatedAt}>{dateLabel(article.updatedAt)}</time></span></div>
       {article.source === 'repost' && (article.originalAuthor || article.originalUrl) && <p class="article-reading__source">{article.originalAuthor && <span>原作者：{article.originalAuthor}</span>}{article.originalUrl && <a href={article.originalUrl} target="_blank" rel="noopener noreferrer">阅读原文 ↗</a>}</p>}
       {article.contentType === 'link' && <p class="article-reading__source"><a href={article.externalUrl} target="_blank" rel="noopener noreferrer">打开推荐链接 ↗</a></p>}
     </header>
-    {article.coverUrl && <img class="article-reading__cover" src={article.coverUrl} alt="文章首图" referrerpolicy="no-referrer" fetchpriority="high" />}
+    {article.coverUrl && <img class="article-reading__cover c2-clip" src={article.coverUrl} alt="文章首图" referrerpolicy="no-referrer" fetchpriority="high" />}
     <div class="article-reading__tools" data-reading-tools hidden>
       <button type="button" data-reading-font data-tooltip="在系统默认字体与本站艺术字体之间切换" aria-pressed="false">切换艺术字体</button>
       <button type="button" data-reading-resume data-tooltip="回到这台设备上次读到的位置" hidden>继续阅读</button>
@@ -56,9 +56,9 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
       <span class="article-reading__status" role="status" data-reading-status></span>
     </div>
     </div>
-    {rendered.headings.length > 0 && <details class="article-toc">
+    {rendered.headings.length > 0 && <details class="article-toc c2-surface">
       <summary>本文目录 <span>{rendered.headings.length} 节</span></summary>
-      <nav aria-label="文章目录"><ol>{rendered.headings.map((heading) => <li data-level={heading.level} data-depth={Math.min(2, heading.level - chapterLevel)}><a href={`#${heading.id}`}>{heading.text}</a></li>)}</ol></nav>
+      <nav aria-label="文章目录"><span class="article-toc__active c2-surface" aria-hidden="true"></span><ol>{rendered.headings.map((heading) => <li data-level={heading.level} data-depth={Math.min(2, heading.level - chapterLevel)}><a href={`#${heading.id}`}><span class="article-toc__item-surface c2-surface" aria-hidden="true"></span>{heading.level === chapterLevel && <span class="article-toc__number c2-surface" aria-hidden="true"></span>}{heading.text}</a></li>)}</ol></nav>
     </details>}
     <div class="article-reading__content">
     <div class="article-prose" data-article-prose set:html={rendered.html}></div>
@@ -72,13 +72,15 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
   <dialog class="article-image-dialog" data-article-image-dialog aria-label="正文图片查看器">
     <div class="article-image-dialog__toolbar"><button type="button" data-image-zoom aria-pressed="false">放大图片</button><button type="button" data-image-close autofocus aria-label="关闭图片查看器">关闭 ×</button></div>
     <div class="article-image-dialog__state"><span data-image-status role="status" aria-live="polite"></span><button type="button" data-image-retry hidden>重新加载</button></div>
-    <div class="article-image-dialog__viewport" data-image-viewport tabindex="0"><img data-image-full alt="" /></div>
+    <div class="article-image-dialog__frame c2-clip"><div class="article-image-dialog__viewport" data-image-viewport tabindex="0" aria-label="图片浏览区域"><img class="c2-clip" data-image-full alt="" /></div></div>
     <p data-image-caption></p>
   </dialog>
-  <dialog class="quote-dialog" data-quote-dialog aria-labelledby="quote-dialog-title">
+  <dialog class="quote-dialog c2-surface" data-quote-dialog aria-labelledby="quote-dialog-title">
+    <div class="quote-dialog__content c2-clip">
     <header><h2 id="quote-dialog-title">留下一段文字</h2><button type="button" data-quote-close autofocus aria-label="关闭摘录卡片">关闭 ×</button></header>
-    <canvas data-quote-canvas role="img" aria-label="摘录卡片预览"></canvas>
+    <canvas class="c2-clip" data-quote-canvas role="img" aria-label="摘录卡片预览"></canvas>
     <footer><a data-quote-download class="articles-more" download="SamsBlog-摘录.png">保存图片 ↘</a><span data-quote-status role="status"></span></footer>
+    </div>
   </dialog>
 </BaseLayout> : <NotFound />}
 

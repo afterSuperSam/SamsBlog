@@ -171,9 +171,9 @@ if (root && prose) {
     const code = block.querySelector('code');
     if (!code) return;
     const tools = document.createElement('div');
-    tools.className = 'article-code-tools';
+    tools.className = 'article-code-tools c2-surface';
     const container = document.createElement('div');
-    container.className = 'article-code';
+    container.className = 'article-code c2-surface';
     block.before(container);
     container.append(tools, block);
     block.id = `article-code-${index + 1}`;

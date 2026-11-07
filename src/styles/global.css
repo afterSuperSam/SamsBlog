@@ -13,6 +13,11 @@
 .rss-source__attribute { color: var(--summer-pink); }
 
 :root {
+  --surface-corner-small: 12px;
+  --surface-corner-medium: 18px;
+  --surface-corner-large: 28px;
+  --surface-corner-pill: 24px;
+  --surface-control-shadow: drop-shadow(0 12px 20px rgba(7,4,3,.2));
   --footer-bottom-space: 28px;
   --admin-sidebar-width: 174px;
   --admin-drawer-width: 740px;
@@ -324,6 +329,7 @@
 }
 
 :root[data-theme="light"] {
+  --surface-control-shadow: drop-shadow(0 12px 20px rgba(119,166,186,.12));
   --ambient-silk-color: #bacdd3;
   --ambient-silk-sheen: #edf3f4;
   --ambient-silk-opacity: .14;
@@ -655,7 +661,7 @@ form>label[hidden]{display:none!important}
   .project-list article:hover:not(:has(:focus-visible)) h3 a{text-shadow:none;color:var(--text)}
   .about-link:hover:not(:focus-visible) .about-link__icon{transform:none}
   .article-card:hover:not(:has(:focus-visible)) .article-card__cover img{transform:none}
-  .article-card:hover:not(:has(:focus-visible))::before,.friend-card:hover:not(:has(:focus-visible))::after,.about-link:hover:not(:focus-visible)::before{opacity:0}
+  .article-card:hover:not(:has(:focus-visible))>.article-card__surface,.friend-card:hover:not(:has(:focus-visible))::after,.about-link:hover:not(:focus-visible)::before{opacity:0}
   :is(.articles-more,.friends-more):hover:not(:focus-visible),:is(.articles-more,.friends-more):hover:not(:focus-visible) span,.friend-card__rss:hover:not(:focus-visible),.article-filters__options button:hover:not(:focus-visible){transform:none}
   :is(.articles-more,.friends-more):hover:not(:focus-visible)::before,.friend-card__rss:hover:not(:focus-visible)::before{opacity:0}
   .friend-card__rss:hover:not(:focus-visible) path{stroke-dashoffset:.16;opacity:.65}

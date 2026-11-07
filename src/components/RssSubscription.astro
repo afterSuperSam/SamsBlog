@@ -3,11 +3,11 @@ import { siteConfig } from '../config/site';
 const feedUrl = new URL('/rss.xml', siteConfig.siteUrl).href;
 ---
 <a href="/rss.xml" data-rss-subscribe aria-haspopup="dialog">RSS</a>
-<dialog class="rss-subscription" aria-labelledby="rss-subscription-title" data-rss-dialog>
+<dialog class="rss-subscription c2-surface" aria-labelledby="rss-subscription-title" data-rss-dialog>
   <button type="button" class="rss-subscription__close" aria-label="关闭订阅说明" data-rss-close>×</button>
   <span class="section-kicker">Really Simple Syndication</span><h2 id="rss-subscription-title">RSS 订阅</h2>
   <p>将该地址添加到您的 RSS 阅读器</p>
-  <label><span class="sr-only">订阅地址</span><input type="url" value={feedUrl} readonly data-rss-address /></label>
+  <label class="rss-subscription__field c2-surface"><span class="sr-only">订阅地址</span><input type="url" value={feedUrl} readonly data-rss-address /></label>
   <div class="rss-subscription__actions"><button class="copy-feedback" type="button" data-rss-copy aria-live="polite" aria-atomic="true"><span>复制地址</span></button><a href="/rss.xml">打开订阅源 ↗</a></div>
   <p class="form-status" role="status" aria-live="polite" data-rss-feedback></p>
 </dialog>

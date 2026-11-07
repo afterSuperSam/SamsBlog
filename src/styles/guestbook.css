@@ -59,6 +59,8 @@
 .message-reply>[data-comment-text]{flex:1;min-width:min(140px,100%)}
 .message-reply>:is(.message-collapse,.comment-quote){flex-basis:100%;min-width:0}
 .message-reply p { min-width:0; margin:0; white-space:pre-wrap; overflow-wrap:anywhere; }
+body:not(.admin-page) .message-reply.c2-surface{--c2-background:var(--hover);--c2-corner:var(--surface-corner-small)}
+body:not(.admin-page) .comment-quote.c2-surface{--c2-background:color-mix(in srgb,var(--glow-blue) 7%,transparent);--c2-corner:var(--surface-corner-small)}
 .message-empty { padding:32px 24px; border-block:1px dashed var(--line-strong); color:var(--text-soft); }
 .message-empty b { color:var(--text); font-size:20px; }
 .message-empty p { margin:12px 0 0; }
