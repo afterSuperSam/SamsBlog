@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { getDatabase } from './db';
-import { HttpError } from './http';
+import { HttpError, readRequestBytes } from './http';
 import { serverConfig } from '../config/server';
 import { siteConfig } from '../config/site';
 import { renderMarkdown } from './markdown';
@@ -90,11 +90,26 @@ function imageFormat(bytes: Buffer) {
   throw new HttpError(415, '请选择有效的 JPG、PNG、WebP 或 GIF 图片');
 }
 
-export async function saveMedia(file: File) {
-  if (!file.size || file.size > serverConfig.mediaMaxBytes) throw new HttpError(413, `图片不能为空，且不能超过 ${serverConfig.mediaMaxBytes / 1024 / 1024} MB`);
+export async function readMediaUpload(request: Request, maximumRequestBytes: number) {
+  const contentType = request.headers.get('content-type') || '';
+  if (!contentType.toLowerCase().startsWith('multipart/form-data;')) throw new HttpError(415, '请使用图片上传入口');
+  const bytes = await readRequestBytes(request, maximumRequestBytes);
+  let form: FormData;
+  try { form = await new Response(new Uint8Array(bytes), { headers: { 'Content-Type': contentType } }).formData(); }
+  catch { throw new HttpError(400, '上传内容无法解析'); }
+  const file = form.get('file');
+  if (!(file instanceof File) || [...form.keys()].length !== 1) throw new HttpError(400, '每次请选择一张图片');
+  return file;
+}
+
+export async function saveMedia(file: File, options: { maximumBytes?: number; restoreDeleted?: boolean } = {}) {
+  const maximumBytes = options.maximumBytes ?? serverConfig.mediaMaxBytes;
+  if (!file.size || file.size > maximumBytes) throw new HttpError(413, `图片不能为空，且不能超过 ${maximumBytes / 1024 / 1024} MB`);
   const bytes = Buffer.from(await file.arrayBuffer());
+  if (!bytes.length || bytes.length > maximumBytes) throw new HttpError(413, `图片不能为空，且不能超过 ${maximumBytes / 1024 / 1024} MB`);
   const format = imageFormat(bytes);
   const filename = `${createHash('sha256').update(bytes).digest('hex')}.${format.extension}`;
+  if (options.restoreDeleted === false && getMedia(filename, true)?.deletedAt) throw new HttpError(409, '这张图片暂不可用，请选择其他图片');
   const name = file.name.split(/[\\/]/).pop()?.replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 180).trim() || `图片.${format.extension}`;
   const destination = directory();
   await mkdir(destination, { recursive: true });
@@ -103,11 +118,13 @@ export async function saveMedia(file: File) {
     await writeFile(temporary, bytes, { flag: 'wx', mode: 0o600 });
     await rename(temporary, path.join(destination, filename));
     getDatabase().prepare(`INSERT INTO blog_media (filename, original_name, mime_type, byte_size, created_at)
-      VALUES (?, ?, ?, ?, ?) ON CONFLICT(filename) DO UPDATE SET deleted_at = NULL`).run(filename, name, format.type, bytes.length, new Date().toISOString());
+      VALUES (?, ?, ?, ?, ?) ON CONFLICT(filename) ${options.restoreDeleted === false ? 'DO NOTHING' : 'DO UPDATE SET deleted_at = NULL'}`).run(filename, name, format.type, bytes.length, new Date().toISOString());
   } finally {
     await unlink(temporary).catch((error: NodeJS.ErrnoException) => { if (error.code !== 'ENOENT') throw error; });
   }
-  return getMedia(filename)!;
+  const media = getMedia(filename);
+  if (!media) throw new HttpError(409, '这张图片暂不可用，请选择其他图片');
+  return media;
 }
 
 export function changeMediaVisibility(id: number, restore: boolean) {
@@ -116,6 +133,7 @@ export function changeMediaVisibility(id: number, restore: boolean) {
     const row = database.prepare(`${select} WHERE id = ?`).get(id) as MediaRecord | undefined;
     if (!row) throw new HttpError(404, '图片不存在');
     if (!restore) {
+      if (database.prepare('SELECT 1 FROM readers WHERE avatar_url=? LIMIT 1').get(`/uploads/${row.filename}`)) throw new HttpError(409, '图片仍被读者头像引用，请先更换头像（包括已删除读者）');
       if (siteConfig.friendApplications.backgroundUrl === `/uploads/${row.filename}`) throw new HttpError(409, '图片仍被友链申请页引用，请先更换本站背景图');
       const articles = database.prepare('SELECT content,cover_url AS coverUrl FROM blog_articles').all() as Array<{ content: string; coverUrl: string }>;
       const used = articles.some((article) => article.content.includes(`/uploads/${row.filename}`) || article.coverUrl.includes(`/uploads/${row.filename}`)

@@ -2,6 +2,7 @@ import type { APIRoute } from 'astro';
 import { readerConfig } from '../config/readers';
 import { getDatabase } from './db';
 import { HttpError, route } from './http';
+import { getMedia, saveMedia } from './media';
 import { listReaderPasskeys, readReaderSession, type ReaderPublic } from './readers';
 
 // 私有账户响应连同错误统一禁止缓存，身份只从服务端会话获取。
@@ -33,7 +34,7 @@ export function updateReaderProfile(reader: ReaderPublic, input: Record<string, 
   if (typeof input.displayName !== 'string' || typeof input.websiteUrl !== 'string') throw new HttpError(400, '请填写昵称和网站地址');
   const displayName = input.displayName.trim();
   const length = Array.from(displayName).length;
-  if (length < 2 || length > 24 || /[\u0000-\u001f\u007f]/.test(displayName)) throw new HttpError(400, '昵称需要 2–24 个字符，不能包含控制字符');
+  if (length < 2 || length > readerConfig.displayNameMaximumLength || /[\u0000-\u001f\u007f]/.test(displayName)) throw new HttpError(400, `昵称需要 2–${readerConfig.displayNameMaximumLength} 个字符，不能包含控制字符`);
   let websiteUrl = input.websiteUrl.trim();
   if (websiteUrl) {
     if (websiteUrl.length > 2048 || /[\s\u0000-\u001f\u007f\\]/u.test(websiteUrl)) throw new HttpError(400, '请填写有效的 HTTP(S) 网站地址');
@@ -47,6 +48,18 @@ export function updateReaderProfile(reader: ReaderPublic, input: Record<string, 
     .run(displayName, websiteUrl, new Date().toISOString(), reader.id);
   if (!result.changes) throw new HttpError(401, '读者登录已失效，请重新登录');
   return { ...reader, displayName };
+}
+
+// 头像仅更新当前读者；共用文件和旧头像沿媒体库策略保留。
+export async function updateReaderAvatar(reader: ReaderPublic, file: File) {
+  const media = await saveMedia(file, { maximumBytes: readerConfig.avatarMaximumBytes, restoreDeleted: false });
+  return getDatabase().transaction(() => {
+    if (!getMedia(media.filename)) throw new HttpError(409, '这张图片暂不可用，请选择其他图片');
+    const result = getDatabase().prepare('UPDATE readers SET avatar_url=?,updated_at=? WHERE id=? AND deleted_at IS NULL')
+      .run(media.url, new Date().toISOString(), reader.id);
+    if (!result.changes) throw new HttpError(401, '读者登录已失效，请重新登录');
+    return getReaderAccount(reader);
+  }).immediate();
 }
 
 // 仅返回本人未删除的内容；可见性同时控制文章标题与公开跳转入口。

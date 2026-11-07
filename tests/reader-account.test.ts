@@ -4,12 +4,15 @@ import path from 'node:path';
 import type { APIContext } from 'astro';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { readerConfig } from '../src/config/readers';
-import { createMessage, listPublishedMessages, updateMessageStatus, deleteMessage } from '../src/lib/db';
+import { createMessage, listPublishedMessages, updateMessageStatus, deleteMessage, getDatabase } from '../src/lib/db';
 import { saveArticle, withdrawArticle } from '../src/lib/articles';
 import { getReaderAccount, listReaderComments, updateReaderProfile } from '../src/lib/reader-account';
-import { resolveReaderIdentity, startReaderSession, type ReaderCookies, type ReaderPublic } from '../src/lib/readers';
+import { readReaderSession, resolveReaderIdentity, startReaderSession, type ReaderCookies, type ReaderPublic } from '../src/lib/readers';
+import { changeMediaVisibility, getMedia, mediaResponse, saveMedia } from '../src/lib/media';
 import { GET, PATCH } from '../src/pages/api/reader/account.json';
 import { GET as comments } from '../src/pages/api/reader/comments.json';
+import { POST as uploadAvatar } from '../src/pages/api/reader/avatar.json';
+import { DELETE as deleteMedia } from '../src/pages/api/admin/media.json';
 
 beforeAll(async () => {
   vi.stubEnv('BLOG_DATA_DIR', await mkdtemp(path.join(tmpdir(), 'samsblog-account-')));
@@ -32,6 +35,13 @@ function context(cookies: ReaderCookies, method = 'GET', body?: unknown, pathnam
     headers: { origin, 'content-type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }) } as unknown as APIContext;
 }
 const post = (reader: ReaderPublic, extra = {}) => createMessage({ readerId: reader.id, nickname: reader.displayName, content: '只在临时库中的本人评论', fingerprintHash: `account-${sequence}`, ...extra });
+const avatarPng = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6u1sAAAAASUVORK5CYII=', 'base64');
+function avatarContext(cookies: ReaderCookies, file = new File([avatarPng], '../../头像.html', { type: 'text/html' }), origin = 'https://blog.example.com') {
+  const form = new FormData(); form.set('file', file);
+  const result = context(cookies, 'POST', undefined, '/api/reader/avatar.json');
+  result.request = new Request(result.url, { method: 'POST', headers: { origin }, body: form });
+  return result;
+}
 
 describe('reader account isolation', () => {
   it('requires a reader session and caches neither private data nor errors', async () => {
@@ -71,16 +81,90 @@ describe('reader account isolation', () => {
     const { reader, cookies } = fixture();
     const valid = { displayName: '有效昵称', websiteUrl: '' };
     expect((await PATCH(context(cookies, 'PATCH', valid, undefined, 'https://other.example'))).status).toBe(403);
-    for (const displayName of ['', '一', '😀'.repeat(25), '坏\u0000名字', 42]) {
+    for (const displayName of ['', '一', '😀'.repeat(13), '坏\u0000名字', 42]) {
       expect(() => updateReaderProfile(reader, { ...valid, displayName })).toThrow();
     }
     for (const websiteUrl of ['javascript:alert(1)', '//example.com', 'https://user:password@example.com', 'https://exam\nple.com/', 'http:example.com', 'https://example.com/\\evil', 42]) {
       expect(() => updateReaderProfile(reader, { ...valid, websiteUrl })).toThrow();
     }
-    expect(updateReaderProfile(reader, { ...valid, displayName: '😀'.repeat(24) }).displayName).toHaveLength(48);
+    expect(updateReaderProfile(reader, { ...valid, displayName: '😀'.repeat(12) }).displayName).toHaveLength(24);
     expect((await PATCH(context(cookies, 'PATCH', { ...valid, padding: 'x'.repeat(readerConfig.requestMaximumBytes) }))).status).toBe(413);
     for (let index = 1; index < readerConfig.profileSourceLimit; index++) expect((await PATCH(context(cookies, 'PATCH', valid))).status).toBe(200);
     expect((await PATCH(context(cookies, 'PATCH', valid))).status).toBe(429);
+  });
+
+  it('preserves historical long names until an explicit valid profile edit', () => {
+    const { reader, cookies } = fixture();
+    const legacyName = '旧'.repeat(24);
+    getDatabase().prepare('UPDATE readers SET display_name=? WHERE id=?').run(legacyName, reader.id);
+    expect(readReaderSession(cookies)?.displayName).toBe(legacyName);
+    expect(() => updateReaderProfile(reader, { displayName: legacyName, websiteUrl: '' })).toThrow('2–12');
+    expect(getReaderAccount(reader).reader.displayName).toBe(legacyName);
+  });
+
+  it('uploads a content-checked avatar only for its authenticated owner without media administration', async () => {
+    const { reader, cookies } = fixture(); const otherAccount = fixture(); const other = otherAccount.reader;
+    const anonymous = { ...cookies, get: () => undefined } as ReaderCookies;
+    expect((await uploadAvatar(avatarContext(anonymous))).status).toBe(401);
+    expect((await uploadAvatar(avatarContext(cookies, undefined, 'https://other.example'))).status).toBe(403);
+    const response = await uploadAvatar(avatarContext(cookies));
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store');
+    expect(response.headers.get('Vary')).toBe('Cookie');
+    const result = await response.json();
+    expect(result.reader.id).toBe(reader.id);
+    expect(result.reader.avatarUrl).toMatch(/^\/uploads\/[a-f0-9]{64}\.png$/);
+    expect(result.account.reader.avatarUrl).toBe(result.reader.avatarUrl);
+    expect(readReaderSession(cookies)?.avatarUrl).toBe(result.reader.avatarUrl);
+    expect(getReaderAccount(other).reader.avatarUrl).toBeNull();
+    const media = getMedia(result.reader.avatarUrl.split('/').pop())!;
+    expect((await uploadAvatar(avatarContext(otherAccount.cookies))).status).toBe(200);
+    expect(getReaderAccount(other).reader.avatarUrl).toBe(media.url);
+    expect((await mediaResponse(media.filename, new Request(`https://blog.example.com${media.url}`))).headers.get('Content-Type')).toBe('image/png');
+    expect(() => changeMediaVisibility(media.id, false)).toThrow('读者头像引用');
+    expect((await deleteMedia(context(cookies, 'DELETE', { id: media.id }, '/api/admin/media.json'))).status).toBe(401);
+    const replacement = new File([Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64')], '头像.gif');
+    expect((await uploadAvatar(avatarContext(cookies, replacement))).status).toBe(200);
+    expect(getMedia(media.filename)).toBeDefined();
+    getDatabase().prepare('UPDATE readers SET deleted_at=? WHERE id=?').run(new Date().toISOString(), other.id);
+    expect(() => changeMediaVisibility(media.id, false)).toThrow('读者头像引用');
+    expect((await uploadAvatar(avatarContext(otherAccount.cookies))).status).toBe(401);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('rejects active content, extra form fields and actual oversized avatar bytes', async () => {
+    const { cookies } = fixture();
+    for (const content of ['<svg onload="alert(1)"/>', '<html><script>alert(1)</script></html>']) {
+      expect((await uploadAvatar(avatarContext(cookies, new File([content], '头像.png', { type: 'image/png' })))).status).toBe(415);
+    }
+    expect((await uploadAvatar(avatarContext(cookies, new File([], 'empty.png')))).status).toBe(413);
+    const extra = avatarContext(cookies);
+    const form = new FormData(); form.set('file', new File([avatarPng], 'avatar.png')); form.set('readerId', '1');
+    extra.request = new Request(extra.url, { method: 'POST', headers: { origin: extra.url.origin }, body: form });
+    expect((await uploadAvatar(extra)).status).toBe(400);
+    expect((await uploadAvatar(avatarContext(cookies, new File([new Uint8Array(readerConfig.avatarMaximumBytes + 1)], 'oversized.png')))).status).toBe(413);
+    const oversized = avatarContext(cookies);
+    oversized.request = new Request(oversized.url, { method: 'POST', headers: { origin: oversized.url.origin, 'Content-Type': 'multipart/form-data; boundary=x', 'Content-Length': '1' }, body: new Uint8Array(readerConfig.avatarMaximumBytes + readerConfig.avatarMultipartOverheadBytes + 1) });
+    expect((await uploadAvatar(oversized)).status).toBe(413);
+    const maximum = new Uint8Array(readerConfig.avatarMaximumBytes);
+    maximum.set(new TextEncoder().encode('GIF89a')); maximum[maximum.length - 1] = 59;
+    expect((await uploadAvatar(avatarContext(cookies, new File([maximum], 'maximum.gif')))).status).toBe(200);
+  });
+
+  it('does not restore removed media and enforces the reader upload quota', async () => {
+    const { cookies } = fixture();
+    const removedBytes = new Uint8Array(14); removedBytes.set(new TextEncoder().encode('GIF87a')); removedBytes[13] = 59;
+    const removedFile = new File([removedBytes], 'removed.gif');
+    const media = await saveMedia(removedFile);
+    changeMediaVisibility(media.id, false);
+    expect((await uploadAvatar(avatarContext(cookies, removedFile))).status).toBe(409);
+    expect(getMedia(media.filename)).toBeUndefined();
+    for (let index = 1; index < readerConfig.avatarReaderLimit; index++) {
+      const upload = avatarContext(cookies); upload.clientAddress = `198.51.100.${index}`;
+      expect((await uploadAvatar(upload)).status).toBe(200);
+    }
+    const limited = avatarContext(cookies); limited.clientAddress = '198.51.100.250';
+    expect((await uploadAvatar(limited)).status).toBe(429);
   });
 
   it('lists only owned undeleted content, protects private article metadata and bounds pages', async () => {

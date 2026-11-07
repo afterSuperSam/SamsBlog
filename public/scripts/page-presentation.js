@@ -29,10 +29,23 @@
   };
   syncPreferences();
 
+  // 账号背景轮廓由本页模块同步准备；仅该区域暂缓显示，失败时有界降级。
+  const surfaceDeadline = Number(root.dataset.readerSurfaceTimeout);
+  if (Number.isSafeInteger(surfaceDeadline) && surfaceDeadline > 0 && surfaceDeadline <= 5000) {
+    root.dataset.readerSurfaces = 'pending';
+    const releaseSurfaces = () => {
+      if (root.dataset.readerSurfaces === 'pending') delete root.dataset.readerSurfaces;
+      clearTimeout(deadline);
+    };
+    const deadline = setTimeout(releaseSurfaces, surfaceDeadline);
+    window.addEventListener('reader:surfaces-ready', releaseSurfaces, { once: true });
+    window.addEventListener('pageshow', (event) => { if (event.persisted) releaseSurfaces(); });
+  }
+
   const syncTransition = (event) => {
     delete root.dataset.pageTransition;
     if (!event.viewTransition) return;
-    if (reducedMotion.matches || root.classList.contains('motion-paused')) { event.viewTransition.skipTransition(); return; }
+    if (['pending', 'ready'].includes(root.dataset.readerSurfaces) || reducedMotion.matches || root.classList.contains('motion-paused')) { event.viewTransition.skipTransition(); return; }
     // 页面跳转共用整页快照，避免图片或导航单独衔接。
     root.dataset.pageTransition = 'soft';
     const cleanup = () => { delete root.dataset.pageTransition; };

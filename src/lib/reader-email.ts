@@ -13,6 +13,26 @@ export function readReaderEmail(value: unknown) {
   return email;
 }
 
+// 邮件展示使用纯 HTML 和文本两份内容，不依赖远程字体或图片。
+export function createReaderCodeEmail(code: string, validitySeconds = readerConfig.codeSeconds) {
+  if (!new RegExp(`^\\d{${readerConfig.codeLength}}$`).test(code) || !Number.isSafeInteger(validitySeconds) || validitySeconds <= 0) throw new Error('Invalid reader code email input');
+  const escape = (value: string) => value.replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]!);
+  const minutes = Math.ceil(validitySeconds / 60);
+  const subject = 'SamsBlog 读者登录验证码';
+  const text = `你的登录验证码是 ${code}，${minutes} 分钟内有效。请勿向他人透露。若非本人操作，请忽略此邮件。`;
+  const html = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${subject}</title></head><body style="margin:0;padding:0;background:#f5f3ee;color:#303336;font-family:Arial,'Microsoft YaHei',sans-serif;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f3ee;"><tr><td align="center" style="padding:32px 16px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#fffdf8;border-radius:20px;"><tr><td style="padding:30px 28px;">
+<p style="margin:0 0 24px;color:#486779;font-size:22px;font-weight:700;">SamsBlog</p>
+<h1 style="margin:0 0 12px;font-size:22px;line-height:1.5;font-weight:600;">读者登录验证码</h1>
+<p style="margin:0 0 24px;color:#686d71;font-size:16px;line-height:1.8;">输入下方验证码，继续登录。</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:22px 16px;background:#eef2f3;border-radius:14px;font-family:Consolas,monospace;font-size:44px;line-height:1.2;letter-spacing:12px;font-weight:700;color:#304d5c;">${escape(code)}</td></tr></table>
+<p style="margin:22px 0 0;color:#686d71;font-size:15px;line-height:1.8;">${escape(String(minutes))} 分钟内有效，请勿向他人透露。</p>
+<p style="margin:10px 0 0;color:#85898b;font-size:14px;line-height:1.8;">若非本人操作，请忽略此邮件。</p>
+</td></tr></table></td></tr></table></body></html>`;
+  return { subject, text, html };
+}
+
 // 登录验证码独立于评论邮件队列；失败不重试、不持久保存验证码或邮件正文。
 export async function sendReaderEmailCode(email: string, sourceHash: string) {
   if (!getReaderAuthOptions().email) throw new HttpError(503, '邮箱登录尚未配置');
@@ -24,7 +44,7 @@ export async function sendReaderEmailCode(email: string, sourceHash: string) {
     { key: `email-source:${sourceHash}`, maximum: readerConfig.emailSourceLimit, seconds: readerConfig.quotaWindowSeconds },
     { key: 'email-global', maximum: readerConfig.emailGlobalLimit, seconds: readerConfig.quotaWindowSeconds },
   ])) return;
-  const code = String(randomInt(0, 1000000)).padStart(6, '0');
+  const code = String(randomInt(0, 10 ** readerConfig.codeLength)).padStart(readerConfig.codeLength, '0');
   const codeHash = readerPrivateHash('email-code', `${address}:${code}`);
   const now = Date.now();
   const database = getDatabase();
@@ -38,8 +58,7 @@ export async function sendReaderEmailCode(email: string, sourceHash: string) {
     const result = await readerUpstreamRequest('email', { method: 'POST', headers: {
       Authorization: `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json',
       'Idempotency-Key': `reader-code-${codeHash}-${now}`,
-    }, body: JSON.stringify({ from: sender, to: [email], subject: 'SamsBlog 读者登录验证码',
-      text: `你的登录验证码是 ${code}，${Math.ceil(readerConfig.codeSeconds / 60)} 分钟内有效。请勿向他人透露。若非本人操作，请忽略此邮件。` }) });
+    }, body: JSON.stringify({ from: sender, to: [email], ...createReaderCodeEmail(code) }) });
     if (typeof result.id !== 'string' || !result.id) throw new HttpError(502, '验证码暂时无法发送');
   } catch {
     database.prepare('DELETE FROM reader_email_codes WHERE email_hash=? AND code_hash=?').run(address, codeHash);
@@ -53,7 +72,7 @@ export function verifyReaderEmailCode(email: string, code: unknown, sourceHash: 
     { key: `verify-source:${sourceHash}`, maximum: readerConfig.verifySourceLimit, seconds: readerConfig.quotaWindowSeconds },
     { key: 'verify-global', maximum: readerConfig.verifyGlobalLimit, seconds: readerConfig.quotaWindowSeconds },
   ])) throw new HttpError(429, '登录尝试过于频繁，请稍后重试');
-  if (typeof code !== 'string' || !/^\d{6}$/.test(code)) throw new HttpError(400, '请输入六位验证码');
+  if (typeof code !== 'string' || !new RegExp(`^\\d{${readerConfig.codeLength}}$`).test(code)) throw new HttpError(400, '请输入三位验证码，旧验证码请重新获取');
   const address = emailIdentity(email);
   const submitted = readerPrivateHash('email-code', `${address}:${code}`);
   const database = getDatabase();

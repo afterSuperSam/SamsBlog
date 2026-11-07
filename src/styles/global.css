@@ -18,10 +18,22 @@
   --admin-drawer-width: 740px;
   --admin-editor-width: 1240px;
   --admin-login-heading-size: clamp(3.5rem,7.5vw,5.75rem);
-  --reader-width: 940px;
-  --reader-menu-width: 420px;
+  --reader-width: 1080px;
+  --reader-small-font-size: 1.125rem;
+  --reader-control-shadow: #00000012;
+  --reader-ripple-color: #b9e6f0;
+  --guestbook-reader-identity-font-size: 1.25rem;
+  --reader-card-padding-block: clamp(18px,2vw,22px);
+  --reader-card-gap: 16px;
+  --reader-corner-size: 52px;
+  --reader-summary-surface: color-mix(in srgb,var(--reader-paper) 97%,var(--text));
+  --reader-passkey-surface: color-mix(in srgb,var(--reader-paper) 99%,var(--text));
   --reader-font-size: 1.125rem;
-  --reader-menu-gap: 12px;
+  --reader-avatar-reveal-duration: 280ms;
+  --reader-avatar-reveal-scale: .82;
+  --reader-login-width: 560px;
+  --reader-login-font-size: 1.25rem;
+  --reader-provider-label-width: 110px;
   --reader-paper: #303133;
   --reader-accent: #a7ddec;
   --reader-pink: #f2b8cf;
@@ -284,6 +296,8 @@
 }
 
 :root[data-theme="light"] {
+  --reader-control-shadow: #294b5d08;
+  --reader-ripple-color: #447d90;
   --reader-paper: #fffaf2;
   --reader-accent: #285e70;
   --reader-pink: #9f4267;

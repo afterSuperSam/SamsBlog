@@ -155,7 +155,7 @@ body::before {
   transform: translateX(-50%);
 }
 
-.desktop-nav a {
+.desktop-nav :is(a,.reader-navigation) {
   position: relative;
   display: grid;
   min-height: 44px;
@@ -165,14 +165,14 @@ body::before {
   transition:color 220ms ease,opacity 220ms ease,text-shadow 220ms ease,transform 280ms var(--ease);
 }
 
-.desktop-nav a:focus-visible {
+.desktop-nav :is(a,.reader-navigation):focus-visible {
   color:var(--summer-blue);
   opacity: 1;
   text-shadow:0 0 20px color-mix(in srgb,var(--glow-blue) 32%,transparent);
   transform:translateY(-2px);
 }
 
-.desktop-nav a[aria-current="page"] {
+.desktop-nav :is(a,.reader-navigation)[aria-current="page"] {
   color:var(--summer-orange);
   opacity:1;
   text-shadow:0 0 18px color-mix(in srgb,var(--glow-orange) 28%,transparent);
@@ -254,7 +254,7 @@ body::before {
 .mobile-menu[hidden] { display: none; }
 .mobile-menu nav { display: grid; gap: 4px; }
 
-.mobile-menu a {
+.mobile-menu :is(a,.reader-navigation) {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -271,17 +271,17 @@ body::before {
   transition: color .22s ease, background .22s ease;
 }
 
-.mobile-menu a:focus-visible {
+.mobile-menu :is(a,.reader-navigation):focus-visible {
   color: var(--summer-blue);
   background: var(--hover);
 }
 
-.mobile-menu a[aria-current="page"] {
+.mobile-menu :is(a,.reader-navigation)[aria-current="page"] {
   color: var(--accent);
   background: color-mix(in oklab, var(--summer-pink) 10%, transparent);
 }
 
-.mobile-menu a svg {
+.mobile-menu :is(a,.reader-navigation) svg {
   width: 16px;
   height: 16px;
   flex: 0 0 auto;
@@ -293,7 +293,7 @@ body::before {
   stroke-linejoin: round;
 }
 
-.mobile-menu a:focus-visible svg { opacity: 1; }
+.mobile-menu :is(a,.reader-navigation):focus-visible svg { opacity: 1; }
 
 @keyframes mobile-menu-arrive {
   from { opacity: 0; transform: translateY(-6px) scale(.96); }
@@ -472,7 +472,7 @@ body::before {
 
 /* 首页插画上的导航与持续动效的可视性边界 */
 .media-header .site-header:not(.site-header--scrolled){color:var(--on-media);background:linear-gradient(rgba(9,25,30,.4),transparent)}
-.media-header .site-header:not(.site-header--scrolled) .desktop-nav a:is([aria-current="page"],:focus-visible){color:var(--on-media-accent)}
+.media-header .site-header:not(.site-header--scrolled) .desktop-nav :is(a,.reader-navigation):is([aria-current="page"],:focus-visible){color:var(--on-media-accent)}
 .skip-link{position:fixed;z-index:160;top:-90px;left:20px;background:var(--surface);padding:12px 20px;color:var(--text)}.skip-link:focus{top:12px}
 :root.page-hidden *, :root.page-hidden *::before, :root.page-hidden *::after{animation-play-state:paused!important}
 
@@ -491,10 +491,10 @@ body::before {
   .button:hover{color:var(--summer-blue);text-shadow:0 0 22px color-mix(in srgb,var(--glow-blue) 28%,transparent);transform:translateY(-2px)}
   .button--primary:hover{background:transparent;color:var(--summer-orange)}
   .site-brand:hover .site-brand__wordmark{filter:drop-shadow(0 3px 9px color-mix(in oklab,var(--glow-pink) 12%,transparent))}
-  .desktop-nav a:hover{opacity:1;transform:translateY(-2px)}
-  .desktop-nav a:not([aria-current="page"]):hover{color:var(--summer-blue);text-shadow:0 0 20px color-mix(in srgb,var(--glow-blue) 32%,transparent)}
-  .media-header .site-header:not(.site-header--scrolled) .desktop-nav a:not([aria-current="page"]):hover{color:var(--on-media)}
-  .mobile-menu a:not([aria-current="page"]):hover{color:var(--summer-blue);background:var(--hover)}
+  .desktop-nav :is(a,.reader-navigation):hover{opacity:1;transform:translateY(-2px)}
+  .desktop-nav :is(a,.reader-navigation):not([aria-current="page"]):hover{color:var(--summer-blue);text-shadow:0 0 20px color-mix(in srgb,var(--glow-blue) 32%,transparent)}
+  .media-header .site-header:not(.site-header--scrolled) .desktop-nav :is(a,.reader-navigation):not([aria-current="page"]):hover{color:var(--on-media)}
+  .mobile-menu :is(a,.reader-navigation):not([aria-current="page"]):hover{color:var(--summer-blue);background:var(--hover)}
   .header-socials :is(a,button):hover{opacity:1;transform:translateY(-2px)}
   .header-social--bilibili:hover{color:var(--summer-blue)}
   .header-social--github:hover{color:var(--summer-pink)}

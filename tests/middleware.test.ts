@@ -49,7 +49,7 @@ describe('public page view statistics boundary', () => {
   });
 
   it('prevents shared caching of reader-personalized pages even before login', async () => {
-    for (const path of ['/', '/reader', '/articles/123']) {
+    for (const path of ['/', '/reader', '/articles/123', '/content', '/about', '/missing']) {
       const response = page();
       response.headers.set('Vary', 'Accept-Encoding');
       const result = await onRequest(context(path), async () => response);
@@ -57,6 +57,14 @@ describe('public page view statistics boundary', () => {
       expect(result.headers.get('Cache-Control')).toBe('private, no-store');
       expect(result.headers.get('Vary')).toBe('Accept-Encoding, Cookie');
     }
+  });
+
+  it.each([['/rss.xml', 'application/rss+xml'], ['/media/brand/logo.jpg', 'image/jpeg']])('preserves public non-HTML cache policy for %s', async (path, contentType) => {
+    const response = new Response('fixture', { headers: { 'Content-Type': contentType, 'Cache-Control': 'public, max-age=3600' } });
+    const result = await onRequest(context(path), async () => response);
+    if (!(result instanceof Response)) throw new Error('Middleware did not return a response');
+    expect(result.headers.get('Cache-Control')).toBe('public, max-age=3600');
+    expect(result.headers.has('Vary')).toBe(false);
   });
 
   it('removes OAuth query parameters through a server redirect before home rendering or visitor tracking', async () => {
@@ -68,7 +76,7 @@ describe('public page view statistics boundary', () => {
       if (!(response instanceof Response)) throw new Error('Middleware did not return a response');
       expect(next).not.toHaveBeenCalled();
       expect(response.status).toBe(303);
-      expect(response.headers.get('Location')).toBe('/reader?error=oauth');
+      expect(response.headers.get('Location')).toBe('/reader/oauth-complete?result=error');
       expect(response.headers.get('Referrer-Policy')).toBe('no-referrer');
       expect(await response.text()).toBe('');
       expect(callback.cookies.set).not.toHaveBeenCalled();

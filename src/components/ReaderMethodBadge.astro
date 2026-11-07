@@ -1,0 +1,13 @@
+---
+interface Props { method?: string }
+const { method } = Astro.props;
+const names: Record<string, string> = { email: '邮箱验证码', blogsclub: 'BlogsClub', github: 'GitHub', google: 'Google', passkey: 'Passkey' };
+const label = method && names[method] ? `${names[method]} 登录` : '读者身份';
+---
+<span class="reader-method-badge" data-account-method role="img" aria-label={label} title={label} hidden={!method}>
+  <svg data-reader-method-icon="email" data-visible={method === 'email'} viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3" /><path d="m4 7 8 6 8-6" /></svg>
+  <svg data-reader-method-icon="github" data-visible={method === 'github'} viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" stroke="none" d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.86c-2.78.6-3.37-1.18-3.37-1.18-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.61.07-.61 1 .07 1.53 1.03 1.53 1.03.89 1.53 2.34 1.09 2.91.83.09-.65.35-1.09.64-1.34-2.22-.25-4.56-1.11-4.56-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.02A9.58 9.58 0 0 1 12 6.82c.85 0 1.71.11 2.51.34 1.91-1.3 2.75-1.02 2.75-1.02.55 1.38.2 2.4.1 2.65.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.69-4.57 4.94.36.31.68.92.68 1.85v2.75c0 .27.18.58.69.48A10 10 0 0 0 12 2Z" /></svg>
+  <svg data-reader-method-icon="google" data-visible={method === 'google'} viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" stroke="none" d="M21.6 12.2c0-.7-.1-1.4-.2-2.1H12v4h5.4a4.6 4.6 0 0 1-2 3 6.2 6.2 0 1 1 .1-10.3l3-3A10.3 10.3 0 1 0 12 22.3c5.9 0 9.6-4.1 9.6-10.1Z" /></svg>
+  <svg data-reader-method-icon="blogsclub" data-visible={method === 'blogsclub'} viewBox="0 0 24 24" aria-hidden="true"><use href="/media/branding/blogsclub-symbol.svg#blogsclub-mark" /></svg>
+  <svg data-reader-method-icon="passkey" data-visible={method === 'passkey'} viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="5" /><path d="m11.5 11.5 8 8 2-2m-6-2 2-2M7 7h.01" /></svg>
+</span>

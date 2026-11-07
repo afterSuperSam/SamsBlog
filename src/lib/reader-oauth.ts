@@ -146,9 +146,9 @@ export async function blogsClubCallback(context: { url: URL; cookies: ReaderCook
 }
 
 export async function readerOAuthCallback(provider: ReaderProvider, context: { url: URL; cookies: ReaderCookies }) {
-  let location = '/reader';
+  let location = '/reader/oauth-complete?result=success';
   try { await finishReaderOAuth(provider, context.url, context.cookies); }
-  catch { location = '/reader?error=oauth'; console.warn('Reader OAuth callback rejected'); }
+  catch { location = '/reader/oauth-complete?result=error'; console.warn('Reader OAuth callback rejected'); }
   finally { context.cookies.delete(readerFlowCookieName, readerCookieOptions()); }
   return new Response(null, { status: 303, headers: { Location: location, 'Cache-Control': 'private, no-store', 'Referrer-Policy': 'no-referrer' } });
 }

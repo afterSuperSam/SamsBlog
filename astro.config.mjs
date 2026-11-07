@@ -39,7 +39,7 @@ export default defineConfig({
   },
   markdown: { syntaxHighlight: false },
   vite: {
-    optimizeDeps: { include: ['three'] },
+    optimizeDeps: { include: ['three', '@simplewebauthn/browser'] },
     build: {
       cssMinify: 'lightningcss',
     },

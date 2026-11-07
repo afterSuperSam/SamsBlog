@@ -31,6 +31,9 @@ export const siteConfig = {
     '٩(ˊᗜˋ*)و', '(ﾉ◕ヮ◕)ﾉ*:･ﾟ✧',
   ] },
   readingExtras: { historyVisibleCount: 2, quoteMaximumCharacters: 450, quoteWidth: 1080, quoteWordmarkWidth: 210, quoteFontSize: 42, quoteLineHeight: 72, quotePadding: 88, quoteMinimumHeight: 720 },
+  readerPresentation: { readyTimeoutMilliseconds: 2000 },
+  readerEffects: { rippleMilliseconds: 420, stillFeedbackMilliseconds: 100, rippleOpacity: .13 },
+  readerPopup: { widthPixels: 520, heightPixels: 720, pollMilliseconds: 3000, timeoutMilliseconds: 600000 },
   interactions: { feedbackResizeMilliseconds: 260, themeRevealMilliseconds: 760, keyboardInsetPixels: 18, requestTimeoutMilliseconds: 15000, tooltipDismissMilliseconds: 160, tooltipRevealMilliseconds: 180, receiptDurationMilliseconds: 1440 },
   projectPresentation: { initialVisibleCount: 4 },
   friendDeck: {
@@ -211,3 +214,11 @@ if (!Number.isFinite(siteConfig.effects.pointerTiltDegrees) || siteConfig.effect
 if (![particleCount, mobileParticleCount].every((value) => Number.isInteger(value) && value >= 0 && value <= 60) || mobileParticleCount > particleCount) {
   throw new Error('Invalid visual effects configuration');
 }
+
+if (!Object.values(siteConfig.readerPopup).every((value) => Number.isSafeInteger(value) && value > 0) || siteConfig.readerPopup.pollMilliseconds >= siteConfig.readerPopup.timeoutMilliseconds) {
+  throw new Error('Invalid reader popup configuration');
+}
+
+if (!Number.isSafeInteger(siteConfig.readerPresentation.readyTimeoutMilliseconds) || siteConfig.readerPresentation.readyTimeoutMilliseconds <= 0 || siteConfig.readerPresentation.readyTimeoutMilliseconds > 5000) throw new Error('Invalid reader presentation deadline');
+
+if (![siteConfig.readerEffects.rippleMilliseconds, siteConfig.readerEffects.stillFeedbackMilliseconds].every((value) => Number.isSafeInteger(value) && value > 0 && value <= 1000) || siteConfig.readerEffects.rippleOpacity <= 0 || siteConfig.readerEffects.rippleOpacity > .3) throw new Error('Invalid reader effects configuration');

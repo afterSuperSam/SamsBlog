@@ -1,0 +1,47 @@
+---
+import '../../styles/global.css';
+import { readReaderSession } from '../../lib/readers';
+
+Astro.response.headers.set('Cache-Control', 'private, no-store');
+Astro.response.headers.set('Referrer-Policy', 'no-referrer');
+Astro.response.headers.set('X-Robots-Tag', 'noindex, nofollow');
+Astro.response.headers.set('Vary', 'Cookie');
+const completed = Astro.url.searchParams.getAll('result').length === 1
+  && Astro.url.searchParams.get('result') === 'success' && Boolean(readReaderSession(Astro.cookies));
+---
+<!doctype html>
+<html lang="zh-CN">
+  <head><meta charset="utf-8" /><meta name="viewport" content="width=device-width" /><title>读者登录 · SamsBlog</title></head>
+  <body>
+    <main class="oauth-completion" data-oauth-completion data-result={completed ? 'success' : 'error'}>
+      <span class="section-kicker">SamsBlog</span>
+      <h1>{completed ? '登录已完成' : '这次登录未完成'}</h1>
+      <p>{completed ? '请返回原来的页面查看登录状态。' : '请返回原来的页面重新选择登录方式。'}</p>
+      <p data-oauth-help>若窗口没有自动关闭，可以手动关闭。</p>
+      <nav aria-label="登录后的操作"><button type="button" data-oauth-close hidden>关闭窗口</button><a href="/reader">前往我的账号</a></nav>
+    </main>
+  </body>
+</html>
+<script>
+  const root = document.querySelector<HTMLElement>('[data-oauth-completion]');
+  const close = root?.querySelector<HTMLButtonElement>('[data-oauth-close]');
+  if (close) { close.hidden = false; close.addEventListener('click', () => window.close()); }
+  // 完成消息只提示父页重新查询同源会话，不传递身份、授权码或令牌。
+  if (root && window.opener) {
+    try {
+      window.opener.postMessage({ type: 'samsblog-reader-oauth', status: root.dataset.result === 'success' ? 'success' : 'error' }, window.location.origin);
+      window.close();
+    } catch {
+      const help = root.querySelector<HTMLElement>('[data-oauth-help]');
+      if (help) help.textContent = '浏览器限制了窗口通信，请返回原来的页面查看登录状态。';
+    }
+  }
+</script>
+<style>
+  body{min-height:100dvh;display:grid;place-items:center;margin:0;padding:24px;background:var(--bg);color:var(--text)}
+  .oauth-completion{width:min(100%,440px);padding:32px;border:1px solid var(--line);border-radius:24px;background:var(--surface);font-family:var(--playful);line-height:1.8}
+  h1{font-size:1.8rem;font-weight:400;margin:12px 0}p{color:var(--text-soft)}
+  nav{display:flex;gap:20px;flex-wrap:wrap;align-items:center;margin-top:24px}
+  button,a{min-height:44px;display:inline-flex;align-items:center;padding:8px 4px;border:0;background:transparent;color:var(--reader-accent);font:inherit;cursor:pointer}
+  [hidden]{display:none}button:focus-visible,a:focus-visible{outline:2px solid var(--reader-accent);outline-offset:4px}
+</style>

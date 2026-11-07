@@ -1,40 +1,48 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+import ReaderMethodBadge from '../components/ReaderMethodBadge.astro';
+import ReaderLogin from '../components/ReaderLogin.astro';
 import { readReaderSession } from '../lib/readers';
+import { getReaderAccount, listReaderComments } from '../lib/reader-account';
+import { readerConfig } from '../config/readers';
 import '../styles/reader.css';
 const reader = readReaderSession(Astro.cookies);
+const account = reader ? getReaderAccount(reader) : null;
+const comments = reader ? listReaderComments(reader.id) : null;
+const date = (value: string | null | undefined) => value ? new Date(value).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '尚未使用';
+const totalPages = comments ? Math.max(1, Math.ceil(comments.total / comments.pageSize)) : 1;
+const statusLabels: Record<string, string> = { pending: '待审核', published: '已公开', hidden: '已隐藏' };
 Astro.response.headers.set('Cache-Control', 'private, no-store');
 Astro.response.headers.set('Vary', 'Cookie');
 Astro.response.headers.set('Referrer-Policy', 'no-referrer');
 Astro.response.headers.set('X-Robots-Tag', 'noindex, nofollow');
 ---
-<BaseLayout title="我的账号" description="管理读者资料、Passkey 和自己的留言。" bodyClass="reader-page">
-  <section class="shell reader-account-page" data-reader-account-page data-reader-id={reader?.id || ''} aria-labelledby="reader-account-title">
-    <header class="reader-account-intro"><span class="section-kicker">ACCOUNT</span><h1 id="reader-account-title">我的账号</h1><p>安放你的名字，也收好写过的纸条。</p></header>
-    <section class="reader-paper" data-account-signed-out hidden={Boolean(reader)}><h2>先和我们打个招呼</h2><p>登录后可以修改资料、管理 Passkey 和查看自己的留言。</p><button type="button" data-account-login>打开登录面板 <span aria-hidden="true">↗</span></button></section>
+<BaseLayout title="我的账号" description="管理读者资料、Passkey 和自己的留言。" bodyClass="reader-page" reader={reader}>
+  <section class="shell reader-account-page" data-reader-account-page data-account-initial={account && comments ? JSON.stringify({ account, comments }) : undefined} data-reader-id={reader?.id || ''} data-name-maximum={readerConfig.displayNameMaximumLength} data-avatar-maximum={readerConfig.avatarMaximumBytes} aria-labelledby="reader-account-title">
+    <h1 class="sr-only" id="reader-account-title">我的账号</h1>
+    <div data-account-signed-out hidden={Boolean(reader)}><ReaderLogin reader={reader} /></div>
     <div data-account-content hidden={!reader}>
       <section class="reader-paper reader-account-summary" aria-label="读者资料">
-        <div class="reader-avatar" aria-hidden="true"><span data-account-initial>{Array.from(reader?.displayName || '读')[0]}</span><img data-account-avatar src={reader?.avatarUrl || undefined} hidden={!reader?.avatarUrl} alt="" width="72" height="72" referrerpolicy="no-referrer" /></div>
-        <div><h2 data-account-name>{reader?.displayName}</h2><p data-account-method></p></div>
-        <dl><div><dt>注册时间</dt><dd><time data-account-created>—</time></dd></div><div><dt>累计留言与评论</dt><dd data-account-comment-count>—</dd></div></dl>
+        <button type="button" class="reader-avatar reader-avatar-edit" data-avatar-select aria-label="更换头像，不超过 2 MB" disabled><span data-account-initial aria-hidden="true">{Array.from(reader?.displayName || '读')[0]}</span><img data-account-avatar src={reader?.avatarUrl || undefined} hidden={!reader?.avatarUrl} alt="" width="72" height="72" referrerpolicy="no-referrer" /><span class="reader-avatar-edit__overlay" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="m15 4 5 5M4 20l5-1L20 8a3.5 3.5 0 0 0-5-5L4 14Z" /><path d="M4 14v6h6" /></svg></span></button>
+        <div><div class="reader-identity-heading"><h2 data-account-name tabindex="-1">{reader?.displayName}</h2></div><input class="sr-only" type="file" data-avatar-file accept="image/png,image/jpeg,image/webp,image/gif" tabindex="-1" disabled /><p class="reader-feedback" data-avatar-feedback role="status" aria-live="polite"></p></div>
+        <dl><div class="reader-account-registration"><ReaderMethodBadge method={reader?.loginMethod} /><dt>注册时间</dt><dd><time data-account-created datetime={account?.reader.createdAt}>{date(account?.reader.createdAt)}</time></dd></div><div><dt>累计留言与评论</dt><dd data-account-comment-count>{account?.commentCount ?? 0} 次</dd></div><div class="reader-account-logout"><button type="button" data-reader-logout disabled>退出登录</button></div></dl>
       </section>
       <div class="reader-account-grid">
-        <section class="reader-paper reader-account-wide" aria-labelledby="reader-profile-title"><h2 id="reader-profile-title">我的资料</h2><p class="reader-help">昵称用于留言和评论，保存后以前的署名也会更新。</p>
+        <section class="reader-paper reader-account-wide reader-profile-card" aria-labelledby="reader-profile-title"><div class="reader-card-heading"><h2 id="reader-profile-title">个人资料</h2></div>
           <form method="post" action="/api/reader/account.json" data-account-profile novalidate>
-            <label class="reader-field">昵称<input name="displayName" value={reader?.displayName || ''} minlength="2" maxlength="48" autocomplete="nickname" required disabled /></label>
-            <label class="reader-field">个人网站 · 可选<input name="websiteUrl" type="url" maxlength="2048" placeholder="https://example.com" autocomplete="url" disabled /></label>
-            <footer><button type="submit" disabled>保存资料 <span aria-hidden="true">↗</span></button><a data-account-website hidden target="_blank" rel="noopener noreferrer">打开我的网站 ↗</a></footer>
-            <p class="reader-feedback" data-profile-feedback role="status" aria-live="polite"></p>
+            <div class="reader-profile-fields"><label class="reader-field reader-profile-field paper-input-label"><span>昵称</span><input name="displayName" value={reader?.displayName || ''} minlength="2" maxlength={readerConfig.displayNameMaximumLength * 2} autocomplete="nickname" required disabled /></label>
+            <label class="reader-field reader-profile-field paper-input-label"><span>个人网站 · 可选</span><input name="websiteUrl" value={account?.reader.websiteUrl || ''} type="text" inputmode="url" maxlength="2048" placeholder="https://example.com" autocomplete="url" disabled /></label></div>
+            <footer><button type="submit" disabled>保存资料 <span aria-hidden="true">↗</span></button><p class="reader-feedback" data-profile-feedback role="status" aria-live="polite"></p><a data-account-website aria-label="打开我的网站" title="打开我的网站" href={account?.reader.websiteUrl || undefined} hidden={!account?.reader.websiteUrl} target="_blank" rel="noopener noreferrer">↗</a></footer>
           </form>
         </section>
-        <section class="reader-paper reader-account-wide" aria-labelledby="reader-passkeys-title"><h2 id="reader-passkeys-title">我的 Passkey</h2><p class="reader-help">使用设备上的指纹、面容或屏幕锁登录。添加和移除前需要近期验证身份。</p>
-          <ul class="reader-passkeys" data-account-passkeys></ul><p class="reader-help" data-passkeys-empty>正在读取…</p>
-          <form class="reader-passkey-add" method="post" data-passkey-add novalidate><label class="reader-field">给设备起个名字<input name="label" maxlength="120" placeholder="例如：我的笔记本" required disabled /></label><button type="submit" disabled>添加 Passkey <span aria-hidden="true">＋</span></button></form>
+        <section class="reader-paper reader-account-wide" aria-labelledby="reader-passkeys-title"><div class="reader-card-heading"><h2 id="reader-passkeys-title">Passkey</h2><span class="reader-card-count" data-passkey-count>{account?.passkeys.length ?? 0} 个</span></div>
+          <ul class="reader-passkeys" data-account-passkeys>{account?.passkeys.map((passkey) => <li><div><strong>{passkey.label}</strong><small>添加于 {date(passkey.createdAt)} · 最近使用 {date(passkey.lastUsedAt)}</small></div><button type="button" disabled>移除</button></li>)}</ul><p class="reader-help" data-passkeys-empty hidden={Boolean(account?.passkeys.length)}>暂无 Passkey</p>
+          <form class="reader-passkey-add" method="post" data-passkey-add novalidate><label class="reader-field reader-profile-field paper-input-label"><span>给设备起个名字</span><input name="label" maxlength="120" placeholder="例如：我的笔记本" required disabled /></label><button type="submit" disabled>添加 Passkey <span aria-hidden="true">＋</span></button></form>
           <p class="reader-feedback" data-passkey-feedback role="status" aria-live="polite"></p>
         </section>
-        <section class="reader-paper reader-account-wide" aria-labelledby="reader-comments-title"><h2 id="reader-comments-title" tabindex="-1">我的留言与评论</h2><p class="reader-help">仅你自己可以在这里查看尚未公开的内容。</p>
-          <ol class="reader-comments" data-account-comments></ol><p class="reader-help" data-comments-empty>正在读取…</p>
-          <nav class="reader-pagination" aria-label="我的留言分页"><button type="button" data-comments-previous disabled>上一页</button><span data-comments-page>—</span><button type="button" data-comments-next disabled>下一页</button></nav>
+        <section class="reader-paper reader-account-wide" aria-labelledby="reader-comments-title"><div class="reader-card-heading"><h2 id="reader-comments-title" tabindex="-1">我的留言与评论</h2><span class="reader-card-count" data-comment-count>{comments?.total ?? 0} 条</span></div>
+          <ol class="reader-comments" data-account-comments>{comments?.comments.map((comment) => <li><header><time datetime={comment.createdAt}>{date(comment.createdAt)}</time><span>{statusLabels[comment.status] || '未公开'}</span><span>{comment.articleTitle || (comment.articleId ? '文章评论' : '留言纸条')}</span></header><p>{comment.content}</p>{comment.url && <a href={comment.url}>查看原文 ↗</a>}</li>)}</ol><p class="reader-help" data-comments-empty hidden={Boolean(comments?.comments.length)}>暂无留言</p>
+          <nav class="reader-pagination" aria-label="我的留言分页"><button type="button" data-comments-previous disabled>上一页</button><span data-comments-page>第 1 / {totalPages} 页 · 共 {comments?.total ?? 0} 条</span><button type="button" data-comments-next disabled>下一页</button></nav>
           <p class="reader-feedback" data-comments-feedback role="status" aria-live="polite"></p>
         </section>
       </div>
@@ -45,5 +53,9 @@ Astro.response.headers.set('X-Robots-Tag', 'noindex, nofollow');
 </BaseLayout>
 <script>
   import { initializeReaderAccount } from '../lib/reader-account-client';
+  import { initializeReaderSurfaces } from '../lib/reader-surface-geometry';
+  import { initializeReaderEffects } from '../lib/reader-effects';
   initializeReaderAccount();
+  const root = document.querySelector<HTMLElement>('[data-reader-account-page]');
+  if (root) { initializeReaderSurfaces(root); initializeReaderEffects(root); }
 </script>

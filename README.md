@@ -34,15 +34,23 @@
 
 视觉、动效、移动端和无障碍要求集中在 [design/README.md](design/README.md)，协作与验证纪律见 [AGENTS.md](AGENTS.md)。
 
-首页只加载共用文章样式；阅读工具、目录、图片查看器、摘录弹窗和评论样式在阅读页及后台预览加载。背景粒子使用缓存的视口与定位数据绘制连线，桌面40个、手机12个，均减少三分之一；星座每轮最多6／3个连接名额、10／6个参与节点，每个连接名额按50%概率抽选，再受距离与节点连接数约束。隐藏或暂停时停止无效调度；原刷新、渐隐及动效时序保持不变。首屏字标与手机768px头图采用重新压缩的 WebP，尺寸与构图不变，桌面仍使用1080p头图；旧图片地址继续有效。开发模式显式预优化按需加载的 Three.js，避免类型检查后优化缓存缺少依赖，导致背景导入返回504。
+首页只加载共用文章样式；阅读工具、目录、图片查看器、摘录弹窗和评论样式在阅读页及后台预览加载。背景粒子使用缓存的视口与定位数据绘制连线，桌面40个、手机12个，均减少三分之一；星座每轮最多6／3个连接名额、10／6个参与节点，每个连接名额按50%概率抽选，再受距离与节点连接数约束。隐藏或暂停时停止无效调度；原刷新、渐隐及动效时序保持不变。首屏字标与手机768px头图采用重新压缩的 WebP，尺寸与构图不变，桌面仍使用1080p头图；旧图片地址继续有效。开发模式显式预优化按需加载的 Three.js 与 Passkey 浏览器模块，减少预构建切换造成旧导入地址失效；Passkey 模块载入失败时提示刷新页面后重试。
+
+首屏可见内容保持服务端输出，滚动渐入仅作用于屏幕下方内容。读者页面区域在同步写入连续曲率路径后立即显现；`siteConfig.readerPresentation.readyTimeoutMilliseconds` 默认2000，仅作为轮廓加载失败的截止时间，历史恢复立即释放，无脚本时保留无外框降级。
 
 ### 读者身份
 
-顶部“关于”右侧的头像与“读者”打开导航下方的小面板，支持邮箱六位验证码、BlogsClub、GitHub、Google 和 Passkey；未配置的提供方禁用。邮箱验证后自动注册，无需密码。登录后显示头像、昵称、当前登录方式、我的账号与退出；读者会话独立于站长管理权限。不同方式不按相同邮箱自动合并账户。面板打开时锁定背景滚动，关闭后恢复位置；低高度屏幕允许面板内部滚动，支持 Escape、背景点击与键盘焦点恢复。
+顶部“关于”右侧的“读者”为普通链接，进入 `/reader`：未登录显示页内登录卡片，已登录显示账号页。导航身份由服务端输出，有头像地址时显示图片，无地址不占位，当前页面保留高亮。登录支持邮箱三位数字验证码（允许前导零）、BlogsClub、GitHub、Google 和 Passkey；未配置的提供方禁用。邮箱验证后自动注册，无需密码。验证码邮件包含 SamsBlog 品牌 HTML 与纯文本回退，突出验证码、配置有效期及简短忽略提示。读者会话独立于站长管理权限，不同方式不按相同邮箱自动合并账户。
 
-`/reader` 为正常滚动的账号页，可修改昵称和个人网站、管理 Passkey、分页查看本人未删除的留言与评论，以及注册时间和累计留言与评论次数。昵称修改同步既有署名；隐藏文章不返回标题或跳转地址。Passkey 添加和移除需15分钟内重新验证，移除需二次点击；重验后自行重新选择操作，不自动重放请求，切换账号先清空旧资料。
+登录卡片直接呈现邮箱与验证码，复用透明下划线和手绘竖光标，聚焦无矩形外框。邮箱关闭自动补全、自动大写与拼写检查；验证码保留系统自动填充。Google／BlogsClub／GitHub／Passkey 以两列等宽连续曲率胶囊排列，图标与文字各占固定列，整组居中、列内左对齐；BlogsClub 使用原创实心 B 单色 SVG（无外框或描线），文字沿用站内艺术字体。胶囊轻影贴合曲率，悬停字色平滑过渡，点击呈现 Material 式涟漪；暂停或减少动效时使用短暂静态反馈。登录成功后显示服务端账号页，退出后显示登录页。
 
-登录读者的称呼由服务端身份决定，提交后直接公开；匿名留言、评论和回复先审核，待审内容不会插入公开列表。两者都只能回复已公开父帖。登录邮箱不自动填入回复通知邮箱，已有本机称呼和通知邮箱继续保留。验证码和登录邮箱不存入 localStorage；读者页及含身份的页面禁止共享缓存。
+OAuth 在点击时打开独立浏览器授权窗口，授权期间 `/reader` 保留当前位置和输入。完成页只提示原页面重新查询服务端会话，不传递身份、授权码或令牌；会话创建时间变化后才确认登录或同账号重验。窗口通信受限时继续查询，关窗不当作成功；支持取消与超时，失败后恢复控件和焦点。窗口尺寸、查询间隔及等待上限由 `siteConfig.readerPopup` 配置，默认520×720、3秒、10分钟。
+
+账号页直接展示无外框、连续曲率轮廓与纯色层次的卡片，桌面加宽、小字放大、纵向留白收紧。登录方式图标徽标位于注册时间左侧，保留名称的 `aria-label` 与 `title`；统计行最右侧为“退出登录”胶囊。可修改昵称与个人网站，点击头像更换图片；头像悬停或聚焦时显示铅笔图标并虚化底图。编辑昵称需2–12个 Unicode 码点，修改同步既有署名，旧长昵称保留可读。头像仅接受 JPEG／PNG／WebP／GIF，文件不超过2MiB；更换后保留旧图，共用或仍被读者引用的头像禁止后台删除。可管理 Passkey，查看注册时间、累计留言与评论次数及本人留言分页；隐藏文章不返回标题或跳转地址。Passkey 添加和移除需15分钟内重新验证，移除需二次点击；过期时在同页切换到身份验证区域，也可返回账号，验证后自行重新选择操作。身份切换先清空旧资料。
+
+完整账号资料、Passkey 和首批本人留言均由服务端直接输出，客户端接管已有状态。保存资料原位反馈并保留等待期间的新编辑，不重复读取列表。
+
+登录读者的称呼由服务端身份决定，提交后直接公开；首页留言隐藏整行称呼输入，显示放大的身份提示，匿名访客保留称呼输入；登录或退出即时切换，并保留匿名草稿。匿名留言、评论和回复先审核，待审内容不会插入公开列表。两者都只能回复已公开父帖。登录邮箱不自动填入回复通知邮箱，已有本机称呼和通知邮箱继续保留。验证码和登录邮箱不存入 localStorage；所有 HTML 响应使用 `private, no-store` 与 `Vary: Cookie`，静态资源和 RSS 沿用各自缓存规则。
 
 ### 文章与阅读
 
@@ -177,7 +185,9 @@ pnpm dev:background
 | `READER_GITHUB_CLIENT_ID`、`READER_GITHUB_CLIENT_SECRET` | GitHub App 用户 OAuth 的服务端凭证 |
 | `READER_GOOGLE_CLIENT_ID`、`READER_GOOGLE_CLIENT_SECRET` | Google Web 客户端凭证；测试模式仅允许登记的测试用户 |
 
-读者邮箱验证码沿用 `BLOG_SECRET`、`RESEND_API_KEY` 和已验证域名的 `MAIL_FROM`，不需要新增邮件模板。BlogsClub 使用 OAuth 2 基础资料授权；回调必须是 `PUBLIC_SITE_URL` 的 HTTPS 根路径，例如 `https://blog.example.com/`，与提供方登记地址完全匹配。BlogsClub 应用已审核通过；本地模拟验证不代表已完成真实授权验收。客户端凭证保持空值时，页面禁用该方式，不把真实 AppKey 写入文档。 GitHub 与 Google 分别登记 `PUBLIC_SITE_URL` 下的 `/api/reader/oauth/github/callback.json`、`/api/reader/oauth/google/callback.json`；授权成功均转入 `/reader`。Google 使用 OIDC 与 PKCE；BlogsClub 使用原生 OAuth 2。Passkey 使用 SimpleWebAuthn，生产需 HTTPS，凭据绑定站点域名；更换域名不会迁移已有凭据。
+读者邮箱验证码沿用 `BLOG_SECRET`、`RESEND_API_KEY` 和已验证域名的 `MAIL_FROM`，不需要新增邮件模板。BlogsClub 使用 OAuth 2 基础资料授权；回调必须是 `PUBLIC_SITE_URL` 的 HTTPS 根路径，例如 `https://blog.example.com/`，与提供方登记地址完全匹配。BlogsClub 应用已审核通过；客户端凭证保持空值时，页面禁用该方式，不把真实 AppKey 写入文档。GitHub 与 Google 分别登记 `PUBLIC_SITE_URL` 下的 `/api/reader/oauth/github/callback.json`、`/api/reader/oauth/google/callback.json`；回调均303转入干净的 `/reader/oauth-complete`，通知原页面重新读取会话，无窗口通信时保留手动返回账号入口。Google 使用 OIDC 与 PKCE；BlogsClub 使用原生 OAuth 2。Passkey 使用 SimpleWebAuthn，生产需 HTTPS，凭据绑定站点域名；更换域名不会迁移已有凭据。
+
+本地 `localhost` 回调与提供方登记的生产域名回调不同，必须分别满足提供方的登记要求；OAuth 授权窗口不会改变登记地址或解决配置不匹配。本地模拟、界面验证及单测通过均不代表真实生产授权已完成验收。
 
 哈希生成命令的参数可能进入终端历史，请在可信终端生成并妥善处理历史。`.env` 及 `.env.*` 均不提交 Git，仅保留 `.env.example`；生产环境文件权限设为 `600`。开发服务读取本地环境，生产业务代码只读进程环境，管理密钥不应写进构建产物。
 
@@ -206,8 +216,10 @@ Astro 构建配置按 `.env` → `.env.local` → `.env.<mode>` → `.env.<mode>
 | 分组 | 环境变量与默认值 |
 | --- | --- |
 | 有效期 | `READER_SESSION_SECONDS=2592000`、`READER_OAUTH_SECONDS=600`、`READER_CODE_SECONDS=600` |
-| 邮箱验证码 | `READER_CODE_ATTEMPTS=5`、`READER_EMAIL_COOLDOWN_SECONDS=60` |
-| 账号管理 | `READER_RECENT_AUTHENTICATION_SECONDS=900`、`READER_ACCOUNT_PAGE_SIZE=20`、`READER_PROFILE_SOURCE_LIMIT=30` |
+| 邮箱验证码 | `READER_CODE_ATTEMPTS=3`（1–3）、`READER_EMAIL_COOLDOWN_SECONDS=60` |
+| 账号管理 | `READER_RECENT_AUTHENTICATION_SECONDS=900`、`READER_ACCOUNT_PAGE_SIZE=20`、`READER_PROFILE_SOURCE_LIMIT=30`、`READER_DISPLAY_NAME_MAXIMUM_LENGTH=12` |
+| 头像上传 | `READER_AVATAR_MAXIMUM_BYTES=2097152`、`READER_AVATAR_MULTIPART_OVERHEAD_BYTES=65536` |
+| 头像额度 | `READER_AVATAR_SOURCE_LIMIT=10`、`READER_AVATAR_READER_LIMIT=10`、`READER_AVATAR_GLOBAL_LIMIT=200`，共用持久额度窗口 |
 | Passkey | `READER_PASSKEY_CHALLENGE_SECONDS=300`、`READER_PASSKEY_MAXIMUM_COUNT=10`、`READER_PASSKEY_REQUEST_MAXIMUM_BYTES=65536` |
 | Passkey 额度 | `READER_PASSKEY_SOURCE_LIMIT=60`、`READER_PASSKEY_GLOBAL_LIMIT=2000` |
 | 持久额度窗口 | `READER_QUOTA_WINDOW_SECONDS=3600` |
@@ -216,7 +228,7 @@ Astro 构建配置按 `.env` → `.env.local` → `.env.<mode>` → `.env.<mode>
 | OAuth 登录额度 | `READER_OAUTH_SOURCE_LIMIT=30`、`READER_OAUTH_GLOBAL_LIMIT=1000` |
 | 请求边界 | `READER_REQUEST_MAXIMUM_BYTES=4096`、`READER_UPSTREAM_TIMEOUT_MILLISECONDS=8000`、`READER_UPSTREAM_MAXIMUM_BYTES=65536` |
 
-读者会话默认30天，验证码默认10分钟、最多5次验证；读者认证额度持久化到 SQLite，重启不清零。读者身份不保存原始登录邮箱或提供方令牌；邮箱身份使用规范化邮箱的稳定摘要，验证码和邮箱额度使用带密钥摘要。回复通知邮箱是用户另外自愿填写的资料，仍按原通知规则保存。
+读者会话默认30天，验证码固定为三位数字、默认有效10分钟；验证尝试默认3次、上限3次，旧六位验证码需重新获取。读者认证额度持久化到 SQLite，重启不清零。读者身份不保存原始登录邮箱或提供方令牌；邮箱身份使用规范化邮箱的稳定摘要，验证码和邮箱额度使用带密钥摘要。回复通知邮箱是用户另外自愿填写的资料，仍按原通知规则保存。
 
 数值参数须为正整数。探测超时最多15000ms，慢阈值须小于超时，并发最多6、跳转最多5。订阅缓存最多86400秒、响应最多4MiB、条目最多500、深度最多64；复用探测的超时与并发限制。文章字符数和请求字节数独立校验；修改请求上限时同步调整 Node adapter 与代理。
 
@@ -232,12 +244,13 @@ Astro 构建配置按 `.env` → `.env.local` → `.env.<mode>` → `.env.<mode>
 | --- | --- | --- |
 | `/api/admin/login.json` | POST／公开限速 | `{password}`；登录 Cookie；401密码错误、429限速、503配置不可用 |
 | `/api/admin/logout.json` | POST／管理员 | 清除管理 Cookie |
-| `/api/reader/session.json` | GET／当前浏览器 | `{reader,options}`，只返回读者公开姓名、头像、当前登录方式及可用登录方式 |
+| `/api/reader/session.json` | GET／当前浏览器 | `{reader,options,authenticatedAt}`，返回公开资料、登录选项及当前有效会话创建时间，不返回令牌 |
 | `/api/reader/email-code.json` | POST／同源限速 | `{email}`；统一成功消息及验证码有效期／重发间隔 |
 | `/api/reader/email-login.json` | POST／同源限速 | `{email,code}`；成功返回 `{reader}` 并设置独立读者会话 |
-| `/api/reader/oauth/blogsclub.json` | POST／同源限速 | 返回 `{url}`，整页前往 BlogsClub；回调到已登记根路径后303转入 `/reader` |
-| `/api/reader/oauth/github.json`、`/api/reader/oauth/google.json` | POST／同源限速 | 返回 `{url}`，整页授权；固定提供方回调成功后303转入 `/reader` |
-| `/api/reader/account.json` | GET/PATCH／当前读者 | 私有资料、注册时间、累计评论数和 Passkey；PATCH `{displayName,websiteUrl}` |
+| `/api/reader/oauth/blogsclub.json` | POST／同源限速 | 返回 `{url}`，独立窗口授权；已登记根路径回调后303转入 `/reader/oauth-complete`，仅带 `result=success` 或 `result=error` |
+| `/api/reader/oauth/github.json`、`/api/reader/oauth/google.json` | POST／同源限速 | 返回 `{url}`，独立窗口授权；固定提供方回调后进入同一完成页 |
+| `/api/reader/account.json` | GET/PATCH／当前读者 | 私有资料、注册时间、累计评论数和 Passkey；PATCH `{displayName,websiteUrl}`，昵称2–12个 Unicode 码点 |
+| `/api/reader/avatar.json` | POST／当前读者、同源限速 | multipart 单一 `file`，JPEG／PNG／WebP／GIF且不超过2MiB；返回 `{reader,account}` |
 | `/api/reader/comments.json?page=1` | GET／当前读者 | 本人未删除评论分页，包含审核状态；非公开文章不返回标题或链接 |
 | `/api/reader/passkeys/{register,login}-{options,verify}.json` | POST／同源限速 | options 返回挑战；verify 验证浏览器凭据。注册需已登录且近期验证 |
 | `/api/reader/passkeys.json` | GET/DELETE／当前读者 | 私有凭据列表；DELETE `{id}` 需近期验证，超时401 `code: reauth_required` |

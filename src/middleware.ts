@@ -14,8 +14,7 @@ export const onRequest = defineMiddleware(async ({ cookies, request, url }, next
     return blogsClubCallback({ cookies, url });
   }
   const response = await next();
-  if (response.headers.get('content-type')?.includes('text/html')
-    && (url.pathname === '/' || url.pathname === '/reader' || url.pathname.startsWith('/articles/'))) {
+  if (response.headers.get('content-type')?.includes('text/html')) {
     response.headers.set('Cache-Control', 'private, no-store');
     const vary = response.headers.get('Vary');
     if (!vary?.split(',').some((value) => value.trim().toLowerCase() === 'cookie')) response.headers.set('Vary', vary ? `${vary}, Cookie` : 'Cookie');

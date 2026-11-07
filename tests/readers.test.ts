@@ -2,6 +2,9 @@ import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash, generateKeyPairSync, sign } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { runInNewContext } from 'node:vm';
+import { ModuleKind, ScriptTarget, transpile } from 'typescript';
 import type { APIContext } from 'astro';
 import { beforeAll, beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { readerConfig } from '../src/config/readers';
@@ -9,10 +12,10 @@ import { siteConfig } from '../src/config/site';
 import { getDatabase } from '../src/lib/db';
 import { verifyAdminSession } from '../src/lib/admin-auth';
 import { blogsClubCallback, finishBlogsClubLogin, startBlogsClubLogin, finishReaderOAuth, startReaderOAuth } from '../src/lib/reader-oauth';
-import { readReaderEmail, sendReaderEmailCode, verifyReaderEmailCode } from '../src/lib/reader-email';
+import { createReaderCodeEmail, readReaderEmail, sendReaderEmailCode, verifyReaderEmailCode } from '../src/lib/reader-email';
 import { readerUpstreamRequest } from '../src/lib/reader-transport';
 import { endReaderSession, getReaderAuthOptions, readReaderSession, readerCookieName, readerFlowCookieName,
-  readerTokenHash, resolveReaderIdentity, startReaderSession, takeReaderAllowance, type ReaderCookies } from '../src/lib/readers';
+  readerPrivateHash, readerTokenHash, resolveReaderIdentity, startReaderSession, takeReaderAllowance, type ReaderCookies } from '../src/lib/readers';
 import { POST as requestCode } from '../src/pages/api/reader/email-code.json';
 import { POST as emailLogin } from '../src/pages/api/reader/email-login.json';
 import { POST as oauthStart } from '../src/pages/api/reader/oauth/blogsclub.json';
@@ -64,7 +67,7 @@ function captureEmail() {
   let code = '';
   const fetchRequest = vi.fn(async (_url: URL, options: RequestInit) => {
     const body = JSON.parse(String(options.body));
-    code = String(body.text).match(/\d{6}/)![0];
+    code = String(body.text).match(/\d{3}/)![0];
     return Response.json({ id: 'fixture-mail-id' });
   });
   vi.stubGlobal('fetch', fetchRequest);
@@ -89,7 +92,7 @@ describe('reader identities and sessions', () => {
   it('keeps provider identities separate and normalizes profile names and unsafe avatars', () => {
     const first = resolveReaderIdentity('blogsclub', '123', '😀'.repeat(30), 'javascript:alert(1)');
     const second = resolveReaderIdentity('email', '123', '邮箱读者', null);
-    expect(Array.from(first.displayName)).toHaveLength(24);
+    expect(Array.from(first.displayName)).toHaveLength(12);
     expect(first.avatarUrl).toBeNull();
     expect(first.id).not.toBe(second.id);
     expect(resolveReaderIdentity('blogsclub', '123', '其他昵称', null).id).toBe(first.id);
@@ -228,6 +231,24 @@ describe('GitHub App user OAuth and Google OIDC', () => {
 });
 
 describe('BlogsClub OAuth boundary', () => {
+  it('redirects verified OAuth only to the clean completion page and reports the new session timestamp', async () => {
+    const { cookies } = cookieJar();
+    const before = await session({ cookies } as APIContext);
+    expect((await before.json()).authenticatedAt).toBeNull();
+    const { callback } = oauthFlow(cookies);
+    successfulOAuth();
+    const response = await blogsClubCallback({ url: callback, cookies });
+    expect(response.status).toBe(303);
+    expect(response.headers.get('Location')).toBe('/reader/oauth-complete?result=success');
+    expect(await response.text()).toBe('');
+    const signedIn = await (await session({ cookies } as APIContext)).json();
+    expect(signedIn.authenticatedAt).toEqual(expect.any(Number));
+    expect(signedIn.reader.loginMethod).toBe('blogsclub');
+    vi.spyOn(Date, 'now').mockReturnValue(signedIn.authenticatedAt + 1000);
+    startReaderSession(cookies, signedIn.reader, 'blogsclub');
+    expect((await (await session({ cookies } as APIContext)).json()).authenticatedAt).toBe(signedIn.authenticatedAt + 1000);
+  });
+
   it('binds random persistent state to the browser and consumes it once before exchanging tokens', async () => {
     const { cookies, values } = cookieJar();
     const { authorization, callback } = oauthFlow(cookies);
@@ -274,7 +295,7 @@ describe('BlogsClub OAuth boundary', () => {
       .mockResolvedValueOnce(Response.json({ status: 200, data: { openid: '456', blog_name: '错误身份' } }));
     const response = await blogsClubCallback({ url: callback, cookies });
     expect(response.status).toBe(303);
-    expect(response.headers.get('Location')).toBe('/reader?error=oauth');
+    expect(response.headers.get('Location')).toBe('/reader/oauth-complete?result=error');
     expect(response.headers.get('Referrer-Policy')).toBe('no-referrer');
     expect(response.headers.get('Cache-Control')).toContain('no-store');
     expect(values.has(readerFlowCookieName)).toBe(false);
@@ -284,7 +305,64 @@ describe('BlogsClub OAuth boundary', () => {
   });
 });
 
+describe('OAuth completion window', () => {
+  const source = readFileSync(new URL('../src/pages/reader/oauth-complete.astro', import.meta.url), 'utf8');
+  const script = source.match(/<script>([\s\S]*?)<\/script>/)?.[1];
+  if (!script) throw new Error('OAuth completion script missing');
+  const compiled = transpile(script, { module: ModuleKind.CommonJS, target: ScriptTarget.ES2022 });
+
+  it.each(['success', 'error', 'untrusted'])('posts only a bounded %s result to the current origin', (result) => {
+    const postMessage = vi.fn();
+    const close = vi.fn();
+    const button = { hidden: true, addEventListener: vi.fn() };
+    const root = { dataset: { result }, querySelector: () => button };
+    runInNewContext(compiled, { document: { querySelector: () => root }, window: { opener: { postMessage }, close, location: { origin: 'https://blog.example.com' } } });
+    expect(postMessage).toHaveBeenCalledExactlyOnceWith({ type: 'samsblog-reader-oauth', status: result === 'success' ? 'success' : 'error' }, 'https://blog.example.com');
+    expect(close).toHaveBeenCalledOnce();
+    expect(button.hidden).toBe(false);
+  });
+
+  it('leaves a usable account link without an opener and handles blocked opener communication', () => {
+    const close = vi.fn();
+    const button = { hidden: true, addEventListener: vi.fn() };
+    const help = { textContent: '' };
+    const root = { dataset: { result: 'success' }, querySelector: (selector: string) => selector === '[data-oauth-close]' ? button : help };
+    const window = { opener: null as { postMessage: () => void } | null, close, location: { origin: 'https://blog.example.com' } };
+    runInNewContext(compiled, { document: { querySelector: () => root }, window });
+    expect(close).not.toHaveBeenCalled();
+    expect(source).toContain('href="/reader"');
+    window.opener = { postMessage: () => { throw new DOMException('Blocked', 'SecurityError'); } };
+    runInNewContext(compiled, { document: { querySelector: () => root }, window });
+    expect(close).not.toHaveBeenCalled();
+    expect(help.textContent).toContain('浏览器限制');
+    expect(source).toContain('Boolean(readReaderSession(Astro.cookies))');
+    expect(source).toContain("'Cache-Control', 'private, no-store'");
+  });
+});
+
 describe('email login codes', () => {
+  it('keeps three-digit leading zeros and rejects the old six-digit protocol', async () => {
+    const { cookies } = cookieJar(); const mailbox = captureEmail();
+    const email = 'leading@example.com';
+    await sendReaderEmailCode(email, 'leading-source');
+    expect(mailbox.code()).toMatch(/^\d{3}$/);
+    const address = readerPrivateHash('email', email);
+    getDatabase().prepare('UPDATE reader_email_codes SET code_hash=? WHERE email_hash=?').run(readerPrivateHash('email-code', `${address}:003`), address);
+    expect(() => verifyReaderEmailCode(email, '000003', 'leading-source', cookies)).toThrow('三位');
+    const reader = verifyReaderEmailCode(email, '003', 'leading-source', cookies);
+    expect(readReaderSession(cookies)?.id).toBe(reader.id);
+    expect(() => verifyReaderEmailCode(email, '003', 'leading-source', cookies)).toThrow('验证码无效');
+    expect(readerConfig.codeAttempts).toBe(3);
+  });
+  it('renders a compact HTML email with a copyable code, configured validity and text fallback', () => {
+    const message = createReaderCodeEmail('003', 120);
+    expect(message.text).toContain('003'); expect(message.text).toContain('2 分钟');
+    expect(message.html).toContain('>003</td>'); expect(message.html).toContain('2 分钟');
+    expect(message.html).toContain('SamsBlog'); expect(message.html).toContain('role="presentation"');
+    expect(message.html).not.toMatch(/<script|<img|url\(|https?:/i);
+    expect(() => createReaderCodeEmail('<script>')).toThrow('Invalid');
+    expect(() => createReaderCodeEmail('003', Number.NaN)).toThrow('Invalid');
+  });
   it('sends only through mocked Resend, stores hashes and accepts a code exactly once', async () => {
     const { cookies } = cookieJar();
     const mailbox = captureEmail();
@@ -311,7 +389,7 @@ describe('email login codes', () => {
     const mailbox = captureEmail();
     await sendReaderEmailCode('reader@example.com', 'email-source');
     expect(() => verifyReaderEmailCode('other@example.com', mailbox.code(), 'email-source', cookies)).toThrow('验证码无效');
-    const wrong = String((Number(mailbox.code()) + 1) % 1000000).padStart(6, '0');
+    const wrong = String((Number(mailbox.code()) + 1) % 1000).padStart(3, '0');
     for (let index = 0; index < readerConfig.codeAttempts; index++) {
       expect(() => verifyReaderEmailCode('reader@example.com', wrong, 'email-source', cookies)).toThrow('验证码无效');
     }
@@ -378,7 +456,8 @@ describe('reader transport and API guards', () => {
     expect(response.headers.get('Cache-Control')).toBe('private, no-store');
     const body = await response.json();
     expect(body.reader).toBeNull();
-    expect(Object.keys(body).sort()).toEqual(['options', 'reader']);
+    expect(body.authenticatedAt).toBeNull();
+    expect(Object.keys(body).sort()).toEqual(['authenticatedAt', 'options', 'reader']);
   });
 
   it('expires persistent allowance windows exactly at their deadline', () => {

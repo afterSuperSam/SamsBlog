@@ -23,7 +23,7 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
     </header>
 
     <div class="guestbook-layout">
-      <form method="post" class="message-form" data-message-form autocomplete="off" novalidate>
+      <form method="post" class="message-form" data-message-form data-reader-authenticated={String(Boolean(reader))} autocomplete="off" novalidate>
         <span class="message-form__decor" aria-hidden="true"><i>✿</i><i>✧</i><i>✦</i></span>
         <div class="message-form__title">
           <span aria-hidden="true">
@@ -31,8 +31,8 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
           </span>
           <h3>写一张小纸条</h3>
         </div>
-        <p class="reader-comment-identity">{reader ? <>以读者 <b>{reader.displayName}</b> 的身份留言 · <a href="/reader">查看身份</a></> : <>匿名留言审核后公开，也可以先 <a href="/reader">登录读者身份</a>。</>}</p>
-        <label class="paper-input-label">
+        <p class="reader-comment-identity"><span data-guestbook-reader hidden={!reader}>以读者 <b>{reader?.displayName}</b> 的身份留言</span><span data-guestbook-anonymous hidden={Boolean(reader)}>匿名留言审核后公开，也可以先 <a href="/reader">登录读者身份</a>。</span></p>
+        <label class="paper-input-label" data-guestbook-nickname hidden={Boolean(reader)}>
           <span>怎么称呼你</span>
           <input name="nickname" type="text" minlength="2" maxlength="48" data-character-maximum="24" autocomplete="off" spellcheck="false" placeholder="2–24 个字符" aria-required="true" aria-describedby="message-form-status" value={reader?.displayName || ''} readonly={Boolean(reader)} />
         </label>
@@ -105,6 +105,23 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
   const form = document.querySelector<HTMLFormElement>('[data-message-form]');
   const visitor = form ? rememberVisitor(form) : undefined;
   const nickname = form?.querySelector<HTMLInputElement>('input[name="nickname"]');
+  let anonymousNickname = nickname?.readOnly ? '' : nickname?.value || '';
+  document.addEventListener('reader:session', (event) => {
+    if (!form || !nickname) return;
+    const reader = (event as CustomEvent<{ displayName: string } | null>).detail;
+    if (reader) {
+      if (!nickname.readOnly) anonymousNickname = nickname.value;
+      nickname.value = reader.displayName;
+    } else if (nickname.readOnly) nickname.value = anonymousNickname;
+    nickname.readOnly = Boolean(reader);
+    form.dataset.readerAuthenticated = String(Boolean(reader));
+    form.querySelector<HTMLElement>('[data-guestbook-nickname]')!.hidden = Boolean(reader);
+    form.querySelector<HTMLElement>('[data-guestbook-reader]')!.hidden = !reader;
+    form.querySelector<HTMLElement>('[data-guestbook-anonymous]')!.hidden = Boolean(reader);
+    const name = form.querySelector<HTMLElement>('[data-guestbook-reader] b');
+    if (name) name.textContent = reader?.displayName || '';
+    nickname.dispatchEvent(new Event('input'));
+  });
   const textarea = form?.querySelector<HTMLTextAreaElement>('textarea[name="content"]');
   const inputTools = form && textarea ? initializeCommentInput(form, textarea) : undefined;
   const counter = form?.querySelector<HTMLElement>('[data-message-count]');

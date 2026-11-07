@@ -80,6 +80,14 @@ export function requireRecentReaderSession(cookies: Pick<AstroCookies, 'get'>): 
   return reader;
 }
 
+export function readerAuthenticatedAt(cookies: Pick<AstroCookies, 'get'>): number | null {
+  const token = cookies.get(readerCookieName)?.value;
+  if (!validReaderToken(token)) return null;
+  const session = getDatabase().prepare(`SELECT s.created_at FROM reader_sessions s JOIN readers r ON r.id=s.reader_id
+    WHERE s.token_hash=? AND s.expires_at>? AND r.deleted_at IS NULL`).get(readerTokenHash(token), Date.now()) as { created_at: number } | undefined;
+  return session?.created_at ?? null;
+}
+
 export function listReaderPasskeys(readerId: number) {
   return getDatabase().prepare(`SELECT id,label,created_at AS createdAt,last_used_at AS lastUsedAt FROM reader_passkeys
     WHERE reader_id=? AND deleted_at IS NULL ORDER BY created_at DESC,id DESC`).all(readerId) as Array<{ id: number; label: string; createdAt: string; lastUsedAt: string | null }>;
@@ -107,7 +115,7 @@ export function startReaderSession(cookies: ReaderCookies, reader: Pick<ReaderPu
 
 export function resolveReaderIdentity(provider: ReaderProvider | 'email', subject: string, displayName: string, avatarUrl: string | null): ReaderPublic {
   if (!subject || subject.length > 255) throw new HttpError(400, '登录身份无效');
-  const cleanedName = Array.from(displayName.replace(/[\u0000-\u001f\u007f]/g, '').trim()).slice(0, 24).join('');
+  const cleanedName = Array.from(displayName.replace(/[\u0000-\u001f\u007f]/g, '').trim()).slice(0, readerConfig.displayNameMaximumLength).join('');
   const name = Array.from(cleanedName).length >= 2 ? cleanedName : '博客读者';
   let avatar: string | null = null;
   if (avatarUrl && avatarUrl.length <= 2048) {
