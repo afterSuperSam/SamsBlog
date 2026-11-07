@@ -156,7 +156,7 @@ describe('domain migration transaction', () => {
     legacy.prepare("UPDATE sqlite_sequence SET seq=900 WHERE name='mail_notifications'").run();
     legacy.close();
     connection = openDatabase();
-    expect(connection.prepare('SELECT * FROM mail_notifications WHERE id=777').get()).toEqual(snapshot);
+    expect(connection.prepare(`SELECT ${Object.keys(snapshot).join(',')} FROM mail_notifications WHERE id=777`).get()).toEqual(snapshot);
     expect(connection.prepare('SELECT friend_id FROM friend_applications WHERE id=20').get()).toEqual({ friend_id: 20 });
     expect(connection.prepare("SELECT COUNT(*) AS count FROM mail_notifications WHERE kind='application_accepted'").get()).toEqual({ count: 0 });
     const insert = connection.prepare("INSERT INTO mail_notifications(kind,application_id,created_at,updated_at) VALUES ('application_accepted',20,'','')");
@@ -167,7 +167,7 @@ describe('domain migration transaction', () => {
     connection = undefined;
     vi.resetModules();
     connection = (await import('../src/lib/db')).getDatabase();
-    expect(connection.prepare('SELECT * FROM mail_notifications WHERE id=777').get()).toEqual(snapshot);
+    expect(connection.prepare(`SELECT ${Object.keys(snapshot).join(',')} FROM mail_notifications WHERE id=777`).get()).toEqual(snapshot);
   });
 
   it.each([true, false])('adopts existing recommendation columns and status caches without the current marker, legacy cache=%s', async (legacyCache) => {

@@ -5,7 +5,7 @@ import type { APIContext } from 'astro';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { getDatabase } from '../src/lib/db';
 import { saveArticle, withdrawArticle } from '../src/lib/articles';
-import { createAdminSession } from '../src/lib/admin-auth';
+import { adminCookie, createAdminSession } from '../src/lib/admin-auth';
 import { getSiteStats, getArticleAnalytics, getVisitorAnalytics, recordConfirmedPageView, hashVisitorToken } from '../src/lib/stats';
 import { POST } from '../src/pages/api/page-view.json';
 import { initializePageView } from '../src/lib/page-view';
@@ -42,7 +42,7 @@ describe('confirmed analytics', () => {
     expect(await (await submit()).json()).toMatchObject({ counted: false });
     expect(await (await submit({ path: '/' }, {})).json()).toEqual({ counted: false });
     expect(await (await submit({ path: '/' }, { 'samsblog-visitor': token }, { 'user-agent': 'Googlebot' })).json()).toEqual({ counted: false });
-    expect(await (await submit({ path: '/about' }, { 'samsblog-visitor': token, samsblog_admin: createAdminSession() })).json()).toEqual({ counted: false });
+    expect(await (await submit({ path: '/about' }, { 'samsblog-visitor': token, [adminCookie.name]: createAdminSession() })).json()).toEqual({ counted: false });
     expect((await submit({ path: '/' }, {}, { origin: 'https://other.example.com' })).status).toBe(403);
     for (const invalid of ['/admin', '/missing', '//evil.example', '/about?x=1']) expect((await submit({ path: invalid })).status).toBe(400);
     expect((await submit({ path: '/', padding: 'x'.repeat(600) })).status).toBe(413);

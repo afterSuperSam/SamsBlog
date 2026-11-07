@@ -231,7 +231,7 @@ describe('two-step reader email login', () => {
     view.submit(); view.submit(); view.click(view.back);
     expect(view.panel.dataset.step).toBe('code'); expect(view.back.disabled).toBe(true);
     expect(transport.request).toHaveBeenCalledTimes(2);
-    expect(transport.request).toHaveBeenLastCalledWith('/api/reader/email-login.json', 'POST', { email: 'fixture@example.com', code: '003' }, expect.any(String));
+    expect(transport.request).toHaveBeenLastCalledWith('/api/reader/email-login.json', 'POST', { email: 'fixture@example.com', code: '003', reauthenticate: false }, expect.any(String));
     expect(view.codeRoot.dataset.status).toBe('idle'); expect(view.navigate).not.toHaveBeenCalled();
     verification.resolve({}); await view.settle();
     expect(view.codeRoot.dataset.status).toBe('success'); expect(view.navigate).not.toHaveBeenCalled();
