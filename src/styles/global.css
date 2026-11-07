@@ -292,9 +292,8 @@
   --ambient-halo-size: min(48vw,620px);
   --ambient-silk-color: #61757f;
   --ambient-silk-sheen: #b6aaa0;
-  --ambient-silk-opacity: .13;
+  --ambient-silk-opacity: .18;
   --ambient-rest-strength: .6;
-  --ambient-quiet-strength: .16;
   --ambient-shift-duration: 1100ms;
   --ambient-halo-opacity: .12;
   --ambient-pink-halo-size: min(65vw,840px);
@@ -324,7 +323,7 @@
 :root[data-theme="light"] {
   --ambient-silk-color: #bacdd3;
   --ambient-silk-sheen: #edf3f4;
-  --ambient-silk-opacity: .1;
+  --ambient-silk-opacity: .14;
   --reader-control-shadow: #294b5d08;
   --reader-ripple-color: #447d90;
   --reader-paper: #fffaf2;

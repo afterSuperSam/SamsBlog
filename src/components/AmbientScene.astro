@@ -1,6 +1,11 @@
+---
+const showPinkHalo = Astro.url.pathname !== '/';
+---
+
 <div class="ambient-scene" aria-hidden="true" data-ambient-scene>
   <canvas class="ambient-silk" data-ambient-silk></canvas>
-  <div class="ambient-atmosphere ambient-atmosphere--blue"><div class="ambient-halo ambient-halo--blue"></div></div><div class="ambient-atmosphere ambient-atmosphere--pink"><div class="ambient-halo ambient-halo--pink"></div></div>
+  <div class="ambient-atmosphere ambient-atmosphere--blue"><div class="ambient-halo ambient-halo--blue"></div></div>
+  {showPinkHalo && <div class="ambient-atmosphere ambient-atmosphere--pink"><div class="ambient-halo ambient-halo--pink"></div></div>}
 
 </div>
 
@@ -9,8 +14,7 @@
   .ambient-silk{position:absolute;inset:0;width:100%;height:100%;opacity:0;pointer-events:none}
   .ambient-silk[data-silk-ready]{opacity:var(--ambient-silk-opacity)}
   .ambient-atmosphere{position:absolute;inset:0;opacity:var(--ambient-rest-strength);transition:opacity var(--ambient-shift-duration) var(--ease-out)}
-  :global(.home-page[data-home-atmosphere="blue"]) .ambient-atmosphere--blue,:global(.home-page[data-home-atmosphere="pink"]) .ambient-atmosphere--pink{opacity:1}
-  :global(.home-page[data-home-atmosphere="blue"]) .ambient-atmosphere--pink,:global(.home-page[data-home-atmosphere="pink"]) .ambient-atmosphere--blue{opacity:var(--ambient-quiet-strength)}
+  :global(.home-page[data-home-atmosphere="blue"]) .ambient-atmosphere--blue{opacity:1}
   :global(.motion-paused) .ambient-atmosphere{transition:none}
   .ambient-halo{--halo-opacity:calc(var(--ambient-halo-opacity) / var(--ambient-rest-strength));--halo-horizontal-offset:var(--ambient-halo-travel);position:absolute;width:var(--ambient-halo-size);aspect-ratio:1;border-radius:50%;opacity:var(--halo-opacity);background:radial-gradient(circle,color-mix(in srgb,var(--glow-blue) 75%,transparent),transparent 67%);animation:halo-drift var(--ambient-halo-duration) ease-in-out infinite alternate}
   .ambient-halo--blue{left:-22%;top:22%}.ambient-halo--pink{--halo-opacity:calc(var(--ambient-pink-halo-opacity) / var(--ambient-rest-strength));--halo-horizontal-offset:calc(var(--ambient-halo-travel) * -1);width:var(--ambient-pink-halo-size);right:-12%;bottom:-18%;background:radial-gradient(circle,var(--glow-pink),transparent 67%);animation-duration:var(--ambient-pink-halo-duration);animation-delay:-14s;animation-direction:alternate-reverse}

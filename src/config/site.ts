@@ -11,7 +11,7 @@ export const siteConfig = {
     { href: '/reader', label: '读者' },
   ],
   effects: { pointerTiltDegrees: 2.5 },
-  ambientSilk: { framesPerSecond: 12, resolutionScale: .45, pixelRatioLimit: 1, maximumPixels: 280000, maximumFrameMilliseconds: 200, speed: .65, scale: .55, rotation: .28, depth: .14, sheen: .12, wave: .35, breathingSeconds: 24, breathingStrength: .08, edgeFade: .4 },
+  ambientSilk: { framesPerSecond: 12, resolutionScale: .45, pixelRatioLimit: 1, maximumPixels: 280000, maximumFrameMilliseconds: 200, speed: 1.15, scale: .55, rotation: .28, depth: .22, sheen: .12, wave: .48, breathingSeconds: 24, breathingStrength: .08, edgeFade: .4 },
   navigation: { sectionActivationRatio: 0.35 },
   analytics: { visibleMilliseconds: 10000 },
   network: { sampleCount: 3, timeoutMilliseconds: 5000 },

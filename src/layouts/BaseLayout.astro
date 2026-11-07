@@ -148,7 +148,7 @@ const sharingImage = image || '/media/anime/hero/1719656915755.webp';
           if (window.scrollY > 0 && window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 1) currentIndex = quickNavItems.length - 1;
           if (quickNav.dataset.revealAfterHero === 'true') {
             const section = quickNavItems[currentIndex]?.section.id;
-            const atmosphere = section === 'projects' ? 'blue' : section === 'latest-article' ? 'pink' : 'neutral';
+            const atmosphere = section === 'projects' ? 'blue' : 'neutral';
             if (document.body.dataset.homeAtmosphere !== atmosphere) document.body.dataset.homeAtmosphere = atmosphere;
           }
           const spacingIndex = hoveredNavigation ?? focusedNavigation ?? currentIndex;
