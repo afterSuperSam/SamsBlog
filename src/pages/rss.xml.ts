@@ -4,6 +4,7 @@ import { listArticles } from '../lib/articles';
 import { articleExcerpt, renderMarkdown } from '../lib/markdown';
 import { version } from '../../package.json';
 import stylesheet from '../styles/global.css?url';
+import surfaceStylesheet from '../styles/surfaces.css?url';
 import { articleContentTypes } from '../lib/article-catalog';
 
 const xml = (value: string) => value.replace(/[^\u0009\u000A\u000D\u0020-\uD7FF\uE000-\uFFFD\u{10000}-\u{10FFFF}]/gu, '')
@@ -63,7 +64,7 @@ ${items}
     if (/^<(rss\b[^>]*|channel|item)>$/.test(line)) depth++;
     return indented;
   }).join('\n');
-  const body = preview ? `<!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SamsBlog · RSS 源码</title><link rel="stylesheet" href="${xml(stylesheet)}"><link rel="alternate" type="application/rss+xml" href="${xml(new URL('/rss.xml', siteConfig.rss.siteUrl).href)}"></head><body class="rss-source"><header><h1>SamsBlog <span>RSS</span></h1><p>${xml(siteConfig.rss.description)}</p><a href="/rss.xml?raw">原始 XML</a></header><main aria-label="RSS 源码"><pre><code>${highlightSource(source)}</code></pre></main></body></html>` : feed;
+  const body = preview ? `<!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SamsBlog · RSS 源码</title><link rel="stylesheet" href="${xml(stylesheet)}"><link rel="stylesheet" href="${xml(surfaceStylesheet)}"><link rel="alternate" type="application/rss+xml" href="${xml(new URL('/rss.xml', siteConfig.rss.siteUrl).href)}"></head><body class="rss-source"><header><h1>SamsBlog <span>RSS</span></h1><p>${xml(siteConfig.rss.description)}</p><a href="/rss.xml?raw">原始 XML</a></header><main aria-label="RSS 源码"><pre class="c2-surface"><code>${highlightSource(source)}</code></pre></main></body></html>` : feed;
   return new Response(body, {
     headers: { 'Content-Type': `${preview ? 'text/html' : 'application/rss+xml'}; charset=utf-8`, 'Cache-Control': 'no-cache', Vary: 'Accept, Sec-Fetch-Dest' },
   });

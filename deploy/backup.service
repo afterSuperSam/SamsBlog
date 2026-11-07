@@ -1,5 +1,5 @@
 [Unit]
-Description=Back up SamsBlog database
+Description=Back up SamsBlog database and uploaded images
 
 [Service]
 Type=oneshot
@@ -7,5 +7,6 @@ User=samsblog
 Group=samsblog
 WorkingDirectory=/opt/samsblog/current
 EnvironmentFile=/etc/samsblog.env
+Environment=RETENTION_DAYS=7
 ExecStart=/usr/bin/bash /opt/samsblog/current/deploy/backup.sh
 UMask=0077

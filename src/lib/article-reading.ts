@@ -2,7 +2,7 @@ import { initializeArticleImageViewer } from './article-image-viewer';
 import { siteConfig } from '../config/site';
 import { motionDisabled } from './motion';
 import { readReadingHistory, saveReadingHistory, measureReadingChapters, parseReadingTypography, type ReadingPosition } from './reading-history';
-import { initializeReadingExtras } from './reading-extras';
+import { initializeReadingExtras, revealArticleTarget } from './reading-extras';
 
 const root = document.querySelector<HTMLElement>('[data-article-reading]');
 const prose = root?.querySelector<HTMLElement>('[data-article-prose]');
@@ -10,33 +10,19 @@ const prose = root?.querySelector<HTMLElement>('[data-article-prose]');
 if (root && prose) {
   const configuration = siteConfig.articleReading;
   const status = root.querySelector<HTMLElement>('[data-reading-status]')!;
-  const mode = root.querySelector<HTMLButtonElement>('[data-reading-mode]')!;
   const font = root.querySelector<HTMLButtonElement>('[data-reading-font]')!;
   const resume = root.querySelector<HTMLButtonElement>('[data-reading-resume]')!;
   root.querySelector<HTMLElement>('[data-reading-tools]')!.hidden = false;
-  const applyMode = (enabled: boolean) => {
-    document.body.classList.toggle('article-reading-mode', enabled);
-    mode.setAttribute('aria-pressed', String(enabled));
-    mode.textContent = enabled ? '退出舒适阅读' : '舒适阅读';
+  const applyFont = (useHandwrittenFont: boolean) => {
+    document.documentElement.dataset.articleFont = useHandwrittenFont ? 'handwritten' : 'default';
+    font.setAttribute('aria-pressed', String(useHandwrittenFont));
+    font.textContent = useHandwrittenFont ? '切换默认字体' : '切换艺术字体';
   };
-  try { applyMode(localStorage.getItem(configuration.preferenceStorageKey) === 'true'); }
-  catch (error) { console.warn('Reading preference unavailable', error); }
-  mode.addEventListener('click', () => {
-    const enabled = mode.getAttribute('aria-pressed') !== 'true';
-    applyMode(enabled);
-    try { localStorage.setItem(configuration.preferenceStorageKey, String(enabled)); }
-    catch (error) { console.warn('Reading preference save failed', error); status.textContent = '本机无法保存设置，本次切换仍然有效。'; }
-  });
-  const applyFont = (enabled: boolean) => {
-    document.documentElement.dataset.articleFont = enabled ? 'default' : 'handwritten';
-    font.setAttribute('aria-pressed', String(enabled));
-    font.textContent = enabled ? '恢复艺术字体' : '使用默认字体';
-  };
-  applyFont(document.documentElement.dataset.articleFont === 'default');
+  applyFont(document.documentElement.dataset.articleFont === 'handwritten');
   font.addEventListener('click', () => {
-    const enabled = font.getAttribute('aria-pressed') !== 'true';
-    applyFont(enabled);
-    try { localStorage.setItem(configuration.fontPreferenceStorageKey, enabled ? 'default' : 'handwritten'); }
+    const useHandwrittenFont = font.getAttribute('aria-pressed') !== 'true';
+    applyFont(useHandwrittenFont);
+    try { localStorage.setItem(configuration.fontPreferenceStorageKey, useHandwrittenFont ? 'handwritten' : 'default'); }
     catch (error) { console.warn('Reading font preference save failed', error); status.textContent = '本机无法保存字体设置，本次切换仍然有效。'; }
   });
 
@@ -82,8 +68,10 @@ if (root && prose) {
   const headerOffset = () => Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--header-height')) + 24;
   resume.addEventListener('click', () => {
     if (!saved) return;
-    const heading = saved.heading ? document.getElementById(saved.heading) : undefined;
-    const top = heading && prose.contains(heading)
+    const target = saved.heading ? document.getElementById(saved.heading) : undefined;
+    const heading = target && prose.contains(target) ? target : undefined;
+    revealArticleTarget(prose, heading);
+    const top = heading
       ? heading.getBoundingClientRect().top + window.scrollY + saved.offset - headerOffset()
       : prose.getBoundingClientRect().top + window.scrollY + saved.progress * prose.offsetHeight - headerOffset();
     window.scrollTo({ top: Math.max(0, top), behavior: motionDisabled() ? 'instant' : 'smooth' });
@@ -136,6 +124,7 @@ if (root && prose) {
     event.preventDefault();
     if (!tocSidebar && toc) toc.open = false;
     if (location.hash !== link.hash) history.pushState(history.state, '', link.hash);
+    revealArticleTarget(prose, heading);
     heading.scrollIntoView({ block: 'start', behavior: motionDisabled() ? 'instant' : 'smooth' });
     heading.tabIndex = -1;
     heading.focus({ preventScroll: true });
@@ -182,9 +171,9 @@ if (root && prose) {
     const code = block.querySelector('code');
     if (!code) return;
     const tools = document.createElement('div');
-    tools.className = 'article-code-tools';
+    tools.className = 'article-code-tools c2-surface';
     const container = document.createElement('div');
-    container.className = 'article-code';
+    container.className = 'article-code c2-surface';
     block.before(container);
     container.append(tools, block);
     block.id = `article-code-${index + 1}`;

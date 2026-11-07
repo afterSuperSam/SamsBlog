@@ -2,9 +2,12 @@
 import { siteConfig } from '../config/site';
 import SocialIcon from './SocialIcon.astro';
 import ThemeToggle from './ThemeToggle.astro';
+import '../styles/reader.css';
+import type { ReaderPublic } from '../lib/readers';
+interface Props { showMotion?: boolean; reader?: ReaderPublic | null }
 
 const currentPath = Astro.url.pathname;
-const { showMotion = true } = Astro.props;
+const { showMotion = true, reader = null } = Astro.props;
 const isCurrentPage = (href: string) => currentPath === href
   || (href === '/content' && currentPath.startsWith('/articles/'))
   || (href !== '/' && !href.includes('#') && currentPath.startsWith(href));
@@ -43,7 +46,7 @@ const isCurrentPage = (href: string) => currentPath === href
     </nav>
   </div>
   <nav class="desktop-nav" aria-label="主要导航">
-    {siteConfig.nav.map((item) => (
+    {siteConfig.nav.filter((item) => item.href !== '/reader').map((item) => (
       <a href={item.href} aria-current={isCurrentPage(item.href) ? 'page' : undefined}>
         {item.label}
       </a>
@@ -57,11 +60,12 @@ const isCurrentPage = (href: string) => currentPath === href
       </svg>
     </button>
     <ThemeToggle />
+    <a class="reader-navigation" href="/reader" aria-current={isCurrentPage('/reader') ? 'page' : undefined}><span class="reader-navigation__avatar" data-reader-navigation-identity hidden={!reader?.avatarUrl} aria-hidden="true"><img data-reader-navigation-avatar src={reader?.avatarUrl || undefined} hidden={!reader?.avatarUrl} alt="" width="32" height="32" referrerpolicy="no-referrer" /></span><span>读者</span></a>
   </div>
-  <div class="mobile-menu" id="mobile-navigation" hidden data-mobile-menu>
+  <div class="mobile-menu c2-surface" id="mobile-navigation" hidden data-mobile-menu>
     <nav aria-label="移动端导航">
-      {siteConfig.nav.map((item) => (
-        <a href={item.href} aria-current={isCurrentPage(item.href) ? 'page' : undefined}>
+      {siteConfig.nav.filter((item) => item.href !== '/reader').map((item) => (
+        <a class="c2-surface" href={item.href} aria-current={isCurrentPage(item.href) ? 'page' : undefined}>
           <span>{item.label}</span>
           <svg aria-hidden="true" viewBox="0 0 24 24" fill="none"><path d="M5 12h14m-6-6 6 6-6 6" /></svg>
         </a>
@@ -71,6 +75,24 @@ const isCurrentPage = (href: string) => currentPath === href
 </header>
 
 <script>
+  // 导航只显示已解码的真实头像，失败保留空尺寸但不绘制占位图。
+  const revealReaderAvatar = async (image: HTMLImageElement) => {
+    const source = image.getAttribute('src');
+    if (!source || !image.complete) return;
+    if (!image.naturalWidth) { image.hidden = true; return; }
+    try {
+      await image.decode();
+      if (image.getAttribute('src') !== source || !image.naturalWidth) return;
+      image.hidden = false; image.classList.add('is-ready');
+    } catch {
+      if (image.getAttribute('src') === source) { image.classList.remove('is-ready'); image.hidden = true; }
+    }
+  };
+  document.querySelectorAll<HTMLImageElement>('[data-reader-navigation-avatar]').forEach((image) => {
+    image.addEventListener('load', () => { image.classList.remove('is-ready'); void revealReaderAvatar(image); });
+    image.addEventListener('error', () => { image.classList.remove('is-ready'); image.hidden = true; });
+    void revealReaderAvatar(image);
+  });
   import { siteConfig } from '../config/site';
   import { motionDisabled } from '../lib/motion';
   const header = document.querySelector<HTMLElement>('[data-site-header]');
@@ -115,7 +137,7 @@ const isCurrentPage = (href: string) => currentPath === href
     setMenuOpen(menuButton.getAttribute('aria-expanded') !== 'true');
   });
   mobileMenu?.addEventListener('click', (event) => {
-    if (event.target instanceof Element && event.target.closest('a')) setMenuOpen(false);
+    if (event.target instanceof Element && event.target.closest('a')) setMenuOpen(false, true);
   });
   document.addEventListener('pointerdown', (event) => {
     if (!(event.target instanceof Node) || mobileMenu?.hidden) return;

@@ -1,9 +1,12 @@
 import Database from 'better-sqlite3';
 import fs from 'node:fs';
 import path from 'node:path';
+import { randomBytes } from 'node:crypto';
 import { serverConfig } from '../config/server';
 import { siteConfig } from '../config/site';
 import { HttpError } from './http';
+import { normalizeArticleText, synchronizeArticleSearch } from './article-search';
+import { isMaintenanceMode } from './maintenance';
 
 export type MessageStatus = 'pending' | 'published' | 'hidden';
 
@@ -12,6 +15,8 @@ export interface MessageRecord {
   articleId?: number | null;
   isAdmin?: boolean;
   parentId: number | null;
+  replyTargetId: number | null;
+  replyTargetNickname: string;
   quoteMessageId: number | null;
   quoteContent: string;
   quoteNickname: string;
@@ -22,16 +27,107 @@ export interface MessageRecord {
   replies?: MessageRecord[];
 }
 
+
+// 已知迁移和运行版本先于任何写入校验，旧库仅在非维护期升级。
+export const supportedSchema = { minimum: 1, maximum: 1 } as const;
+const knownMigrations = new Set([
+  'friends-active-url-v1',
+  '20261017-blog-articles-v1',
+  '20261018-project-settings',
+  '20261018-project-details',
+  '20261015-friend-background-v1',
+  '20261018-friend-rss-v1',
+  '20261018-dynamic-projects-v1',
+  '20261018-article-attribution-v1',
+  '20261018-friend-feed-cache-v1',
+  '20261022-moesam-domain',
+  '20261023-media-library',
+  '20261024-article-tags',
+  '20261024-article-card-layout',
+  '20261024-article-content-types',
+  '20261024-sponsors',
+  '20261024-publishing-interactions',
+  '20261025-draft-notification-recovery',
+  '20261025-notification-request-payload',
+  '20261025-mail-notification-outbox',
+  '20261025-article-starred',
+  '20261025-friend-starred',
+  '20261025-message-quotes',
+  '20261026-confirmed-page-visits',
+  '20261107-friend-groups',
+  '20261107-friend-application-receipt',
+  '20261107-friend-feed-summary',
+  '20261107-reader-accounts',
+  '20261107-reader-account-passkeys',
+  '20261107-reader-notification-email',
+  '20261107-media-purpose',
+  '20261107-article-search-pagination',
+  '20261107-v136-01-content-safety',
+  '20261107-v136-02-comment-mail',
+  '20261107-v136-03-identity-flows',
+  '20261107-v136-04-mail-delivery-correlation',
+]);
+// 旧版本已停用的迁移仅用于识别历史库，不在新库重放。
+const retiredMigrations = new Set(['retire-media-v1', '20261022-featured-friends', '20261106-friend-presentation',
+  '20261106-application-accepted-mail', '20261106-retire-update-content']);
+
+function validateRetiredSchema(connection: Database.Database, applied: string[]) {
+  const schema = (name: string) => String((connection.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name=?").get(name) as { sql: string } | undefined)?.sql || '')
+    .toLowerCase().replace(/[\s"`]/g, '');
+  const columns = (table: string) => new Set((connection.prepare('SELECT name FROM pragma_table_info(?)').all(table) as Array<{ name: string }>).map(({ name }) => name));
+  const rejects = (valid: boolean) => { if (!valid) throw new Error('Unsupported database schema: historical migration metadata does not match the supported structure'); };
+  if (applied.includes('20261022-featured-friends')) rejects(schema('friends').includes('featuredin(0,1)'));
+  if (applied.includes('20261106-friend-presentation')) {
+    rejects(schema('friends').includes('recommendedin(0,1)') && schema('friends').includes('starredin(0,1)')
+      && schema('friend_status_cache').includes("statusin('online','slow','offline','restricted','blocked')")
+      && ['friend_id', 'url', 'checked_at'].every((name) => columns('friend_status_cache').has(name)));
+  }
+  if (applied.includes('20261106-application-accepted-mail')) {
+    rejects(schema('mail_notifications').includes("'application_accepted'")
+      && schema('mail_notifications').includes("statusin('pending','sent','failed','cancelled')")
+      && schema('mail_notifications').includes('application_idisnotnull')
+      && schema('friend_applications').includes('friend_idintegerreferencesfriends(id)')
+      && ['kind', 'application_id', 'message_id', 'reply_id', 'request_payload'].every((name) => columns('mail_notifications').has(name)));
+  }
+  if (applied.includes('20261106-retire-update-content')) rejects(schema('blog_articles').includes("check(content_typein('article','note','link'))")
+    && columns('blog_articles').has('external_url'));
+  if (applied.some((id) => id !== 'retire-media-v1' && retiredMigrations.has(id))) {
+    const uniqueIndex = connection.prepare("SELECT sql FROM sqlite_master WHERE type='index' AND name='friends_active_url_idx'").get() as { sql: string } | undefined;
+    rejects(Boolean(uniqueIndex?.sql.toLowerCase().replace(/\s/g, '').includes('uniqueindexfriends_active_url_idxonfriends(url)wheredeleted_atisnull')));
+  }
+}
+
+function inspectSchema(connection: Database.Database) {
+  const version = Number(connection.pragma('user_version', { simple: true }));
+  const hasMigrations = connection.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='schema_migrations'").get();
+  const applied = hasMigrations ? (connection.prepare('SELECT id FROM schema_migrations').all() as Array<{ id: string }>).map(({ id }) => id) : [];
+  if (version > supportedSchema.maximum || version < 0 || applied.some((id) => !knownMigrations.has(id) && !retiredMigrations.has(id))) {
+    throw new Error('Unsupported database schema: this application cannot open a newer or unknown migration history');
+  }
+  validateRetiredSchema(connection, applied);
+  if (isMaintenanceMode() && (version < supportedSchema.minimum || [...knownMigrations].some((id) => !applied.includes(id)))) {
+    throw new Error('Maintenance requires a fully migrated supported database; run the compatible upgrade before enabling maintenance');
+  }
+}
+
 let database: Database.Database | undefined;
 
 export function getDatabase() {
   if (database) return database;
   const dataDir = process.env.BLOG_DATA_DIR || path.resolve('data');
-  fs.mkdirSync(dataDir, { recursive: true });
   const dbPath = path.join(dataDir, 'blog.sqlite');
-  const connection = new Database(dbPath);
+  if (fs.existsSync(dbPath)) {
+    const inspection = new Database(dbPath, { readonly: true, fileMustExist: true });
+    try { inspectSchema(inspection); }
+    finally { inspection.close(); }
+  } else if (isMaintenanceMode()) throw new Error('Maintenance requires an existing supported database');
+  if (!isMaintenanceMode()) fs.mkdirSync(dataDir, { recursive: true });
+  const connection = new Database(dbPath, { readonly: isMaintenanceMode(), fileMustExist: isMaintenanceMode() });
+  connection.function('article_normalize', { deterministic: true }, (value) => normalizeArticleText(String(value ?? '')));
+  if (isMaintenanceMode()) { database = connection; return database; }
   connection.pragma('journal_mode = WAL');
   connection.pragma('foreign_keys = ON');
+  connection.function('article_normalize', { deterministic: true }, (value) => normalizeArticleText(String(value ?? '')));
   try {
     connection.transaction(() => {
       const friendsInitialized = connection.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'friends'").get();
@@ -363,6 +459,292 @@ export function getDatabase() {
         CREATE INDEX confirmed_article_visits_day_idx ON confirmed_article_daily_visitors(day)`);
         connection.prepare('INSERT INTO schema_migrations (id,applied_at) VALUES (?,?)').run('20261026-confirmed-page-visits', new Date().toISOString());
       }
+      if (!appliedMigrations.has('20261107-friend-groups')) {
+        const friendColumns = connection.pragma('table_info(friends)') as Array<{ name: string }>;
+        if (!friendColumns.some((column) => column.name === 'recommended')) {
+          connection.exec('ALTER TABLE friends ADD COLUMN recommended INTEGER NOT NULL DEFAULT 0 CHECK(recommended IN (0,1))');
+        }
+        connection.exec(`CREATE TABLE IF NOT EXISTS friend_status_cache (
+            friend_id INTEGER PRIMARY KEY REFERENCES friends(id) ON DELETE CASCADE,
+            url TEXT NOT NULL,
+            status TEXT NOT NULL CHECK(status IN ('online','slow','offline','restricted','blocked')),
+            latency_milliseconds INTEGER,
+            checked_at TEXT NOT NULL
+          )`);
+        const statusColumns = connection.pragma('table_info(friend_status_cache)') as Array<{ name: string }>;
+        if (!statusColumns.some((column) => column.name === 'latency_milliseconds')) {
+          connection.exec('ALTER TABLE friend_status_cache ADD COLUMN latency_milliseconds INTEGER');
+        }
+        connection.prepare('INSERT INTO schema_migrations (id,applied_at) VALUES (?,?)').run('20261107-friend-groups', new Date().toISOString());
+      }
+      if (!appliedMigrations.has('20261107-friend-application-receipt')) {
+        const applicationColumns = connection.pragma('table_info(friend_applications)') as Array<{ name: string }>;
+        if (!applicationColumns.some((column) => column.name === 'friend_id')) {
+          connection.exec('ALTER TABLE friend_applications ADD COLUMN friend_id INTEGER REFERENCES friends(id)');
+        }
+        const notificationSchema = connection.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='mail_notifications'").get() as { sql: string };
+        if (!notificationSchema.sql.includes("'application_accepted'")) {
+          const sequence = connection.prepare("SELECT seq FROM sqlite_sequence WHERE name='mail_notifications'").get() as { seq: number } | undefined;
+          connection.exec(`CREATE TABLE mail_notifications_with_acceptance (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            kind TEXT NOT NULL DEFAULT 'reply' CHECK(kind IN ('reply','message','application','application_accepted')),
+            message_id INTEGER REFERENCES messages(id), reply_id INTEGER REFERENCES messages(id), application_id INTEGER REFERENCES friend_applications(id),
+            status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','sent','failed','cancelled')),
+            attempts INTEGER NOT NULL DEFAULT 0 CHECK(attempts >= 0), created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+            retry_at TEXT NOT NULL DEFAULT '', provider_id TEXT NOT NULL DEFAULT '', request_payload TEXT NOT NULL DEFAULT '',
+            CHECK((kind='reply' AND message_id IS NOT NULL AND reply_id IS NOT NULL AND application_id IS NULL)
+              OR (kind='message' AND message_id IS NOT NULL AND reply_id IS NULL AND application_id IS NULL)
+              OR (kind IN ('application','application_accepted') AND message_id IS NULL AND reply_id IS NULL AND application_id IS NOT NULL))
+          );
+          INSERT INTO mail_notifications_with_acceptance(id,kind,message_id,reply_id,application_id,status,attempts,created_at,updated_at,retry_at,provider_id,request_payload)
+            SELECT id,kind,message_id,reply_id,application_id,status,attempts,created_at,updated_at,retry_at,provider_id,request_payload FROM mail_notifications;
+          DROP TABLE mail_notifications;
+          ALTER TABLE mail_notifications_with_acceptance RENAME TO mail_notifications;`);
+          if (sequence) connection.prepare("UPDATE sqlite_sequence SET seq=MAX(seq,?) WHERE name='mail_notifications'").run(sequence.seq);
+        }
+        connection.exec(`CREATE UNIQUE INDEX IF NOT EXISTS mail_reply_unique_idx ON mail_notifications(message_id,reply_id) WHERE kind='reply';
+          CREATE UNIQUE INDEX IF NOT EXISTS mail_message_unique_idx ON mail_notifications(message_id) WHERE kind='message';
+          DROP INDEX IF EXISTS mail_application_unique_idx;
+          CREATE UNIQUE INDEX mail_application_unique_idx ON mail_notifications(application_id,kind) WHERE kind IN ('application','application_accepted');
+          CREATE INDEX IF NOT EXISTS mail_pending_idx ON mail_notifications(retry_at,id) WHERE status='pending';`);
+        connection.prepare('INSERT INTO schema_migrations (id,applied_at) VALUES (?,?)').run('20261107-friend-application-receipt', new Date().toISOString());
+      }
+      if (!appliedMigrations.has('20261107-friend-feed-summary')) {
+        const feedColumns = connection.pragma('table_info(friend_feed_cache)') as Array<{ name: string }>;
+        if (!feedColumns.some((column) => column.name === 'summary')) {
+          connection.exec("ALTER TABLE friend_feed_cache ADD COLUMN summary TEXT NOT NULL DEFAULT ''");
+        }
+        connection.prepare('INSERT INTO schema_migrations (id,applied_at) VALUES (?,?)').run('20261107-friend-feed-summary', new Date().toISOString());
+      }
+      if (!appliedMigrations.has('20261107-reader-accounts')) {
+        connection.exec(`CREATE TABLE readers (
+          id INTEGER PRIMARY KEY AUTOINCREMENT, display_name TEXT NOT NULL CHECK(length(display_name) BETWEEN 2 AND 24),
+          avatar_url TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+        );
+        CREATE TABLE reader_identities (
+          provider TEXT NOT NULL CHECK(provider IN ('blogsclub','email')), subject TEXT NOT NULL,
+          reader_id INTEGER NOT NULL REFERENCES readers(id), PRIMARY KEY(provider,subject)
+        );
+        CREATE TABLE reader_sessions (
+          token_hash TEXT PRIMARY KEY, reader_id INTEGER NOT NULL REFERENCES readers(id),
+          created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL
+        );
+        CREATE INDEX reader_sessions_expiry_idx ON reader_sessions(expires_at);
+        CREATE TABLE reader_oauth_states (
+          state_hash TEXT PRIMARY KEY, browser_hash TEXT NOT NULL,
+          created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL
+        );
+        CREATE INDEX reader_oauth_expiry_idx ON reader_oauth_states(expires_at);
+        CREATE TABLE reader_email_codes (
+          email_hash TEXT PRIMARY KEY, code_hash TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0 CHECK(attempts>=0),
+          created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL
+        );
+        CREATE INDEX reader_email_expiry_idx ON reader_email_codes(expires_at);
+        CREATE TABLE reader_auth_limits (
+          key TEXT PRIMARY KEY, count INTEGER NOT NULL CHECK(count>0), expires_at INTEGER NOT NULL
+        );
+        CREATE INDEX reader_auth_limits_expiry_idx ON reader_auth_limits(expires_at);
+        ALTER TABLE messages ADD COLUMN reader_id INTEGER REFERENCES readers(id);
+        ALTER TABLE confirmed_site_visitors ADD COLUMN reader_id INTEGER REFERENCES readers(id);
+        CREATE INDEX messages_reader_idx ON messages(reader_id);
+        CREATE INDEX confirmed_visitors_reader_idx ON confirmed_site_visitors(reader_id);`);
+        connection.prepare('INSERT INTO schema_migrations (id,applied_at) VALUES (?,?)').run('20261107-reader-accounts', new Date().toISOString());
+      }
+      if (!appliedMigrations.has('20261107-reader-account-passkeys')) {
+        // 草稿版本可能已增加部分字段；按实际结构采用数据，再统一身份与会话约束。
+        const readerColumns = new Set((connection.pragma('table_info(readers)') as Array<{ name: string }>).map((column) => column.name));
+        const oauthColumns = new Set((connection.pragma('table_info(reader_oauth_states)') as Array<{ name: string }>).map((column) => column.name));
+        const sessionColumns = new Set((connection.pragma('table_info(reader_sessions)') as Array<{ name: string }>).map((column) => column.name));
+        if (!readerColumns.has('website_url')) connection.exec("ALTER TABLE readers ADD COLUMN website_url TEXT NOT NULL DEFAULT ''");
+        if (!readerColumns.has('webauthn_user_id')) connection.exec('ALTER TABLE readers ADD COLUMN webauthn_user_id TEXT');
+        const oauthProvider = oauthColumns.has('provider') ? 'provider' : "'blogsclub'";
+        const oauthVerifier = oauthColumns.has('pkce_verifier') ? (oauthColumns.has('verifier') ? 'COALESCE(pkce_verifier,verifier)' : 'pkce_verifier') : oauthColumns.has('verifier') ? 'verifier' : 'NULL';
+        const oauthNonce = oauthColumns.has('nonce') ? 'nonce' : 'NULL';
+        const sessionMethod = sessionColumns.has('login_method') ? 'login_method' : 'NULL';
+        const sessionPasskey = sessionColumns.has('passkey_id') ? 'passkey_id' : 'NULL';
+        connection.exec(`CREATE UNIQUE INDEX IF NOT EXISTS readers_webauthn_user_idx ON readers(webauthn_user_id);
+          CREATE TABLE reader_identities_expanded (
+            provider TEXT NOT NULL CHECK(provider IN ('blogsclub','email','github','google')), subject TEXT NOT NULL,
+            reader_id INTEGER NOT NULL REFERENCES readers(id), PRIMARY KEY(provider,subject)
+          );
+          INSERT INTO reader_identities_expanded(provider,subject,reader_id) SELECT provider,subject,reader_id FROM reader_identities;
+          DROP TABLE reader_identities;
+          ALTER TABLE reader_identities_expanded RENAME TO reader_identities;
+          CREATE TABLE reader_oauth_states_expanded (
+            state_hash TEXT PRIMARY KEY, browser_hash TEXT NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL,
+            provider TEXT NOT NULL DEFAULT 'blogsclub' CHECK(provider IN ('blogsclub','github','google')), pkce_verifier TEXT, nonce TEXT
+          );
+          INSERT INTO reader_oauth_states_expanded(state_hash,browser_hash,created_at,expires_at,provider,pkce_verifier,nonce)
+            SELECT state_hash,browser_hash,created_at,expires_at,${oauthProvider},${oauthVerifier},${oauthNonce} FROM reader_oauth_states;
+          DROP TABLE reader_oauth_states;
+          ALTER TABLE reader_oauth_states_expanded RENAME TO reader_oauth_states;
+          CREATE INDEX reader_oauth_expiry_idx ON reader_oauth_states(expires_at);
+          CREATE TABLE IF NOT EXISTS reader_passkeys (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, credential_id TEXT NOT NULL UNIQUE,
+            reader_id INTEGER NOT NULL REFERENCES readers(id), public_key BLOB NOT NULL,
+            counter INTEGER NOT NULL CHECK(counter>=0), transports TEXT NOT NULL CHECK(json_valid(transports) AND json_type(transports)='array'),
+            label TEXT NOT NULL CHECK(length(label) BETWEEN 1 AND 60),
+            device_type TEXT NOT NULL CHECK(device_type IN ('singleDevice','multiDevice')),
+            backed_up INTEGER NOT NULL CHECK(backed_up IN (0,1)), created_at TEXT NOT NULL, last_used_at TEXT, deleted_at TEXT
+          );
+          CREATE INDEX IF NOT EXISTS reader_passkeys_reader_idx ON reader_passkeys(reader_id);
+          CREATE TABLE reader_sessions_expanded (
+            token_hash TEXT PRIMARY KEY, reader_id INTEGER NOT NULL REFERENCES readers(id), created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL,
+            login_method TEXT CHECK(login_method IN ('email','blogsclub','github','google','passkey')), passkey_id INTEGER REFERENCES reader_passkeys(id)
+          );
+          INSERT INTO reader_sessions_expanded(token_hash,reader_id,created_at,expires_at,login_method,passkey_id)
+            SELECT token_hash,reader_id,created_at,expires_at,${sessionMethod},${sessionPasskey} FROM reader_sessions;
+          DROP TABLE reader_sessions;
+          ALTER TABLE reader_sessions_expanded RENAME TO reader_sessions;
+          CREATE INDEX reader_sessions_expiry_idx ON reader_sessions(expires_at);
+          UPDATE reader_sessions SET login_method=(SELECT provider FROM reader_identities WHERE reader_id=reader_sessions.reader_id)
+            WHERE login_method IS NULL AND (SELECT count(*) FROM reader_identities WHERE reader_id=reader_sessions.reader_id)=1;
+          CREATE TABLE IF NOT EXISTS reader_passkey_challenges (
+            token_hash TEXT PRIMARY KEY, challenge TEXT NOT NULL,
+            kind TEXT NOT NULL CHECK(kind IN ('register','login')), reader_id INTEGER REFERENCES readers(id), session_hash TEXT,
+            created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL
+          );
+          CREATE INDEX IF NOT EXISTS reader_passkey_challenge_expiry_idx ON reader_passkey_challenges(expires_at);`);
+        const updateHandle = connection.prepare('UPDATE readers SET webauthn_user_id=? WHERE id=?');
+        for (const row of connection.prepare('SELECT id FROM readers WHERE webauthn_user_id IS NULL').all() as Array<{ id: number }>) updateHandle.run(randomBytes(32).toString('base64url'), row.id);
+        connection.prepare('INSERT INTO schema_migrations (id,applied_at) VALUES (?,?)').run('20261107-reader-account-passkeys', new Date().toISOString());
+      }
+      if (!connection.prepare('SELECT id FROM schema_migrations WHERE id=?').get('20261107-reader-notification-email')) {
+        const readerColumns = new Set((connection.pragma('table_info(readers)') as Array<{ name: string }>).map((column) => column.name));
+        if (!readerColumns.has('notification_email')) connection.exec('ALTER TABLE readers ADD COLUMN notification_email TEXT CHECK(notification_email IS NULL OR length(notification_email)<=254)');
+        connection.prepare('INSERT INTO schema_migrations (id,applied_at) VALUES (?,?)').run('20261107-reader-notification-email', new Date().toISOString());
+      }
+      if (!appliedMigrations.has('20261107-media-purpose')) {
+        connection.exec("ALTER TABLE blog_media ADD COLUMN purpose TEXT NOT NULL DEFAULT 'library' CHECK(purpose IN ('library','avatar'))");
+        connection.prepare('INSERT INTO schema_migrations (id,applied_at) VALUES (?,?)').run('20261107-media-purpose', new Date().toISOString());
+      }
+      if (!appliedMigrations.has('20261107-article-search-pagination')) {
+        connection.exec(`
+          CREATE TABLE blog_article_search (
+            article_id INTEGER PRIMARY KEY REFERENCES blog_articles(id) ON DELETE CASCADE,
+            plain_text TEXT NOT NULL, normalized_text TEXT NOT NULL
+          );
+          CREATE TABLE blog_article_search_pending (article_id INTEGER PRIMARY KEY REFERENCES blog_articles(id) ON DELETE CASCADE);
+          CREATE VIRTUAL TABLE blog_article_search_fts USING fts5(tokens, tokenize='ascii', content='', contentless_delete=1, detail=none);
+          CREATE TRIGGER blog_article_search_insert AFTER INSERT ON blog_articles BEGIN
+            INSERT OR IGNORE INTO blog_article_search_pending SELECT new.id WHERE new.deleted_at IS NULL AND new.publication_status = 'published';
+          END;
+          CREATE TRIGGER blog_article_search_update AFTER UPDATE OF title, summary, content, publication_status, deleted_at ON blog_articles BEGIN
+            DELETE FROM blog_article_search_fts WHERE rowid = old.id;
+            DELETE FROM blog_article_search WHERE article_id = old.id;
+            DELETE FROM blog_article_search_pending WHERE article_id = old.id;
+            INSERT OR IGNORE INTO blog_article_search_pending SELECT new.id WHERE new.deleted_at IS NULL AND new.publication_status = 'published';
+          END;
+          CREATE TRIGGER blog_article_search_delete BEFORE DELETE ON blog_articles BEGIN
+            DELETE FROM blog_article_search_fts WHERE rowid = old.id;
+            DELETE FROM blog_article_search_pending WHERE article_id = old.id;
+          END;
+          INSERT INTO blog_article_search_pending SELECT id FROM blog_articles WHERE deleted_at IS NULL AND publication_status = 'published';
+          CREATE INDEX blog_articles_catalog_created_idx ON blog_articles(created_at DESC, id DESC) WHERE deleted_at IS NULL AND publication_status = 'published';
+          CREATE INDEX blog_articles_catalog_updated_idx ON blog_articles(updated_at DESC, id DESC) WHERE deleted_at IS NULL AND publication_status = 'published';
+          CREATE INDEX blog_articles_catalog_starred_idx ON blog_articles(starred, created_at DESC, id DESC) WHERE deleted_at IS NULL AND publication_status = 'published';
+          CREATE INDEX blog_articles_catalog_month_idx ON blog_articles(strftime('%Y-%m', created_at, '+8 hours'), created_at DESC, id DESC) WHERE deleted_at IS NULL AND publication_status = 'published';
+        `);
+        connection.prepare('INSERT INTO schema_migrations (id,applied_at) VALUES (?,?)').run('20261107-article-search-pagination', new Date().toISOString());
+      }
+      if (!appliedMigrations.has('20261107-v136-01-content-safety')) {
+        connection.exec(`ALTER TABLE friends ADD COLUMN revision INTEGER NOT NULL DEFAULT 1 CHECK(revision > 0);
+          CREATE TABLE content_revisions (scope TEXT PRIMARY KEY CHECK(scope='projects'), revision INTEGER NOT NULL CHECK(revision > 0));
+          INSERT INTO content_revisions(scope,revision) VALUES ('projects',1);
+          CREATE TABLE admin_audit (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT NOT NULL, object_type TEXT NOT NULL,
+            object_id INTEGER, operation TEXT NOT NULL, result TEXT NOT NULL CHECK(result IN ('success','conflict','rejected','failure')),
+            revision INTEGER CHECK(revision IS NULL OR revision > 0)
+          );`);
+        connection.prepare('INSERT INTO schema_migrations (id,applied_at) VALUES (?,?)').run('20261107-v136-01-content-safety', new Date().toISOString());
+      }
+      if (!appliedMigrations.has('20261107-v136-02-comment-mail')) {
+        connection.exec(`ALTER TABLE messages ADD COLUMN reply_target_id INTEGER REFERENCES messages(id);
+          UPDATE messages SET reply_target_id=parent_id WHERE parent_id IS NOT NULL;
+          ALTER TABLE messages ADD COLUMN email_verified_at TEXT;
+          ALTER TABLE readers ADD COLUMN notification_email_verified_at TEXT;
+          ALTER TABLE readers ADD COLUMN notification_email_pending TEXT CHECK(notification_email_pending IS NULL OR length(notification_email_pending)<=254);
+          CREATE TABLE message_submissions (
+            identity_scope TEXT NOT NULL, operation_id TEXT NOT NULL, request_hash TEXT NOT NULL,
+            result_json TEXT NOT NULL, status_code INTEGER NOT NULL, created_at TEXT NOT NULL,
+            PRIMARY KEY(identity_scope,operation_id)
+          );
+          CREATE TABLE notification_email_verifications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, token_hash TEXT NOT NULL UNIQUE, email TEXT NOT NULL,
+            reader_id INTEGER REFERENCES readers(id), message_id INTEGER REFERENCES messages(id),
+            created_at TEXT NOT NULL, expires_at TEXT NOT NULL, consumed_at TEXT, revoked_at TEXT,
+            CHECK((reader_id IS NOT NULL AND message_id IS NULL) OR (reader_id IS NULL AND message_id IS NOT NULL))
+          );
+          CREATE TABLE mail_notifications_verified (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            kind TEXT NOT NULL DEFAULT 'reply' CHECK(kind IN ('reply','message','application','application_accepted','verification')),
+            message_id INTEGER REFERENCES messages(id), reply_id INTEGER REFERENCES messages(id), application_id INTEGER REFERENCES friend_applications(id),
+            verification_id INTEGER REFERENCES notification_email_verifications(id),
+            status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','sent','failed','cancelled')),
+            attempts INTEGER NOT NULL DEFAULT 0 CHECK(attempts>=0), created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+            retry_at TEXT NOT NULL DEFAULT '', provider_id TEXT NOT NULL DEFAULT '', request_payload TEXT NOT NULL DEFAULT '',
+            recipient_hash TEXT NOT NULL DEFAULT '',
+            delivery_status TEXT NOT NULL DEFAULT '' CHECK(delivery_status IN ('','delivered','bounced','complained')),
+            delivery_updated_at TEXT NOT NULL DEFAULT '',
+            CHECK((kind='verification' AND verification_id IS NOT NULL AND message_id IS NULL AND reply_id IS NULL AND application_id IS NULL)
+              OR (verification_id IS NULL AND ((kind='reply' AND message_id IS NOT NULL AND reply_id IS NOT NULL AND application_id IS NULL)
+                OR (kind='message' AND message_id IS NOT NULL AND reply_id IS NULL AND application_id IS NULL)
+                OR (kind IN ('application','application_accepted') AND message_id IS NULL AND reply_id IS NULL AND application_id IS NOT NULL))))
+          );
+          INSERT INTO mail_notifications_verified(id,kind,message_id,reply_id,application_id,status,attempts,created_at,updated_at,retry_at,provider_id,request_payload)
+            SELECT id,kind,message_id,reply_id,application_id,status,attempts,created_at,updated_at,retry_at,provider_id,request_payload FROM mail_notifications;`);
+        const sequence = connection.prepare("SELECT seq FROM sqlite_sequence WHERE name='mail_notifications'").get() as { seq: number } | undefined;
+        connection.exec(`DROP TABLE mail_notifications;
+          ALTER TABLE mail_notifications_verified RENAME TO mail_notifications;
+          CREATE UNIQUE INDEX mail_reply_unique_idx ON mail_notifications(message_id,reply_id) WHERE kind='reply';
+          CREATE UNIQUE INDEX mail_message_unique_idx ON mail_notifications(message_id) WHERE kind='message';
+          CREATE UNIQUE INDEX mail_application_unique_idx ON mail_notifications(application_id,kind) WHERE kind IN ('application','application_accepted');
+          CREATE UNIQUE INDEX mail_verification_unique_idx ON mail_notifications(verification_id) WHERE kind='verification';
+          CREATE INDEX mail_pending_idx ON mail_notifications(retry_at,id) WHERE status='pending';
+          CREATE TABLE mail_webhook_events(event_id TEXT PRIMARY KEY,provider_id TEXT NOT NULL,event_type TEXT NOT NULL,created_at TEXT NOT NULL);
+          CREATE TABLE mail_suppressions(email_hash TEXT PRIMARY KEY,reason TEXT NOT NULL CHECK(reason IN ('bounced','complained')),created_at TEXT NOT NULL);`);
+        if (sequence) connection.prepare("UPDATE sqlite_sequence SET seq=MAX(seq,?) WHERE name='mail_notifications'").run(sequence.seq);
+        connection.prepare('INSERT INTO schema_migrations (id,applied_at) VALUES (?,?)').run('20261107-v136-02-comment-mail', new Date().toISOString());
+      }
+      if (!appliedMigrations.has('20261107-v136-03-identity-flows')) {
+        connection.exec(`CREATE TABLE reader_identity_links (
+            token_hash TEXT PRIMARY KEY,reader_id INTEGER NOT NULL REFERENCES readers(id) ON DELETE CASCADE,
+            session_hash TEXT NOT NULL,provider TEXT NOT NULL CHECK(provider IN ('email','blogsclub','github','google')),
+            created_at INTEGER NOT NULL,expires_at INTEGER NOT NULL
+          );
+          CREATE INDEX reader_identity_link_expiry_idx ON reader_identity_links(expires_at);
+          ALTER TABLE reader_oauth_states ADD COLUMN flow_id TEXT;
+          CREATE UNIQUE INDEX reader_oauth_flow_idx ON reader_oauth_states(flow_id);
+          ALTER TABLE reader_oauth_states ADD COLUMN status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','processing','completed','failed','cancelled'));
+          ALTER TABLE reader_oauth_states ADD COLUMN intent TEXT NOT NULL DEFAULT 'login' CHECK(intent IN ('login','link','reauthenticate'));
+          ALTER TABLE reader_oauth_states ADD COLUMN link_hash TEXT;
+          ALTER TABLE reader_oauth_states ADD COLUMN completed_session_hash TEXT;`);
+        connection.prepare('INSERT INTO schema_migrations (id,applied_at) VALUES (?,?)').run('20261107-v136-03-identity-flows', new Date().toISOString());
+      }
+      if (!appliedMigrations.has('20261107-v136-04-mail-delivery-correlation')) {
+        connection.exec(`CREATE TABLE mail_deliveries (
+            id TEXT PRIMARY KEY CHECK(length(id)=64), notification_id INTEGER UNIQUE REFERENCES mail_notifications(id),
+            purpose TEXT NOT NULL CHECK(purpose IN ('reply','message','application','application_accepted','verification','reader_login','reader_binding')),
+            recipient_hash TEXT NOT NULL CHECK(length(recipient_hash)=64), provider_id TEXT NOT NULL DEFAULT '',
+            tagged INTEGER NOT NULL DEFAULT 1 CHECK(tagged IN (0,1)), created_at TEXT NOT NULL,
+            delivery_status TEXT NOT NULL DEFAULT '' CHECK(delivery_status IN ('','delivered','bounced','complained')),
+            delivery_updated_at TEXT NOT NULL DEFAULT ''
+          );
+          CREATE INDEX mail_delivery_provider_idx ON mail_deliveries(provider_id,recipient_hash) WHERE provider_id!='';
+          CREATE INDEX mail_delivery_unconfirmed_idx ON mail_deliveries(recipient_hash,created_at) WHERE provider_id='';
+          INSERT INTO mail_deliveries(id,notification_id,purpose,recipient_hash,provider_id,tagged,created_at,delivery_status,delivery_updated_at)
+            SELECT lower(hex(randomblob(32))),id,kind,recipient_hash,provider_id,0,created_at,delivery_status,delivery_updated_at
+              FROM mail_notifications WHERE length(recipient_hash)=64;
+          CREATE TABLE mail_pending_webhook_events (
+            event_id TEXT PRIMARY KEY, provider_id TEXT NOT NULL, recipient_hash TEXT NOT NULL CHECK(length(recipient_hash)=64),
+            event_type TEXT NOT NULL CHECK(event_type IN ('email.delivered','email.bounced','email.complained')),
+            created_at TEXT NOT NULL, received_at TEXT NOT NULL
+          );
+          CREATE INDEX mail_pending_webhook_provider_idx ON mail_pending_webhook_events(provider_id,recipient_hash);
+          CREATE INDEX mail_pending_webhook_expiry_idx ON mail_pending_webhook_events(received_at);`);
+        connection.prepare('INSERT INTO schema_migrations (id,applied_at) VALUES (?,?)').run('20261107-v136-04-mail-delivery-correlation', new Date().toISOString());
+      }
+      connection.pragma(`user_version = ${supportedSchema.maximum}`);
       connection.exec('CREATE UNIQUE INDEX IF NOT EXISTS friends_active_url_idx ON friends(url) WHERE deleted_at IS NULL');
       connection.exec('CREATE INDEX IF NOT EXISTS blog_articles_type_created_idx ON blog_articles(content_type, created_at DESC, id DESC) WHERE deleted_at IS NULL');
       connection.exec('CREATE INDEX IF NOT EXISTS friends_public_idx ON friends(visible, created_at ASC)');
@@ -386,6 +768,7 @@ export function getDatabase() {
         'https://moesam.com/images/optimized/group/1.jpg', new Date().toISOString(),
       );
     })();
+    synchronizeArticleSearch(connection);
   } catch (error) {
     connection.close();
     throw error;
@@ -400,6 +783,8 @@ function mapRow(row: Record<string, unknown>): MessageRecord {
     articleId: row.article_id == null ? null : Number(row.article_id),
     isAdmin: Boolean(row.is_admin),
     parentId: row.parent_id == null ? null : Number(row.parent_id),
+    replyTargetId: row.reply_target_id == null ? null : Number(row.reply_target_id),
+    replyTargetNickname: String(row.reply_target_nickname || ''),
     quoteMessageId: row.quote_message_id == null ? null : Number(row.quote_message_id),
     quoteContent: String(row.quote_content || ''),
     quoteNickname: String(row.quote_nickname || ''),
@@ -416,16 +801,23 @@ function listMessageThreads(limit: number, publishedOnly: boolean, articleId: nu
   const scope = publishedOnly ? 'AND messages.article_id IS ?' : '';
   const parameters = publishedOnly ? [articleId, limit] : [limit];
   // 引用随原评论公开状态解析，原文或其根线程隐藏后不再返回引用快照。
-  const selection = `SELECT messages.id, messages.article_id, messages.parent_id, messages.nickname, messages.content,
+  const selection = `SELECT messages.id, messages.article_id, messages.parent_id, COALESCE(author.display_name,messages.nickname) AS nickname, messages.content,
     messages.status, messages.created_at, messages.fingerprint_hash = 'admin' AS is_admin,
-    quote.id AS quote_message_id, CASE WHEN quote.fingerprint_hash = 'admin' THEN 'SuperSam' ELSE COALESCE(quote.nickname, '') END AS quote_nickname,
+    reply_target.id AS reply_target_id, CASE WHEN reply_target.fingerprint_hash='admin' THEN 'SuperSam' ELSE COALESCE(reply_author.display_name,reply_target.nickname,'') END AS reply_target_nickname,
+    quote.id AS quote_message_id, CASE WHEN quote.fingerprint_hash = 'admin' THEN 'SuperSam' ELSE COALESCE(quote_author.display_name,quote.nickname, '') END AS quote_nickname,
     CASE WHEN quote.id IS NOT NULL THEN messages.quote_content ELSE '' END AS quote_content
     FROM messages LEFT JOIN messages AS quote ON quote.id = messages.quote_message_id
       AND messages.article_id IS NOT NULL AND quote.article_id = messages.article_id
       AND quote.deleted_at IS NULL AND quote.status = 'published' AND instr(quote.content, messages.quote_content) > 0
       AND (quote.parent_id IS NULL OR EXISTS (SELECT 1 FROM messages AS quote_root
         WHERE quote_root.id = quote.parent_id AND quote_root.parent_id IS NULL
-          AND quote_root.article_id = quote.article_id AND quote_root.deleted_at IS NULL AND quote_root.status = 'published'))`;
+          AND quote_root.article_id = quote.article_id AND quote_root.deleted_at IS NULL AND quote_root.status = 'published'))
+    LEFT JOIN readers author ON author.id=messages.reader_id AND author.deleted_at IS NULL
+    LEFT JOIN readers quote_author ON quote_author.id=quote.reader_id AND quote_author.deleted_at IS NULL
+    LEFT JOIN messages reply_target ON reply_target.id=messages.reply_target_id AND reply_target.article_id IS messages.article_id
+      AND reply_target.status='published' AND reply_target.deleted_at IS NULL
+      AND (reply_target.id=messages.parent_id OR reply_target.parent_id=messages.parent_id)
+    LEFT JOIN readers reply_author ON reply_author.id=reply_target.reader_id AND reply_author.deleted_at IS NULL`;
   const roots = getDatabase().prepare(`${selection}
     WHERE messages.parent_id IS NULL AND messages.deleted_at IS NULL ${visibility} ${scope}
     ORDER BY messages.created_at DESC, messages.id DESC LIMIT ?`).all(...parameters) as Record<string, unknown>[];
@@ -459,22 +851,31 @@ export function hasReachedMessageSubmissionLimit(fingerprintHash: string) {
 }
 
 export function createMessage(input: {
+  readerId?: number | null;
   parentId?: number | null;
+  replyTargetId?: number | null;
   articleId?: number | null;
   quoteMessageId?: number | null;
   quoteContent?: string;
   email?: string;
   notifyReply?: boolean;
+  emailVerified?: boolean;
   nickname: string;
   content: string;
   fingerprintHash: string;
 }) {
   const articleId = input.articleId || null;
+  const reader = input.readerId == null ? undefined : getDatabase().prepare('SELECT display_name FROM readers WHERE id=? AND deleted_at IS NULL').get(input.readerId) as { display_name: string } | undefined;
+  if (input.readerId != null && !reader) throw new HttpError(401, '读者登录已失效，请重新登录');
   if (articleId && !getDatabase().prepare("SELECT 1 FROM blog_articles WHERE id = ? AND deleted_at IS NULL AND publication_status = 'published'").get(articleId)) throw new HttpError(404, '文章不存在');
   if (input.parentId) {
     const parent = getDatabase().prepare(`SELECT id FROM messages WHERE id = ? AND article_id IS ? AND parent_id IS NULL AND deleted_at IS NULL AND status = 'published'`).get(input.parentId, articleId);
     if (!parent) throw new HttpError(404, '回复的留言不存在');
   }
+  const replyTargetId = input.replyTargetId ?? input.parentId ?? null;
+  if (replyTargetId !== null && (!input.parentId || !Number.isSafeInteger(replyTargetId) || replyTargetId < 1
+    || !getDatabase().prepare(`SELECT 1 FROM messages WHERE id=? AND article_id IS ? AND status='published' AND deleted_at IS NULL
+      AND (id=? OR parent_id=?)`).get(replyTargetId, articleId, input.parentId, input.parentId))) throw new HttpError(404, '回复的留言不存在');
   const quoteMessageId = input.quoteMessageId ?? null;
   const quoteContent = input.quoteContent ?? '';
   if (quoteMessageId !== null || quoteContent !== '') {
@@ -491,9 +892,9 @@ export function createMessage(input: {
     if (!source.content.includes(quoteContent)) throw new HttpError(400, '引用内容必须来自所选评论原文');
   }
   const result = getDatabase()
-    .prepare(`INSERT INTO messages (parent_id, article_id, nickname, content, fingerprint_hash, status, email, notify_reply, quote_message_id, quote_content)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-    .run(input.parentId || null, articleId, input.nickname, input.content, input.fingerprintHash, articleId ? 'published' : 'pending', input.email || '', Number(Boolean(input.email && input.notifyReply)), quoteMessageId, quoteContent);
+    .prepare(`INSERT INTO messages (parent_id, article_id, nickname, content, fingerprint_hash, status, email, notify_reply, quote_message_id, quote_content, reader_id,reply_target_id,email_verified_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(input.parentId || null, articleId, reader?.display_name ?? input.nickname, input.content, input.fingerprintHash, reader ? 'published' : 'pending', input.email || '', Number(Boolean(input.email && input.notifyReply)), quoteMessageId, quoteContent, input.readerId ?? null,replyTargetId,input.emailVerified ? new Date().toISOString() : null);
   return Number(result.lastInsertRowid);
 }
 
@@ -501,13 +902,15 @@ export function updateMessageStatus(id: number, status: MessageStatus) {
   return getDatabase().prepare('UPDATE messages SET status = ? WHERE id = ? AND deleted_at IS NULL').run(status, id).changes === 1;
 }
 
-export function createAdminReply(parentId: number, content: string) {
+export function createAdminReply(parentId: number, content: string, replyTargetId = parentId) {
   const parent = getDatabase().prepare(`SELECT id, article_id FROM messages WHERE id = ? AND parent_id IS NULL AND deleted_at IS NULL`).get(parentId) as { id: number; article_id: number | null } | undefined;
   if (!parent) throw new HttpError(404, '留言不存在');
+  if (!Number.isSafeInteger(replyTargetId) || replyTargetId < 1 || !getDatabase().prepare(`SELECT 1 FROM messages WHERE id=? AND article_id IS ?
+    AND deleted_at IS NULL AND (id=? OR parent_id=?)`).get(replyTargetId,parent.article_id,parentId,parentId)) throw new HttpError(404, '回复的留言不存在');
   const result = getDatabase()
-    .prepare(`INSERT INTO messages (parent_id, article_id, nickname, content, status, fingerprint_hash)
-      VALUES (?, ?, 'Sam', ?, 'published', 'admin')`)
-    .run(parentId, parent.article_id, content);
+    .prepare(`INSERT INTO messages (parent_id, article_id, nickname, content, status, fingerprint_hash,reply_target_id)
+      VALUES (?, ?, 'Sam', ?, 'published', 'admin', ?)`)
+    .run(parentId, parent.article_id, content,replyTargetId);
   return Number(result.lastInsertRowid);
 }
 

@@ -8,8 +8,7 @@ const settings = getProjectSettings();
 
 <section class="admin-panel" id="projects">
   <header class="admin-panel__heading"><div><span>PROJECTS</span><h2>项目</h2></div><p>按顺序展示可见项目，首页先显示前 {siteConfig.projectPresentation.initialVisibleCount} 个。</p></header>
-  <form method="post" class="admin-projects" data-admin-projects novalidate>
-    <label><span>最近在做</span><input name="currentWork" value={settings.currentWork} maxlength={siteConfig.currentWork.maximumLength} required aria-describedby="project-settings-status" /></label>
+  <form method="post" class="admin-projects" data-admin-projects data-revision={settings.revision} novalidate>
     <div class="project-editor-list" data-project-items>
       {[...settings.projects, null].map((project) => {
         const Wrapper = project ? 'div' : 'template';
@@ -44,6 +43,7 @@ const settings = getProjectSettings();
 </section>
 
 <script>
+  import { markTaskState } from '../lib/micro-feedback';
   import type { ProjectRecord } from '../lib/projects';
   import { animateContentHeight } from '../lib/motion';
   import { beginAdminAction, registerAdminDraft } from '../lib/admin-dialog';
@@ -55,7 +55,7 @@ const settings = getProjectSettings();
   if (form) {
     const items = form.querySelector<HTMLElement>('[data-project-items]')!;
     const template = form.querySelector<HTMLTemplateElement>('[data-project-template]')!;
-    const showFeedback = (message: string, state = '') => form.querySelectorAll<HTMLElement>('[data-project-feedback]').forEach((feedback) => animateContentHeight(feedback, () => { feedback.textContent = message; feedback.dataset.state = state; }));
+    const showFeedback = (message: string, state = '') => form.querySelectorAll<HTMLElement>('[data-project-feedback]').forEach((feedback) => animateContentHeight(feedback, () => { feedback.textContent = message; feedback.dataset.state = state; markTaskState(feedback, !message ? 'idle' : state === 'loading' ? 'pending' : state === 'success' ? 'success' : state === 'error' ? 'error' : 'idle'); }));
     const entries = () => [...items.querySelectorAll<HTMLFieldSetElement>('[data-project-entry]')];
     const markSaved = registerAdminDraft(form, () => JSON.stringify([...form.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input,textarea')]
       .map((field) => [field.value, field instanceof HTMLInputElement && field.checked])));
@@ -140,7 +140,7 @@ const settings = getProjectSettings();
           visible: field.querySelector<HTMLInputElement>('[data-project-field="visible"]')!.checked,
           status: field.querySelector<HTMLInputElement>('[data-project-field="status"]:checked')!.value };
       });
-      const payload = { currentWork: (form.elements.namedItem('currentWork') as HTMLInputElement).value, projects };
+      const payload = { projects, revision: Number(form.dataset.revision) };
       const release = beginAdminAction(form);
       if (!release) return;
       const controls = [...form.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLButtonElement>('input,textarea,button')].filter((control) => !control.disabled);
@@ -148,7 +148,8 @@ const settings = getProjectSettings();
       controls.forEach((control) => { control.disabled = true; });
       showFeedback('正在保存…', 'loading');
       try {
-        const result = await requestJson<{ error?: string; projects: ProjectRecord[] }>('/api/admin/projects.json', 'PUT', payload, '项目服务暂时不可用，请稍后重试。');
+        const result = await requestJson<{ error?: string; projects: ProjectRecord[]; revision: number }>('/api/admin/projects.json', 'PUT', payload, '项目服务暂时不可用，请稍后重试。');
+        form.dataset.revision = String(result.revision);
         result.projects.forEach((project, index) => {
           projectFields[index].dataset.projectId = String(project.id);
           projectFields[index].querySelector('[data-project-discard]')?.remove();

@@ -1,9 +1,14 @@
 import { getDatabase } from './db';
+import { auditAdminMutation, type AdminAuditEvent } from './admin-audit';
 import { HttpError } from './http';
 import { serverConfig } from '../config/server';
+import { queueAcceptedFriendApplication, scheduleReplyNotifications } from './reply-notifications';
+
+export type FriendGroup = 'starred' | 'recommended' | 'default' | 'lost';
 
 export interface FriendRecord {
   id: number;
+  revision: number;
   name: string;
   url: string;
   description: string;
@@ -12,12 +17,16 @@ export interface FriendRecord {
   rssUrl: string;
   visible: boolean;
   starred: boolean;
+  recommended: boolean;
+  group: FriendGroup;
+  latestPublishedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface FriendInput {
   id?: number;
+  revision?: number;
   name: string;
   url: string;
   description: string;
@@ -26,11 +35,18 @@ export interface FriendInput {
   rssUrl: string;
   visible: boolean;
   starred?: boolean;
+  recommended?: boolean;
 }
 
 function mapFriend(row: Record<string, unknown>): FriendRecord {
+  const checkedAt = Date.parse(String(row.status_checked_at || ''));
+  const statusIsCurrent = Number.isFinite(checkedAt) && checkedAt <= Date.now()
+    && Date.now() - checkedAt < serverConfig.friendStatusCacheSeconds * 1000;
+  const lost = statusIsCurrent && ['offline', 'restricted', 'blocked'].includes(String(row.connectivity_status));
+  const publishedAt = Date.parse(String(row.latest_published_at || ''));
   return {
     id: Number(row.id),
+    revision: Number(row.revision),
     name: String(row.name),
     url: String(row.url),
     description: String(row.description),
@@ -39,6 +55,9 @@ function mapFriend(row: Record<string, unknown>): FriendRecord {
     rssUrl: String(row.rss_url || ''),
     visible: Boolean(row.visible),
     starred: Boolean(row.starred),
+    recommended: Boolean(row.recommended),
+    group: lost ? 'lost' : row.starred ? 'starred' : row.recommended ? 'recommended' : 'default',
+    latestPublishedAt: Number.isFinite(publishedAt) ? new Date(publishedAt).toISOString() : null,
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
   };
@@ -64,10 +83,12 @@ export function parseFriendInput(body: Record<string, unknown>): FriendInput {
   const rssUrl = typeof body.rssUrl === 'string' ? body.rssUrl.trim() : '';
   if (body.visible !== undefined && typeof body.visible !== 'boolean') throw new HttpError(400, '公开状态必须是布尔值');
   if (body.starred !== undefined && typeof body.starred !== 'boolean') throw new HttpError(400, '星标状态必须是布尔值');
+  if (body.recommended !== undefined && typeof body.recommended !== 'boolean') throw new HttpError(400, '推荐状态必须是布尔值');
   if (name.length < 1 || name.length > 60) throw new HttpError(400, '名称需要 1 至 60 个字符');
   if (description.length < 1 || description.length > 240) throw new HttpError(400, '简介需要 1 至 240 个字符');
   return {
     id: Number.isInteger(body.id) ? Number(body.id) : undefined,
+    revision: typeof body.revision === 'number' ? body.revision : undefined,
     name,
     description,
     url: normalizeWebUrl(String(body.url || ''), '地址'),
@@ -76,35 +97,78 @@ export function parseFriendInput(body: Record<string, unknown>): FriendInput {
     rssUrl: rssUrl ? normalizeWebUrl(rssUrl, 'RSS 地址') : '',
     visible: body.visible !== false,
     starred: typeof body.starred === 'boolean' ? body.starred : undefined,
+    recommended: typeof body.recommended === 'boolean' ? body.recommended : undefined,
   };
 }
 
 export function listFriends(options: { includeHidden?: boolean } = {}) {
-  const where = options.includeHidden ? 'WHERE deleted_at IS NULL' : 'WHERE visible = 1 AND deleted_at IS NULL';
-  return (getDatabase().prepare(`SELECT * FROM friends ${where} ORDER BY starred DESC, created_at ASC, id ASC`).all() as Record<string, unknown>[]).map(mapFriend);
+  const where = options.includeHidden ? 'WHERE friends.deleted_at IS NULL' : 'WHERE friends.visible = 1 AND friends.deleted_at IS NULL';
+  const groups: Record<FriendGroup, number> = { starred: 0, recommended: 1, default: 2, lost: 3 };
+  return (getDatabase().prepare(`SELECT friends.*, feeds.published_at AS latest_published_at,
+      statuses.status AS connectivity_status, statuses.checked_at AS status_checked_at
+    FROM friends
+    LEFT JOIN friend_feed_cache AS feeds ON feeds.friend_id=friends.id AND feeds.rss_url=friends.rss_url
+      AND friends.rss_url<>'' AND feeds.title<>'' AND feeds.entry_url<>''
+    LEFT JOIN friend_status_cache AS statuses ON statuses.friend_id=friends.id AND statuses.url=friends.url
+    ${where}`).all() as Record<string, unknown>[]).map(mapFriend).sort((left, right) =>
+    groups[left.group] - groups[right.group]
+    || (right.latestPublishedAt ? Date.parse(right.latestPublishedAt) : -Infinity) - (left.latestPublishedAt ? Date.parse(left.latestPublishedAt) : -Infinity)
+    || left.id - right.id);
+}
+
+function requireFriendRevision(id: number, revision: unknown): asserts revision is number {
+  if (!Number.isSafeInteger(revision) || Number(revision) < 1) throw new HttpError(400, '请携带有效的友链版本');
+  const current = getDatabase().prepare('SELECT revision,deleted_at FROM friends WHERE id=?').get(id) as { revision: number; deleted_at: string | null } | undefined;
+  if (!current) throw new HttpError(404, '友链不存在');
+  if (current.deleted_at || current.revision !== revision) throw new HttpError(409, '友链已变化，当前输入已保留，请刷新核对后重新编辑');
 }
 
 export function saveFriend(input: FriendInput) {
   const now = new Date().toISOString();
-  const values = { ...input, visible: Number(input.visible), starred: input.starred === undefined ? null : Number(input.starred), now };
-  if (input.id) {
-    return getDatabase().prepare(`UPDATE friends SET name=@name,url=@url,description=@description,
-      icon_url=@iconUrl,background_url=@backgroundUrl,rss_url=@rssUrl,visible=@visible,starred=COALESCE(@starred,starred),updated_at=@now WHERE id=@id AND deleted_at IS NULL`).run(values).changes === 1;
-  }
-  return Number(getDatabase().prepare(`INSERT INTO friends
-    (name,url,description,icon_url,background_url,rss_url,visible,starred,created_at,updated_at)
-    VALUES (@name,@url,@description,@iconUrl,@backgroundUrl,@rssUrl,@visible,COALESCE(@starred,0),@now,@now)`).run(values).lastInsertRowid);
+  const values = { ...input, visible: Number(input.visible), starred: input.starred === undefined ? null : Number(input.starred), recommended: input.recommended === undefined ? null : Number(input.recommended), now };
+  const event: AdminAuditEvent = { objectType: 'friend', objectId: input.id ?? null, operation: input.id ? 'update' : 'create', revision: input.revision };
+  return auditAdminMutation(event, () => {
+    if (input.id) {
+      requireFriendRevision(input.id, input.revision);
+      const changed = getDatabase().prepare(`UPDATE friends SET name=@name,url=@url,description=@description,
+        icon_url=@iconUrl,background_url=@backgroundUrl,rss_url=@rssUrl,visible=@visible,starred=COALESCE(@starred,starred),recommended=COALESCE(@recommended,recommended),updated_at=@now,revision=revision+1
+        WHERE id=@id AND deleted_at IS NULL AND revision=@revision`).run(values).changes === 1;
+      if (!changed) throw new HttpError(409, '友链已变化，当前输入已保留，请刷新核对后重新编辑');
+      event.revision = input.revision + 1;
+      return true;
+    }
+    const id = Number(getDatabase().prepare(`INSERT INTO friends
+      (name,url,description,icon_url,background_url,rss_url,visible,starred,recommended,created_at,updated_at)
+      VALUES (@name,@url,@description,@iconUrl,@backgroundUrl,@rssUrl,@visible,COALESCE(@starred,0),COALESCE(@recommended,0),@now,@now)`).run(values).lastInsertRowid);
+    event.objectId = id; event.revision = 1;
+    return id;
+  });
 }
 
-export function setFriendStarred(id: number, starred: unknown) {
+function mutateFriend(id: number, revision: unknown, operation: 'star' | 'recommend' | 'delete', change: () => void) {
+  const event: AdminAuditEvent = { objectType: 'friend', objectId: id, operation, revision: typeof revision === 'number' ? revision : null };
+  return auditAdminMutation(event, () => {
+    requireFriendRevision(id, revision);
+    change(); event.revision = revision + 1;
+    return true;
+  });
+}
+
+export function setFriendRecommended(id: number, recommended: unknown, revision?: number) {
+  if (typeof recommended !== 'boolean') throw new HttpError(400, '推荐状态必须是布尔值');
+  return mutateFriend(id, revision, 'recommend', () => { getDatabase().prepare('UPDATE friends SET recommended=?,updated_at=?,revision=revision+1 WHERE id=?')
+    .run(Number(recommended), new Date().toISOString(), id); });
+}
+
+export function setFriendStarred(id: number, starred: unknown, revision?: number) {
   if (typeof starred !== 'boolean') throw new HttpError(400, '星标状态必须是布尔值');
-  return getDatabase().prepare('UPDATE friends SET starred = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL')
-    .run(Number(starred), new Date().toISOString(), id).changes === 1;
+  return mutateFriend(id, revision, 'star', () => { getDatabase().prepare('UPDATE friends SET starred=?,updated_at=?,revision=revision+1 WHERE id=?')
+    .run(Number(starred), new Date().toISOString(), id); });
 }
 
-export function deleteFriend(id: number) {
-  return getDatabase().prepare('UPDATE friends SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL')
-    .run(new Date().toISOString(), new Date().toISOString(), id).changes === 1;
+export function deleteFriend(id: number, revision?: number) {
+  return mutateFriend(id, revision, 'delete', () => { getDatabase().prepare('UPDATE friends SET deleted_at=?,updated_at=?,revision=revision+1 WHERE id=?')
+    .run(new Date().toISOString(), new Date().toISOString(), id); });
 }
 
 export interface FriendApplication extends FriendInput {
@@ -137,10 +201,12 @@ export function createFriendApplication(input: FriendInput, email: string, finge
 
 export function reviewFriendApplication(id: number, accepted: boolean, changes: Record<string, unknown>) {
   const database = getDatabase();
-  return database.transaction(() => {
+  const queued = database.transaction(() => {
     const application = database.prepare(`SELECT ${applicationColumns} FROM friend_applications WHERE id=? AND deleted_at IS NULL`).get(id) as FriendApplication | undefined;
     if (!application || application.status !== 'pending') throw new HttpError(409, '申请不存在或已经处理，请刷新列表');
-    if (accepted) saveFriend(parseFriendInput({ ...application, ...changes, id: undefined, backgroundUrl: '', visible: true }));
-    database.prepare('UPDATE friend_applications SET status=?,updated_at=? WHERE id=?').run(accepted ? 'accepted' : 'declined', new Date().toISOString(), id);
-  })();
+    const friendId = accepted ? Number(saveFriend(parseFriendInput({ ...application, ...changes, id: undefined, backgroundUrl: '', visible: true }))) : null;
+    database.prepare('UPDATE friend_applications SET status=?,friend_id=?,updated_at=? WHERE id=?').run(accepted ? 'accepted' : 'declined', friendId, new Date().toISOString(), id);
+    return accepted && queueAcceptedFriendApplication(id);
+  }).immediate();
+  if (queued) scheduleReplyNotifications();
 }

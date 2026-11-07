@@ -3,27 +3,25 @@ import { siteConfig } from '../config/site';
 const publicAddress = (pathname: string) => new URL(pathname, siteConfig.rss.siteUrl).href;
 const information = [
   { label: '网站名称', value: siteConfig.name },
-  { label: '站长', value: siteConfig.friendApplications.ownerName },
   { label: '一句话介绍', value: siteConfig.rss.description },
   { label: '网站地址', value: siteConfig.rss.siteUrl },
   { label: '头像地址', value: publicAddress(siteConfig.friendApplications.iconUrl) },
   { label: '背景地址', value: publicAddress(siteConfig.friendApplications.backgroundUrl) },
   { label: 'RSS 地址', value: publicAddress('/rss.xml') },
-  { label: '联系邮箱', value: `${siteConfig.social.qq}@qq.com` },
 ];
 const allInformation = information.map(({ label, value }) => `${label}：${value}`).join('\n');
 ---
 <button type="button" class="friends-more" data-friend-apply>申请友链 <span aria-hidden="true">＋</span></button>
-<dialog class="friend-application-dialog" data-friend-application aria-label="申请友链">
+<dialog class="friend-application-dialog c2-shape" data-friend-application aria-label="申请友链">
   <div class="friend-application-content">
   <section class="friend-site-sheet" aria-labelledby="friend-site-title">
     <header><h2 id="friend-site-title">本站信息</h2><button type="button" class="copy-feedback" data-site-copy={allInformation} data-copy-name="全部信息"><span data-copy-label>复制全部</span></button></header>
     <div class="friend-site-layout">
-      <figure class="friend-site-preview"><a href={siteConfig.friendApplications.backgroundUrl} target="_blank" rel="noopener noreferrer" aria-label="打开本站友链背景原图"><img src={siteConfig.friendApplications.backgroundUrl} alt="SamsBlog 首页背景，夏日插画与蓝白手写字标" width="1600" height="872" loading="lazy" decoding="async" /></a><figcaption>首页背景 · 点击查看原图</figcaption></figure>
+      <figure class="friend-site-preview"><a class="c2-clip" href={siteConfig.friendApplications.backgroundUrl} target="_blank" rel="noopener noreferrer" aria-label="打开本站友链背景原图"><img src={siteConfig.friendApplications.backgroundUrl} alt="SamsBlog 首页背景，夏日插画与蓝白手写字标" width="1600" height="872" loading="lazy" decoding="async" /></a><figcaption>首页背景</figcaption></figure>
       <dl class="friend-site-details">{information.map(({ label, value }) => <div><dt>{label}</dt><dd><span class="friend-site-value">{value}</span><button type="button" class="copy-feedback" data-site-copy={value} data-copy-name={label} aria-label={`复制${label}`}><span data-copy-label>复制</span></button></dd></div>)}</dl>
     </div>
     <p class="sr-only" role="status" data-site-copy-status></p>
-    <textarea class="friend-site-manual" data-site-copy-manual aria-label="手动复制本站信息" readonly hidden></textarea>
+    <textarea class="friend-site-manual c2-clip" data-site-copy-manual aria-label="手动复制本站信息" readonly hidden></textarea>
   </section>
   <p class="friend-application-intro">友链申请可能需要一些时间，请先将本站添加到您的友链页面，确认后会添加您的友链</p>
   <dl class="friend-application-guidelines">
@@ -32,13 +30,13 @@ const allInformation = information.map(({ label, value }) => `${label}：${value
     <div><dt>站点要求</dt><dd>支持 HTTPS，以原创内容为主，能够正常访问且有持续更新</dd></div>
   </dl>
   <form method="post" data-friend-apply-form novalidate autocomplete="off">
-    <label class="paper-input-label"><span>网站名称</span><input name="name" required maxlength="60" /></label>
-    <label class="paper-input-label"><span>网站地址</span><input name="url" type="url" required maxlength="4096" placeholder="https://…" /></label>
-    <label class="paper-input-label"><span>图标地址</span><input name="iconUrl" type="url" required maxlength="4096" placeholder="https://…" /></label>
-    <label class="paper-input-label"><span>一句话介绍</span><input name="description" required maxlength="240" /></label>
-    <label class="paper-input-label"><span>联系邮箱 · 可选，不公开</span><input name="email" type="text" inputmode="email" pattern="[^\s@]+@[^\s@]+\.[^\s@]+" maxlength="254" /></label>
-    <label class="paper-input-label"><span>RSS 地址 · 可选</span><input name="rssUrl" type="url" maxlength="4096" placeholder="https://…" /></label>
-    <label hidden aria-hidden="true">网站<input name="website" tabindex="-1" autocomplete="off" /></label>
+    <label class="paper-input-label"><span>网站名称</span><input class="c2-clip" name="name" required maxlength="60" /></label>
+    <label class="paper-input-label"><span>网站地址</span><input class="c2-clip" name="url" type="url" required maxlength="4096" placeholder="https://…" /></label>
+    <label class="paper-input-label"><span>图标地址</span><input class="c2-clip" name="iconUrl" type="url" required maxlength="4096" placeholder="https://…" /></label>
+    <label class="paper-input-label"><span>一句话介绍</span><input class="c2-clip" name="description" required maxlength="240" /></label>
+    <label class="paper-input-label"><span>添加邮箱（可选，作为申请成功的回信地址）</span><input class="c2-clip" name="email" type="text" inputmode="email" pattern="[^\s@]+@[^\s@]+\.[^\s@]+" maxlength="254" placeholder="邮箱不公开" /></label>
+    <label class="paper-input-label"><span>RSS 地址 · 可选</span><input class="c2-clip" name="rssUrl" type="url" maxlength="4096" placeholder="https://…" /></label>
+    <label hidden aria-hidden="true">网站<input class="c2-clip" name="website" tabindex="-1" autocomplete="off" /></label>
     <footer><button type="button" class="friend-application-close" data-friend-apply-close aria-label="关闭友链申请">关闭</button><button type="submit" class="friends-more" disabled>送出申请 ↗</button></footer>
     <p class="form-status" role="status" data-friend-apply-feedback></p>
   </form>
@@ -48,6 +46,7 @@ const allInformation = information.map(({ label, value }) => `${label}：${value
   import { siteConfig } from '../config/site';
   import { requestJson } from '../lib/client-request';
   import { animateMotion, parseCssTimeMilliseconds, setFeedbackText } from '../lib/motion';
+  import { setTaskFeedback } from '../lib/micro-feedback';
   import { attachPaperCaret } from '../lib/paper-caret';
   const dialog = document.querySelector<HTMLDialogElement>('[data-friend-application]');
   const opener = document.querySelector<HTMLButtonElement>('[data-friend-apply]');
@@ -128,13 +127,13 @@ const allInformation = information.map(({ label, value }) => `${label}：${value
       event.preventDefault(); const button = form.querySelector<HTMLButtonElement>('button[type="submit"]')!; if (button.disabled) return;
       const invalid = fields.find((input) => !input.validity.valid);
       if (invalid) { setFeedbackText(feedback, `请检查${invalid.closest('label')?.querySelector('span')?.textContent || '申请信息'}`); invalid.focus(); return; }
-      button.disabled = true; const payload = Object.fromEntries(new FormData(form)); setFeedbackText(feedback, '正在送出申请…');
+      button.disabled = true; const payload = Object.fromEntries(new FormData(form)); setTaskFeedback(feedback, '正在送出申请…', 'pending');
       try {
         await requestJson('/api/friends/applications.json', 'POST', payload, '申请暂时无法送出，填写内容仍保留。');
         if (JSON.stringify(Object.fromEntries(new FormData(form))) === JSON.stringify(payload)) form.reset();
         saveDraft(); refreshCarets.forEach((refresh) => refresh());
-        setFeedbackText(feedback, '申请已送达，通过后会出现在网站友链中。');
-      } catch (error) { setFeedbackText(feedback, error instanceof Error ? error.message : '提交失败，请稍后再试。'); }
+        setTaskFeedback(feedback, '申请已送达，通过后会出现在网站友链中。', 'success');
+      } catch (error) { setTaskFeedback(feedback, error instanceof Error ? error.message : '提交失败，请稍后再试。', 'error'); }
       finally { button.disabled = false; }
     });
     form.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled = false;

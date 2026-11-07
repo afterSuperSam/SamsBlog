@@ -1,5 +1,25 @@
 import { siteConfig } from '../config/site';
 
+export function articleReadingText(html: string) {
+  return html.replace(/<pre\b[^>]*>[\s\S]*?<\/pre>/gi, ' ').replace(/<[^>]*>/g, ' ')
+    .replace(/&(amp|lt|gt|quot|#39);/g, (_, entity: string) => ({ amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'" })[entity]!)
+    .replace(/\s+/g, ' ').trim();
+}
+
+export function estimateReadingMinutes(text: string) {
+  const characters = text.match(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu)?.length || 0;
+  const words = text.replace(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu, ' ').match(/[\p{L}\p{N}]+(?:['’-][\p{L}\p{N}]+)*/gu)?.length || 0;
+  return Math.max(1, Math.ceil(characters / siteConfig.readingEstimate.charactersPerMinute + words / siteConfig.readingEstimate.wordsPerMinute));
+}
+
+export function safeArticleReturnPath(value: string | null) {
+  if (!value || !/^\/(?!\/)/.test(value) || /[\\\u0000-\u001f\u007f]/.test(value)) return '/content';
+  try {
+    const url = new URL(value, 'https://local.invalid');
+    return url.origin === 'https://local.invalid' && (url.pathname === '/content' || url.pathname === '/') ? `${url.pathname}${url.search}` : '/content';
+  } catch { return '/content'; }
+}
+
 export function parseReadingTypography(raw: string | null): { fontSize: number; spacing: 'standard' | 'relaxed' } {
   const configuration = siteConfig.articleReading;
   let value: unknown;

@@ -38,6 +38,7 @@ export interface ArticleFilters {
   period: string;
   q: string;
   view: string;
+  page: string;
 }
 
 export interface CatalogArticle {
@@ -108,6 +109,7 @@ export function readArticleFilters(parameters: URLSearchParams): ArticleFilters 
     period: /^\d{4}(?:-(?:0[1-9]|1[0-2]))?$/.test(period) ? period : '',
     q: (parameters.get('q') || '').trim().slice(0, siteConfig.articles.searchMaximumLength),
     view: select('view', ['archive'], 'list'),
+    page: /^[1-9]\d{0,8}$/.test(parameters.get('page') || '') ? String(Number(parameters.get('page'))) : '1',
   };
 }
 
@@ -134,7 +136,24 @@ export function compareArticles(first: CatalogArticle, second: CatalogArticle, f
 export function articleFilterParameters(filters: ArticleFilters): URLSearchParams {
   const parameters = new URLSearchParams();
   for (const [name, value] of Object.entries(filters)) {
-    if (value && !(name === 'sort' && value === 'created-desc') && !(name === 'view' && value === 'list')) parameters.set(name, value);
+    if (value && !(name === 'sort' && value === 'created-desc') && !(name === 'view' && value === 'list') && !(name === 'page' && value === '1')) parameters.set(name, value);
   }
   return parameters;
+}
+
+export function articleCatalogHref(filters: ArticleFilters): string {
+  const parameters = articleFilterParameters(filters).toString();
+  return `/content${parameters ? `?${parameters}` : ''}`;
+}
+
+export function articlePagination(page: number, pageCount: number): Array<number | null> {
+  const pages = new Set([1, pageCount]);
+  for (let current = Math.max(1, page - siteConfig.articles.paginationRadius); current <= Math.min(pageCount, page + siteConfig.articles.paginationRadius); current += 1) pages.add(current);
+  const result: Array<number | null> = [];
+  for (const current of [...pages].sort((first, second) => first - second)) {
+    const previous = result.at(-1);
+    if (typeof previous === 'number' && current > previous + 1) result.push(null);
+    result.push(current);
+  }
+  return result;
 }

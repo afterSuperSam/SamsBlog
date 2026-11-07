@@ -1,15 +1,34 @@
 ---
-import { getArticleAnalytics } from '../lib/stats';
+import { getArticleAnalytics, getVisitorAnalytics } from '../lib/stats';
 const requested = Number(Astro.url.searchParams.get('days') || 30);
 const period = [7,30,90].includes(requested) ? requested : 30;
 const statistics = getArticleAnalytics(period);
 const maximum = Math.max(1, ...statistics.days.map((day) => day.views));
+const requestedPage = Number(Astro.url.searchParams.get('visitorPage') || 1);
+const visitorStatistics = getVisitorAnalytics({
+  page: Number.isSafeInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1,
+  sort: Astro.url.searchParams.get('visitorSort') === 'views' ? 'views' : 'recent',
+});
+const statisticsHref = (days = period, page = visitorStatistics.page, sort = visitorStatistics.sort) => `${Astro.url.pathname}?${new URLSearchParams({ days: String(days), visitorPage: String(page), visitorSort: sort })}`;
+const visitorDate = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
 ---
 <section class="admin-panel">
-  <header class="admin-panel__heading"><div><span>ANALYTICS</span><h2>文章访问</h2></div><nav class="admin-periods" aria-label="统计时间范围">{[7,30,90].map((days) => <a href={`/admin/analytics?days=${days}`} aria-current={days === period ? 'true' : undefined}>最近 {days} 天</a>)}</nav></header>
+  <header class="admin-panel__heading"><div><span>ANALYTICS</span><h2>文章访问</h2></div><nav class="admin-periods" aria-label="统计时间范围">{[7,30,90].map((days) => <a href={statisticsHref(days)} aria-current={days === period ? 'true' : undefined}>最近 {days} 天</a>)}</nav></header>
   <div class="admin-metrics"><p><b>{statistics.totals.views}</b> 次阅读</p><p><b>{statistics.totals.visitors}</b> 位访客</p></div>
   <p class="admin-help">按北京时间统计。前台连续停留10秒才计入，同一浏览器同一页面30分钟内去重，排除已登录站长。新口径从升级后独立起算；旧请求计数保留但不混入。访客为匿名浏览器去重数，清除 Cookie 或更换设备会重新计数。</p>
   {statistics.totals.views > 0 && <svg class="admin-stat-chart" viewBox="0 0 600 140" role="img" aria-label={`最近 ${period} 天文章访问趋势`}><title>文章每日访问次数</title><polyline fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" points={statistics.days.map((day,index) => `${20 + index / Math.max(1, statistics.days.length - 1) * 560},${120 - day.views / maximum * 95}`).join(' ')} /></svg>}
   <div class="admin-data-table"><table><thead><tr><th>文章</th><th>阅读次数</th><th>访客数</th></tr></thead><tbody>{statistics.articles.map((article) => <tr><td>{article.status === 'published' ? <a href={`/articles/${article.id}`}>{article.title}</a> : article.title}</td><td>{article.views}</td><td>{article.visitors}</td></tr>)}</tbody></table></div>
   {!statistics.articles.length && <p class="admin-empty">还没有文章访问记录。</p>}
+  <section class="admin-visitors" id="visitor-analytics" aria-labelledby="visitor-analytics-title">
+    <header class="admin-panel__heading"><div><span>VISITORS</span><h2 id="visitor-analytics-title">访客记录</h2></div><nav class="admin-periods" aria-label="访客排序">{([{ value: 'recent', label: '最近访问' }, { value: 'views', label: '累计次数' }] as const).map((option) => <a href={`${statisticsHref(period, 1, option.value)}#visitor-analytics`} aria-current={visitorStatistics.sort === option.value ? 'true' : undefined}>{option.label}</a>)}</nav></header>
+    <p class="admin-help">共 {visitorStatistics.total} 个匿名浏览器标识。次数为累计有效访问，不随上方天数筛选；时间为北京时间。短编号用于区分浏览器，不代表真实个人。最近关联来自已登录访问确认，去重时也可更新关联，不增加次数或归并历史；不展示邮箱、IP 或设备信息。</p>
+    {visitorStatistics.visitors.length > 0 ? <>
+      <div class="admin-data-table admin-visitor-table" role="region" aria-label="访客记录，可横向滚动查看" tabindex="0"><table><caption class="sr-only">匿名访客累计有效访问与最近关联读者</caption><thead><tr><th scope="col">匿名编号</th><th scope="col">累计有效访问</th><th scope="col">首次访问</th><th scope="col">最近访问</th><th scope="col">最近关联读者</th></tr></thead><tbody>{visitorStatistics.visitors.map((visitor) => <tr><td><span class="admin-visitor-id">{visitor.visitorId}</span></td><td>{visitor.pageViews}</td><td><time datetime={visitor.firstSeen}>{visitorDate.format(new Date(visitor.firstSeen))}</time></td><td><time datetime={visitor.lastSeen}>{visitorDate.format(new Date(visitor.lastSeen))}</time></td><td>{visitor.lastReaderDisplayName || '未关联'}</td></tr>)}</tbody></table></div>
+      <nav class="admin-visitor-pagination" aria-label="访客记录分页">
+        {visitorStatistics.page > 1 ? <a href={`${statisticsHref(period, visitorStatistics.page - 1)}#visitor-analytics`} rel="prev">上一页</a> : <span aria-disabled="true">上一页</span>}
+        <span>第 {visitorStatistics.page} / {visitorStatistics.totalPages} 页</span>
+        {visitorStatistics.page < visitorStatistics.totalPages ? <a href={`${statisticsHref(period, visitorStatistics.page + 1)}#visitor-analytics`} rel="next">下一页</a> : <span aria-disabled="true">下一页</span>}
+      </nav>
+    </> : <p class="admin-empty">还没有有效访客记录。</p>}
+  </section>
 </section>

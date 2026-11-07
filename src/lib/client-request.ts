@@ -1,5 +1,12 @@
 import { siteConfig } from '../config/site';
 
+export class RequestError extends Error {
+  constructor(message: string, public status: number, public code?: string) {
+    super(message);
+    this.name = 'RequestError';
+  }
+}
+
 export class RequestTimeoutError extends Error {
   constructor() {
     super('请求超时，结果尚未确认。输入已保留，请先核对结果，避免重复提交。');
@@ -8,7 +15,7 @@ export class RequestTimeoutError extends Error {
 }
 
 // 截止时间覆盖连接与响应体读取；超时后只恢复界面，不重试写入。
-export async function requestJson<Result extends { error?: string; message?: string }>(
+export async function requestJson<Result extends { error?: string; message?: string; code?: string }>(
   url: string,
   method: string,
   payload: unknown,
@@ -32,7 +39,7 @@ export async function requestJson<Result extends { error?: string; message?: str
     });
     if (!response.headers.get('content-type')?.includes('application/json')) throw new Error(failureMessage);
     const result = await response.json() as Result;
-    if (!response.ok) throw new Error(result.error || result.message || failureMessage);
+    if (!response.ok) throw new RequestError(result.error || result.message || failureMessage, response.status, typeof result.code === 'string' ? result.code : undefined);
     return result;
   };
   try {

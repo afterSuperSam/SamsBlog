@@ -1,6 +1,16 @@
 import { siteConfig } from '../config/site';
 import { animateContentHeight, animateMotion } from './motion';
 
+const inlineContentObservers = new WeakMap<HTMLButtonElement, ResizeObserver>();
+
+// 分页替换前断开旧卡片观察器，避免保留已移除的正文节点。
+export function disposeInlineContent(container: ParentNode) {
+  container.querySelectorAll<HTMLButtonElement>('[data-note-toggle]').forEach((button) => {
+    inlineContentObservers.get(button)?.disconnect();
+    inlineContentObservers.delete(button);
+  });
+}
+
 // 短记录、外链说明与编辑器卡片共用展开状态，正文仍走安全 Markdown 渲染。
 export function initializeInlineContent(container: ParentNode) {
   container.querySelectorAll<HTMLButtonElement>('[data-note-toggle]').forEach((button) => {
@@ -41,6 +51,7 @@ export function initializeInlineContent(container: ParentNode) {
       if (content.clientWidth === previousWidth) return;
       previousWidth = content.clientWidth; refresh();
     });
+    inlineContentObservers.set(button, observer);
     observer.observe(content);
     void document.fonts.ready.then(refresh);
     button.addEventListener('click', () => {
@@ -51,6 +62,8 @@ export function initializeInlineContent(container: ParentNode) {
   });
 }
 
+const explanationOpeners = new WeakMap<HTMLDetailsElement, () => boolean>();
+
 // 原生 details 保留无脚本阅读；增强只负责展开与收起的高度过渡。
 export function initializeExplanations(container: HTMLElement) {
   container.querySelectorAll<HTMLDetailsElement>('.article-explanation').forEach((details) => {
@@ -59,8 +72,15 @@ export function initializeExplanations(container: HTMLElement) {
     const summary = details.querySelector('summary')!;
     let expanded = details.open;
     let animation: Animation | undefined;
+    let generation = 0;
+    explanationOpeners.set(details, () => {
+      const changed = !details.open || !expanded;
+      generation++; expanded = true; animation?.cancel(); animation = undefined; details.open = true;
+      return changed;
+    });
     summary.addEventListener('click', (event) => {
       event.preventDefault();
+      const currentGeneration = ++generation;
       if (animation?.playState !== 'running') expanded = details.open;
       const height = details.getBoundingClientRect().height;
       animation?.cancel(); expanded = !expanded; details.open = true;
@@ -70,7 +90,7 @@ export function initializeExplanations(container: HTMLElement) {
         duration: siteConfig.interactions.feedbackResizeMilliseconds,
         easing: getComputedStyle(document.documentElement).getPropertyValue('--ease-out').trim(),
       });
-      const settle = () => { if (expanded === targetExpanded) details.open = targetExpanded; };
+      const settle = () => { if (generation === currentGeneration) details.open = targetExpanded; };
       if (animation) void animation.finished.then(settle, settle); else settle();
     });
   });
@@ -90,7 +110,7 @@ function wrapCanvasText(context: CanvasRenderingContext2D, text: string, width: 
   return lines;
 }
 
-// 摘录背景复用页面星点与主题色，只绘制一帧，正文下方减淡装饰。
+// 摘录背景复用页面光晕与主题色，只绘制一帧。
 function drawQuoteBackground(context: CanvasRenderingContext2D, width: number, height: number, styles: CSSStyleDeclaration) {
   context.save();
   context.fillStyle = styles.getPropertyValue('--quote-background').trim();
@@ -107,43 +127,24 @@ function drawQuoteBackground(context: CanvasRenderingContext2D, width: number, h
     context.globalAlpha = Number(styles.getPropertyValue('--quote-halo-opacity'));
     context.fillStyle = gradient; context.fillRect(0, 0, width, height);
   }
-  const padding = siteConfig.readingExtras.quotePadding;
-  const stars = [...document.querySelectorAll<HTMLElement>('.ambient-mote')].map((particle, index) => {
-    const appearance = getComputedStyle(particle);
-    const x = Number(particle.dataset.moteLeft) * width / 100;
-    const y = Number(particle.dataset.moteTop) * height / 100;
-    return { x, y, index: index + 1, color: appearance.backgroundColor, radius: Number.parseFloat(appearance.width) / 2,
-      behindText: x > padding && x < width - padding && y > padding && y < height - padding };
-  });
-  let connections = 0;
-  const constellation = siteConfig.effects.constellation;
-  const maximumDistance = Math.hypot(width, height) * constellation.maximumDistanceRatio;
-  context.strokeStyle = styles.getPropertyValue('--summer-blue').trim();
-  context.lineWidth = 1;
-  context.globalAlpha = Number(styles.getPropertyValue('--constellation-line-opacity')) * .65;
-  stars.forEach((star, index) => {
-    if (star.behindText || connections >= constellation.desktopLineCount) return;
-    const next = stars.slice(index + 1).find((other) => !other.behindText && Math.hypot(star.x - other.x, star.y - other.y) < maximumDistance);
-    if (!next) return;
-    context.beginPath(); context.moveTo(star.x, star.y); context.lineTo(next.x, next.y); context.stroke(); connections++;
-  });
-  for (const star of stars) {
-    context.save(); context.translate(star.x, star.y); context.fillStyle = star.color;
-    context.globalAlpha = Number(styles.getPropertyValue('--quote-star-opacity')) * (star.behindText ? .2 : 1);
-    const radius = star.radius;
-    if (star.index % 5 === 0) {
-      context.beginPath(); context.moveTo(0, -radius);
-      context.lineTo(radius * .2, -radius * .24); context.lineTo(radius, 0); context.lineTo(radius * .2, radius * .24);
-      context.lineTo(0, radius); context.lineTo(-radius * .2, radius * .24); context.lineTo(-radius, 0); context.lineTo(-radius * .2, -radius * .24);
-      context.closePath(); context.fill();
-    } else if (star.index % 3 === 0) {
-      context.rotate(Math.PI / 4); context.fillRect(-radius, -radius, radius * 2, radius * 2);
-    } else {
-      context.beginPath(); context.arc(0, 0, radius, 0, Math.PI * 2); context.fill();
-    }
-    context.restore();
-  }
+
   context.restore();
+}
+
+// 目录、阅读断点与地址锚点在定位前展开正文内的折叠祖先。
+export function revealArticleTarget(prose: HTMLElement, target: HTMLElement | null | undefined) {
+  if (!target || target === prose || !prose.contains(target)) return false;
+  let opened = false;
+  let ancestor = target.parentElement;
+  while (ancestor && ancestor !== prose) {
+    if (ancestor instanceof HTMLDetailsElement) {
+      const reveal = explanationOpeners.get(ancestor);
+      if (reveal) opened = reveal() || opened;
+      else if (!ancestor.open) { ancestor.open = true; opened = true; }
+    }
+    ancestor = ancestor.parentElement;
+  }
+  return opened;
 }
 
 export function initializeReadingExtras(root: HTMLElement, prose: HTMLElement) {
@@ -152,13 +153,7 @@ export function initializeReadingExtras(root: HTMLElement, prose: HTMLElement) {
     let identifier: string;
     try { identifier = decodeURIComponent(location.hash.slice(1)); } catch { return; }
     const target = document.getElementById(identifier);
-    let opened = false;
-    let ancestor = target?.parentElement;
-    while (ancestor && prose.contains(ancestor)) {
-      if (ancestor instanceof HTMLDetailsElement && !ancestor.open) { ancestor.open = true; opened = true; }
-      ancestor = ancestor.parentElement;
-    }
-    if (opened) target?.scrollIntoView({ block: 'start', behavior: 'instant' });
+    if (revealArticleTarget(prose, target)) target?.scrollIntoView({ block: 'start', behavior: 'instant' });
   };
   revealHash(); window.addEventListener('hashchange', revealHash);
 

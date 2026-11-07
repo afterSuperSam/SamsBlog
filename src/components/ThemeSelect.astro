@@ -18,12 +18,15 @@ const identifier = `theme-select-${randomUUID()}`;
   <button class="theme-select__trigger" type="button" role="combobox" aria-haspopup="listbox" aria-expanded="false" aria-controls={`${identifier}-options`} aria-labelledby={`${identifier}-label ${identifier}-value`} data-theme-select-trigger>
     <span id={`${identifier}-value`} data-theme-select-value>{options.find((option) => option.value === value)?.label || options[0]?.label || ''}</span><span aria-hidden="true">⌄</span>
   </button>
-  <div class="theme-select__options" role="listbox" id={`${identifier}-options`} aria-labelledby={`${identifier}-label`} hidden data-theme-select-options>
-    {options.map((option, index) => <button type="button" role="option" id={`${identifier}-option-${index}`} aria-selected={option.value === value} tabindex="-1" data-value={option.value}>{option.label}<span aria-hidden="true">✓</span></button>)}
+  <div class="theme-select__options c2-surface" role="listbox" id={`${identifier}-options`} aria-labelledby={`${identifier}-label`} hidden data-theme-select-options>
+    <span class="theme-select__highlight c2-surface" aria-hidden="true" data-theme-highlight></span>
+    {options.map((option, index) => <button class="c2-surface" type="button" role="option" id={`${identifier}-option-${index}`} aria-selected={option.value === value} tabindex="-1" data-value={option.value}>{option.label}<span aria-hidden="true">✓</span></button>)}
   </div>
 </div>
 
 <script>
+  import { siteConfig } from '../config/site';
+  import { moveSelectionSurface } from '../lib/micro-feedback';
   // 自定义下拉保留原生表单值，并集中处理键盘、外部关闭与重置。
   document.querySelectorAll<HTMLElement>('[data-theme-select]').forEach((wrapper) => {
     const select = wrapper.querySelector<HTMLSelectElement>('[data-theme-native]');
@@ -32,17 +35,23 @@ const identifier = `theme-select-${randomUUID()}`;
     const list = wrapper.querySelector<HTMLElement>('[data-theme-select-options]');
     const options = [...(list?.querySelectorAll<HTMLButtonElement>('[role="option"]') || [])];
     if (!select || !trigger || !label || !list) return;
+    const surface = list.querySelector<HTMLElement>('[data-theme-highlight]');
+    const controller = new AbortController();
+    const listener = { signal: controller.signal };
     let active = Math.max(0, select.selectedIndex);
     const highlight = (index: number) => {
       active = Math.max(0, Math.min(options.length - 1, index));
       options.forEach((option, position) => option.classList.toggle('is-active', position === active));
       if (!list.hidden && options[active]) {
+        if (surface) moveSelectionSurface(surface, options[active], siteConfig.interactionFeedback.glideMilliseconds);
         trigger.setAttribute('aria-activedescendant', options[active].id);
         options[active].scrollIntoView({ block: 'nearest' });
       }
     };
     const close = () => {
       list.hidden = true;
+      surface?.getAnimations().forEach((animation) => animation.cancel());
+      surface?.removeAttribute('data-positioned');
       trigger.setAttribute('aria-expanded', 'false');
       trigger.removeAttribute('aria-activedescendant');
     };
@@ -89,9 +98,12 @@ const identifier = `theme-select-${randomUUID()}`;
       option.addEventListener('pointerenter', () => highlight(index));
     });
     wrapper.addEventListener('focusout', (event) => { if (!(event.relatedTarget instanceof Node) || !wrapper.contains(event.relatedTarget)) close(); });
-    document.addEventListener('pointerdown', (event) => { if (event.target instanceof Node && !wrapper.contains(event.target)) close(); });
+    document.addEventListener('pointerdown', (event) => { if (event.target instanceof Node && !wrapper.contains(event.target)) close(); }, listener);
     select.addEventListener('change', sync);
     select.form?.addEventListener('reset', () => requestAnimationFrame(() => { sync(); close(); }));
+    const resize = new ResizeObserver(() => { if (!list.hidden && surface && options[active]) moveSelectionSurface(surface, options[active], 0, 0, true); });
+    resize.observe(list);
+    window.addEventListener('pagehide', (event) => { close(); if (!event.persisted) { controller.abort(); resize.disconnect(); } }, listener);
     sync();
   });
 </script>

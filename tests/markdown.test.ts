@@ -53,6 +53,11 @@ describe('article Markdown', () => {
     expect(html).toContain('<code class="language-js">  const value = &quot;&lt;标签&gt;&quot;;\n\n\treturn value;\n</code>');
   });
 
+  it('applies hard line breaks only to prose without rewriting inline code or attributes', () => {
+    const html = renderMarkdown('正文  \n下一行 `代码  \n下一行` [链接](/about "提示  \n下一行")');
+    expect(html).toBe('<p>正文<br>下一行 <code>代码  \n下一行</code> <a href="/about" title="提示  \n下一行">链接</a></p>');
+  });
+
   it('renders writing formats and preserves fenced code as text', () => {
     const html = renderMarkdown('# 文章\n\n**粗体**、*斜体*、~~删除~~ 和 `code`\n\n- 第一条\n- 第二条\n\n3. 日志\n4. 杂谈\n\n> 一句话\n\n---\n\n```html\n<script>alert(1)</script>\n```');
     expect(html).toContain('<h1>文章</h1>');

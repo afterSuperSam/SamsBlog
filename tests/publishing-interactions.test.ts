@@ -1,12 +1,13 @@
+import { randomUUID } from 'node:crypto';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { APIContext, APIRoute } from 'astro';
-import { getDatabase, createMessage, createAdminReply, deleteMessage, listPublishedMessages, listAllMessages, updateMessageStatus } from '../src/lib/db';
+import { getDatabase, createMessage as createStoredMessage, createAdminReply, deleteMessage, listPublishedMessages, listAllMessages, updateMessageStatus } from '../src/lib/db';
 import { saveArticle, withdrawArticle } from '../src/lib/articles';
 import { recordPageView, getArticleAnalytics, hashVisitorToken } from '../src/lib/stats';
-import { createAdminSession } from '../src/lib/admin-auth';
+import { adminCookie, createAdminSession } from '../src/lib/admin-auth';
 import { listFriends, listFriendApplications, reviewFriendApplication } from '../src/lib/friends';
 import { POST as postComment, GET as getComments } from '../src/pages/api/guestbook/messages.json';
 import { POST as react } from '../src/pages/api/articles/reactions.json';
@@ -14,22 +15,129 @@ import { POST as apply } from '../src/pages/api/friends/applications.json';
 import { PATCH as review } from '../src/pages/api/admin/applications.json';
 import { parseVisitorProfile } from '../src/lib/visitor-profile';
 import { siteConfig } from '../src/config/site';
+import { serverConfig } from '../src/config/server';
+import { initializeCommentDraft } from '../src/lib/comment-drafts';
 
 vi.mock('../src/lib/reply-notifications', async (original) => ({ ...await original<object>(), replyNotificationsConfigured: false, queueReplyNotification: vi.fn() }));
+const readerSession = vi.hoisted(() => ({ value: null as { id: number; displayName: string; avatarUrl: null } | null }));
+vi.mock('../src/lib/readers', () => ({ readReaderSession: () => readerSession.value }));
+function createPublishedMessage(input: Parameters<typeof createStoredMessage>[0]) {
+  const id = createStoredMessage(input); updateMessageStatus(id, 'published'); return id;
+}
 beforeAll(async () => { vi.stubEnv('BLOG_DATA_DIR', await mkdtemp(path.join(tmpdir(), 'samsblog-publishing-'))); });
+afterEach(() => { vi.unstubAllGlobals(); });
 const content = { title: '互动验证', content: '正文', source: 'original', category: 'journal' };
 let sequence = 0;
 async function call(handler: APIRoute, route: string, body?: unknown, token = '11111111-1111-4111-8111-111111111111', method = 'POST', origin = 'https://blog.example.com', clientAddress = `203.0.113.${++sequence}`) {
   return await handler({ url: new URL(route, 'https://blog.example.com'),
-    request: new Request(new URL(route, 'https://blog.example.com'), { method, headers: { 'content-type': 'application/json', origin }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }),
+    request: new Request(new URL(route, 'https://blog.example.com'), { method, headers: { 'content-type': 'application/json', origin }, ...(body === undefined ? {} : { body: JSON.stringify(handler === postComment && body && typeof body === 'object' ? { operationId: randomUUID(), ...body } : body) }) }),
     clientAddress,
-    cookies: { get: (name: string) => ({ value: name === 'samsblog_admin' ? createAdminSession() : token }), set: vi.fn() },
+    cookies: { get: (name: string) => ({ value: name === adminCookie.name ? createAdminSession() : token }), set: vi.fn() },
   } as unknown as APIContext) as Response;
 }
 
 describe('public submission quotas', () => {
   const submit = (handler: APIRoute, route: string, body: unknown, clientAddress = '198.51.100.1') =>
     call(handler, route, body, undefined, 'POST', undefined, clientAddress);
+
+  it('replays a lost-response submission after another tab edits the draft and the original tab refreshes', async () => {
+    const createStorage = () => {
+      const values = new Map<string, string>();
+      return { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => { values.set(key, value); } };
+    };
+    const firstSession = createStorage(); const secondSession = createStorage();
+    vi.stubGlobal('localStorage', createStorage()); vi.stubGlobal('sessionStorage', firstSession);
+    vi.stubGlobal('window', new EventTarget());
+    vi.stubGlobal('document', Object.assign(new EventTarget(), { hidden: false, createElement: () => ({ className: '', textContent: '', setAttribute() {}, remove() {} }) }));
+    const field = () => Object.assign(new EventTarget(), { value: '', closest: () => ({ after() {} }) }) as unknown as HTMLTextAreaElement;
+    const firstField = field(); let firstTab = initializeCommentDraft(firstField, 'guestbook', null);
+    const body = { nickname: '跨标签访客', content: '同一份丢失响应的提交', notifyReply: false };
+    firstField.value = body.content; firstField.dispatchEvent(new Event('input'));
+    const original = await firstTab.captureSubmission(body);
+    const first = await submit(postComment, '/api/guestbook/messages.json', { ...body, operationId: original.operationId, submissionIdentity: 'anonymous' }, '198.51.100.245');
+    expect(first.status).toBe(201); const accepted = await first.json();
+    vi.stubGlobal('sessionStorage', secondSession);
+    const secondField = field(); const secondTab = initializeCommentDraft(secondField, 'guestbook', null);
+    secondField.value = '另一个标签正在写的新正文'; secondField.dispatchEvent(new Event('input')); secondTab.destroy();
+    vi.stubGlobal('sessionStorage', firstSession);
+    firstTab.destroy(); firstTab = initializeCommentDraft(firstField, 'guestbook', null);
+    const retry = await firstTab.captureSubmission(body);
+    const replayed = await submit(postComment, '/api/guestbook/messages.json', { ...body, operationId: retry.operationId, submissionIdentity: 'anonymous' }, '198.51.100.245');
+    expect(replayed.status).toBe(201); expect(await replayed.json()).toEqual(accepted);
+    expect(getDatabase().prepare('SELECT COUNT(*) AS count FROM messages WHERE content=?').get(body.content)).toEqual({ count: 1 });
+    expect(retry.operationId).toBe(original.operationId);
+    firstTab.destroy();
+  });
+
+  it.each(['draft', 'pending'])('keeps the selected operation through partial %s storage failure and a refreshed API retry', async (failure) => {
+    const local = new Map<string, string>(); const session = new Map<string, string>(); let draftWrites = 0;
+    vi.stubGlobal('localStorage', { getItem: (key: string) => local.get(key) ?? null, setItem: (key: string, value: string) => {
+      if (failure === 'draft' && ++draftWrites >= 3) throw new DOMException('Full', 'QuotaExceededError');
+      local.set(key, value);
+    } });
+    vi.stubGlobal('sessionStorage', { getItem: (key: string) => session.get(key) ?? null, setItem: (key: string, value: string) => {
+      if (failure === 'pending' && key.endsWith(':pending')) throw new DOMException('Full', 'QuotaExceededError');
+      session.set(key, value);
+    } });
+    vi.stubGlobal('console', { ...console, warn: vi.fn() }); vi.stubGlobal('window', new EventTarget());
+    vi.stubGlobal('document', Object.assign(new EventTarget(), { hidden: false, createElement: () => ({ className: '', textContent: '', setAttribute() {}, remove() {} }) }));
+    const field = Object.assign(new EventTarget(), { value: '', closest: () => ({ after() {} }) }) as unknown as HTMLTextAreaElement;
+    let draft = initializeCommentDraft(field, 'guestbook', null);
+    const body = { nickname: '部分写入访客', content: `部分${failure}存储失败后重试`, notifyReply: false };
+    field.value = body.content; field.dispatchEvent(new Event('input'));
+    const original = await draft.captureSubmission(body);
+    const source = failure === 'draft' ? '198.51.100.246' : '198.51.100.247';
+    const first = await submit(postComment, '/api/guestbook/messages.json', { ...body, operationId: original.operationId, submissionIdentity: 'anonymous' }, source);
+    expect(first.status).toBe(201); const accepted = await first.json();
+    expect((await draft.captureSubmission(body)).operationId).toBe(original.operationId);
+    draft.destroy(); draft = initializeCommentDraft(field, 'guestbook', null);
+    field.value = body.content; field.dispatchEvent(new Event('input'));
+    const retry = await draft.captureSubmission(body);
+    const replayed = await submit(postComment, '/api/guestbook/messages.json', { ...body, operationId: retry.operationId, submissionIdentity: 'anonymous' }, source);
+    expect(replayed.status).toBe(201); expect(await replayed.json()).toEqual(accepted);
+    expect(getDatabase().prepare('SELECT COUNT(*) AS count FROM messages WHERE content=?').get(body.content)).toEqual({ count: 1 });
+    expect(retry.operationId).toBe(original.operationId);
+    if (failure === 'draft') expect(JSON.parse(session.get(`${siteConfig.commentDrafts.storageKey}:pending`) || '{}')[`${original.key}/${original.requestHash}`].operationId).toBe(original.operationId);
+    draft.destroy();
+  });
+
+  it('replays the original response without a second message or quota charge and rejects changed reuse', async () => {
+    const operationId = randomUUID();
+    const message = { operationId, nickname: '幂等访客', content: '响应丢失后重试' };
+    expect((await submit(postComment, '/api/guestbook/messages.json', { ...message, submissionIdentity: 'reader:999' }, '198.51.100.210')).status).toBe(409);
+    const first = await submit(postComment, '/api/guestbook/messages.json', message, '198.51.100.211');
+    const original = await first.json(); expect(first.status).toBe(201);
+    await submit(postComment, '/api/guestbook/messages.json', { ...message, operationId: randomUUID(), content: '用完第二次额度' }, '198.51.100.211');
+    const replay = await submit(postComment, '/api/guestbook/messages.json', message, '198.51.100.211');
+    expect(replay.status).toBe(201); expect(await replay.json()).toEqual(original);
+    expect(getDatabase().prepare('SELECT COUNT(*) AS count FROM messages WHERE content=?').get(message.content)).toEqual({ count: 1 });
+    expect((await submit(postComment, '/api/guestbook/messages.json', { ...message, content: '同编号不同正文' }, '198.51.100.211')).status).toBe(409);
+    const anotherIdentity = await call(postComment, '/api/guestbook/messages.json', message, randomUUID(), 'POST', undefined, '198.51.100.212');
+    expect(anotherIdentity.status).toBe(201); expect((await anotherIdentity.json()).id).not.toBe(original.id);
+  });
+
+  it('rolls back the message, notification and operation result together on failure', async () => {
+    const { completeCommentOperation } = await import('../src/lib/comment-submissions');
+    const operationId = randomUUID();
+    expect(() => completeCommentOperation('reader:rollback', operationId, { content: '回滚提交' }, () => {
+      const id = createStoredMessage({ nickname: '事务测试', content: '回滚提交', fingerprintHash: 'rollback-submission' });
+      getDatabase().prepare("INSERT INTO mail_notifications(kind,message_id,created_at,updated_at) VALUES('message',?,?,?)").run(id, new Date().toISOString(), new Date().toISOString());
+      throw new Error('submission fixture failure');
+    })).toThrow('submission fixture failure');
+    expect(getDatabase().prepare('SELECT 1 FROM messages WHERE fingerprint_hash=?').get('rollback-submission')).toBeUndefined();
+    expect(getDatabase().prepare('SELECT 1 FROM message_submissions WHERE operation_id=?').get(operationId)).toBeUndefined();
+  });
+
+  it('shares a request quota across public write endpoints before invalid input can reach storage', async () => {
+    const source = '198.51.100.200';
+    for (let index = 0; index < serverConfig.publicActivityLimit; index++) {
+      const handler = index % 2 ? apply : postComment;
+      const route = index % 2 ? '/api/friends/applications.json' : '/api/guestbook/messages.json';
+      expect((await submit(handler, route, {}, source)).status).toBe(400);
+    }
+    expect((await submit(postComment, '/api/guestbook/messages.json', {}, source)).status).toBe(429);
+    expect((await submit(apply, '/api/friends/applications.json', {}, source)).status).toBe(429);
+  });
 
   it('shares a rolling quota between guestbook messages and article comments', async () => {
     const articleId = saveArticle({ ...content, title: '留言限流验证' });
@@ -62,30 +170,63 @@ describe('public submission quotas', () => {
 });
 
 describe('article conversation boundaries', () => {
-  it('publishes article comments immediately, retains guestbook moderation and never exposes contact details', async () => {
+  it('uses only the verified reader session for publication and keeps pending parents private', async () => {
+    const articleId = saveArticle(content);
+    const parentId = createPublishedMessage({ articleId, nickname: '公开父帖', content: '公开内容', fingerprintHash: 'reader-parent' });
+    const guestParent = createPublishedMessage({ nickname: '公开留言', content: '公开内容', fingerprintHash: 'reader-guest-parent' });
+    const readerId = Number(getDatabase().prepare('INSERT INTO readers(display_name,created_at,updated_at) VALUES (?,?,?)').run('可信读者', new Date().toISOString(), new Date().toISOString()).lastInsertRowid);
+    const { queueReplyNotification } = await import('../src/lib/reply-notifications');
+    vi.mocked(queueReplyNotification).mockClear();
+    for (const scope of [{}, { parentId: guestParent }, { articleId }, { articleId, parentId }]) {
+      const response = await call(postComment, '/api/guestbook/messages.json', { ...scope, nickname: '匿名访客', content: '待审内容', readerId, status: 'published', isAdmin: true });
+      const result = await response.json();
+      expect(result.status).toBe('pending');
+      expect(getDatabase().prepare('SELECT status,reader_id,nickname FROM messages WHERE id=?').get(result.id)).toEqual({ status: 'pending', reader_id: null, nickname: '匿名访客' });
+    }
+    expect(queueReplyNotification).not.toHaveBeenCalled();
+    readerSession.value = { id: readerId, displayName: '可信读者', avatarUrl: null };
+    try {
+      for (const scope of [{}, { parentId: guestParent }, { articleId }, { articleId, parentId }]) {
+        const response = await call(postComment, '/api/guestbook/messages.json', { ...scope, nickname: '伪造作者', content: '登录读者内容', readerId: 999999 });
+        const result = await response.json();
+        expect(result.status).toBe('published');
+        expect(getDatabase().prepare('SELECT status,reader_id,nickname FROM messages WHERE id=?').get(result.id)).toEqual({ status: 'published', reader_id: readerId, nickname: '可信读者' });
+      }
+      for (const status of ['pending', 'hidden'] as const) {
+        updateMessageStatus(parentId, status);
+        expect((await call(postComment, '/api/guestbook/messages.json', { articleId, parentId, content: '不能公开父帖' })).status).toBe(404);
+        expect(listPublishedMessages(60, articleId).some((message) => message.id === parentId)).toBe(false);
+      }
+      const output = JSON.stringify(listPublishedMessages());
+      expect(output).not.toMatch(/reader_id|readerId|email|fingerprint/);
+    } finally { readerSession.value = null; }
+  });
+
+  it('holds anonymous article comments for moderation and never exposes contact details', async () => {
     const articleId = saveArticle(content);
     const response = await call(postComment, '/api/guestbook/messages.json', { articleId, nickname: '测试访客', content: '直接公开的评论', email: 'reader@example.com' });
     expect(response.status).toBe(201);
     const { id } = await response.json();
-    expect(listPublishedMessages(60, articleId).map((message) => message.id)).toContain(id);
+    expect(listPublishedMessages(60, articleId).map((message) => message.id)).not.toContain(id);
+    expect(listAllMessages().find((message) => message.id === id)?.status).toBe('pending');
     expect(listPublishedMessages().some((message) => message.id === id)).toBe(false);
     const publicResponse = await call(getComments, `/api/guestbook/messages.json?articleId=${articleId}`, undefined, undefined, 'GET');
     const serialized = await publicResponse.text();
     expect(serialized).not.toContain('reader@example.com'); expect(serialized).not.toContain('fingerprint');
-    const guest = createMessage({ nickname: '纸条访客', content: '需要审核的留言', fingerprintHash: 'test-guest' });
+    const guest = createStoredMessage({ nickname: '纸条访客', content: '需要审核的留言', fingerprintHash: 'test-guest' });
     expect(listPublishedMessages().some((message) => message.id === guest)).toBe(false);
     expect(listAllMessages().find((message) => message.id === guest)?.status).toBe('pending');
     expect(getDatabase().prepare('SELECT email,notify_reply FROM messages WHERE id=?').get(id)).toEqual({ email: '', notify_reply: 0 });
   });
   it('rejects cross-article, nested and hidden replies and hides discussion when an article is withdrawn', async () => {
     const first = saveArticle(content); const second = saveArticle(content);
-    const parent = createMessage({ articleId: first, nickname: '测试访客', content: '原评论', fingerprintHash: 'a' });
+    const parent = createPublishedMessage({ articleId: first, nickname: '测试访客', content: '原评论', fingerprintHash: 'a' });
     expect((await call(postComment, '/api/guestbook/messages.json', { articleId: second, parentId: parent, nickname: '另一访客', content: '越界回复' })).status).toBe(404);
-    const child = createMessage({ articleId: first, parentId: parent, nickname: '另一访客', content: '合法回复', fingerprintHash: 'b' });
-    expect(() => createMessage({ articleId: first, parentId: child, nickname: '另一访客', content: '嵌套回复', fingerprintHash: 'c' })).toThrow();
+    const child = createPublishedMessage({ articleId: first, parentId: parent, nickname: '另一访客', content: '合法回复', fingerprintHash: 'b' });
+    expect(() => createPublishedMessage({ articleId: first, parentId: child, nickname: '另一访客', content: '嵌套回复', fingerprintHash: 'c' })).toThrow();
     updateMessageStatus(parent, 'hidden');
     expect(listPublishedMessages(60, first)).toEqual([]);
-    expect(() => createMessage({ articleId: first, parentId: parent, nickname: '另一访客', content: '隐藏回复', fingerprintHash: 'd' })).toThrow();
+    expect(() => createPublishedMessage({ articleId: first, parentId: parent, nickname: '另一访客', content: '隐藏回复', fingerprintHash: 'd' })).toThrow();
     withdrawArticle(first);
     expect((await call(getComments, `/api/guestbook/messages.json?articleId=${first}`, undefined, undefined, 'GET')).status).toBe(404);
     expect(listAllMessages().some((message) => message.id === parent)).toBe(true);
@@ -93,7 +234,7 @@ describe('article conversation boundaries', () => {
   });
   it('quotes exact root or reply text without changing the root thread or trusting an owner nickname', async () => {
     const articleId = saveArticle(content);
-    const parentId = createMessage({ articleId, nickname: '原作者', content: '评论原文中的连续片段。', fingerprintHash: 'quote-root' });
+    const parentId = createPublishedMessage({ articleId, nickname: '原作者', content: '评论原文中的连续片段。', fingerprintHash: 'quote-root' });
     const ownerReply = createAdminReply(parentId, '站长回复中的原话');
     const response = await call(postComment, '/api/guestbook/messages.json', {
       articleId, parentId, quoteMessageId: ownerReply, quoteContent: '回复中的原话',
@@ -101,6 +242,7 @@ describe('article conversation boundaries', () => {
     });
     expect(response.status).toBe(201);
     const { id } = await response.json();
+    updateMessageStatus(id, 'published');
     const thread = listPublishedMessages(60, articleId).find((message) => message.id === parentId)!;
     expect(thread).toMatchObject({ quoteMessageId: null, quoteContent: '', quoteNickname: '' });
     expect(thread.replies?.find((reply) => reply.id === ownerReply)?.isAdmin).toBe(true);
@@ -113,9 +255,9 @@ describe('article conversation boundaries', () => {
   });
   it('rejects fabricated, oversized, malformed, cross-article and non-public quote sources', async () => {
     const articleId = saveArticle(content); const otherArticle = saveArticle(content);
-    const parentId = createMessage({ articleId, nickname: '原作者', content: `连续原文${'😀'.repeat(siteConfig.discussion.quoteMaximumCharacters + 1)}`, fingerprintHash: 'quote-validation' });
-    const other = createMessage({ articleId: otherArticle, nickname: '其他作者', content: '连续原文', fingerprintHash: 'quote-other' });
-    const hidden = createMessage({ articleId, nickname: '隐藏作者', content: '连续原文', fingerprintHash: 'quote-hidden' });
+    const parentId = createPublishedMessage({ articleId, nickname: '原作者', content: `连续原文${'😀'.repeat(siteConfig.discussion.quoteMaximumCharacters + 1)}`, fingerprintHash: 'quote-validation' });
+    const other = createPublishedMessage({ articleId: otherArticle, nickname: '其他作者', content: '连续原文', fingerprintHash: 'quote-other' });
+    const hidden = createPublishedMessage({ articleId, nickname: '隐藏作者', content: '连续原文', fingerprintHash: 'quote-hidden' });
     updateMessageStatus(hidden, 'hidden');
     const payload = { articleId, parentId, quoteMessageId: parentId, quoteContent: '连续原文', nickname: '测试访客', content: '引用验证' };
     for (const quote of [
@@ -136,15 +278,15 @@ describe('article conversation boundaries', () => {
   });
   it('removes quote snapshots when their source or source thread becomes private or deleted', async () => {
     const articleId = saveArticle(content);
-    const sourceRoot = createMessage({ articleId, nickname: '引用作者', content: '独有的引用根原话', fingerprintHash: 'quote-privacy-root' });
-    const sourceReply = createMessage({ articleId, parentId: sourceRoot, nickname: '回复作者', content: '独有的引用回复原话', fingerprintHash: 'quote-privacy-reply' });
-    const targetRoot = createMessage({ articleId, nickname: '回应作者', content: '保留公开的另一线程', fingerprintHash: 'quote-privacy-target' });
-    const quoted = createMessage({ articleId, parentId: targetRoot, quoteMessageId: sourceReply, quoteContent: '引用回复原话', nickname: '回应访客', content: '引用后的回应', fingerprintHash: 'quote-privacy-quote' });
+    const sourceRoot = createPublishedMessage({ articleId, nickname: '引用作者', content: '独有的引用根原话', fingerprintHash: 'quote-privacy-root' });
+    const sourceReply = createPublishedMessage({ articleId, parentId: sourceRoot, nickname: '回复作者', content: '独有的引用回复原话', fingerprintHash: 'quote-privacy-reply' });
+    const targetRoot = createPublishedMessage({ articleId, nickname: '回应作者', content: '保留公开的另一线程', fingerprintHash: 'quote-privacy-target' });
+    const quoted = createPublishedMessage({ articleId, parentId: targetRoot, quoteMessageId: sourceReply, quoteContent: '引用回复原话', nickname: '回应访客', content: '引用后的回应', fingerprintHash: 'quote-privacy-quote' });
     const readQuote = () => listPublishedMessages(60, articleId).find((message) => message.id === targetRoot)?.replies?.find((message) => message.id === quoted);
     expect(readQuote()).toMatchObject({ quoteMessageId: sourceReply, quoteContent: '引用回复原话', quoteNickname: '回复作者' });
     updateMessageStatus(sourceRoot, 'hidden');
     expect(readQuote()).toMatchObject({ quoteMessageId: null, quoteContent: '', quoteNickname: '' });
-    expect(() => createMessage({ articleId, parentId: targetRoot, quoteMessageId: sourceReply, quoteContent: '引用回复原话', nickname: '测试访客', content: '隐藏后引用', fingerprintHash: 'quote-hidden-thread' })).toThrow('引用的评论不存在');
+    expect(() => createPublishedMessage({ articleId, parentId: targetRoot, quoteMessageId: sourceReply, quoteContent: '引用回复原话', nickname: '测试访客', content: '隐藏后引用', fingerprintHash: 'quote-hidden-thread' })).toThrow('引用的评论不存在');
     updateMessageStatus(sourceRoot, 'published');
     updateMessageStatus(sourceReply, 'hidden');
     expect(readQuote()).toMatchObject({ quoteMessageId: null, quoteContent: '', quoteNickname: '' });
@@ -158,6 +300,18 @@ describe('article conversation boundaries', () => {
 });
 
 describe('reactions and visitor counting', () => {
+  it('rejects coerced reaction values and enforces source quotas across changing visitor cookies', async () => {
+    const articleId = saveArticle(content);
+    for (const reaction of [[], ['like'], {}, null, false]) {
+      expect((await call(react, '/api/articles/reactions.json', { articleId, reaction })).status).toBe(400);
+    }
+    const source = '198.51.100.201';
+    for (let index = 0; index < serverConfig.publicActivityLimit; index++) {
+      const token = `${String(index).padStart(8, '0')}-1111-4111-8111-111111111111`;
+      expect((await call(react, '/api/articles/reactions.json', { articleId, reaction: 'like' }, token, 'POST', undefined, source)).status).toBe(200);
+    }
+    expect((await call(react, '/api/articles/reactions.json', { articleId, reaction: 'like' }, undefined, 'POST', undefined, source)).status).toBe(429);
+  });
   it('stores one reaction per anonymous visitor, supports switching and cancellation', async () => {
     const articleId = saveArticle(content);
     const payload = { articleId, reaction: 'like' };

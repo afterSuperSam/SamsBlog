@@ -1,8 +1,124 @@
-import { describe, expect, it } from 'vitest';
-import { parseReadingHistory, getReadingTrail, measureReadingChapters, parseReadingTypography } from '../src/lib/reading-history';
+import { readFileSync } from 'node:fs';
+import { runInNewContext } from 'node:vm';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { parseReadingHistory, getReadingTrail, measureReadingChapters, parseReadingTypography, articleReadingText, estimateReadingMinutes, safeArticleReturnPath } from '../src/lib/reading-history';
 import { siteConfig } from '../src/config/site';
+import { initializeExplanations, revealArticleTarget } from '../src/lib/reading-extras';
+import { animateMotion } from '../src/lib/motion';
+
+vi.mock('../src/lib/motion', () => ({ animateContentHeight: vi.fn(), animateMotion: vi.fn() }));
+afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks(); });
 
 const record = { version: 'v1', progress: .4, heading: 'article-heading-test', offset: 20, updatedAt: 1 };
+it('estimates Chinese and mixed text without counting punctuation as words', () => {
+  expect(estimateReadingMinutes('')).toBe(1);
+  expect(estimateReadingMinutes('字'.repeat(800))).toBe(2);
+  expect(estimateReadingMinutes('字'.repeat(400) + ' word'.repeat(220))).toBe(2);
+  expect(articleReadingText('<h2>标题</h2><pre><code>const code = 1000;</code></pre><p>正文 <code>inline</code> &amp; text</p>')).toBe('标题 正文 inline & text');
+});
+it('keeps only same-origin catalogue or home return paths', () => {
+  expect(safeArticleReturnPath('/content?query=%E4%B8%AD&page=2')).toBe('/content?query=%E4%B8%AD&page=2');
+  expect(safeArticleReturnPath('/')).toBe('/');
+  ['//other.test/content', '/\\other.test', '/admin', 'https://other.test', '/%2fother.test'].forEach((value) => expect(safeArticleReturnPath(value)).toBe('/content'));
+});
+const presentationScript = readFileSync(new URL('../public/scripts/page-presentation.js', import.meta.url), 'utf8');
+
+describe('reading targets inside collapsed explanations', () => {
+  it('cancels an in-flight closing animation before revealing the reading target', async () => {
+    const summary = Object.assign(new EventTarget(), { offsetHeight: 20 });
+    const prose = { contains: () => true, querySelectorAll: () => [details] };
+    class DetailsStub {
+      open = true;
+      dataset: Record<string, string> = {};
+      parentElement = prose;
+      scrollHeight = 100;
+      querySelector = () => summary;
+      getBoundingClientRect = () => ({ height: 100 });
+    }
+    const details = new DetailsStub();
+    vi.stubGlobal('HTMLDetailsElement', DetailsStub);
+    vi.stubGlobal('document', { documentElement: {} });
+    vi.stubGlobal('getComputedStyle', () => ({ getPropertyValue: () => 'linear' }));
+    let finish!: () => void;
+    const animation = { playState: 'running', finished: new Promise<void>((resolve) => { finish = resolve; }), cancel: vi.fn(() => finish()) };
+    vi.mocked(animateMotion).mockReturnValueOnce(animation as unknown as Animation);
+    initializeExplanations(prose as unknown as HTMLElement);
+    summary.dispatchEvent(new Event('click', { cancelable: true }));
+    expect(details.open).toBe(true);
+    expect(revealArticleTarget(prose as unknown as HTMLElement, { parentElement: details } as unknown as HTMLElement)).toBe(true);
+    await animation.finished;
+    expect(animation.cancel).toHaveBeenCalledOnce();
+    expect(details.open).toBe(true);
+  });
+  it('reveals nested explanations before navigation and leaves unrelated disclosures closed', () => {
+    class ElementStub {
+      constructor(public parentElement: ElementStub | null = null) {}
+      contains(target: ElementStub | null): boolean {
+        return !!target && (target === this || this.contains(target.parentElement));
+      }
+    }
+    class DetailsStub extends ElementStub { open = false; }
+    vi.stubGlobal('HTMLDetailsElement', DetailsStub);
+    const outside = new DetailsStub();
+    const prose = new ElementStub(outside);
+    const outer = new DetailsStub(prose);
+    const inner = new DetailsStub(new ElementStub(outer));
+    const heading = new ElementStub(inner);
+    expect(revealArticleTarget(prose as unknown as HTMLElement, heading as unknown as HTMLElement)).toBe(true);
+    expect([outer.open, inner.open, outside.open]).toEqual([true, true, false]);
+    expect(revealArticleTarget(prose as unknown as HTMLElement, heading as unknown as HTMLElement)).toBe(false);
+    const unrelated = new ElementStub(outside);
+    expect(revealArticleTarget(prose as unknown as HTMLElement, unrelated as unknown as HTMLElement)).toBe(false);
+    expect(revealArticleTarget(prose as unknown as HTMLElement, prose as unknown as HTMLElement)).toBe(false);
+    expect(outside.open).toBe(false);
+  });
+});
+
+const restoreFontPreference = (storedFont: string | null, storageBlocked = false, article = true) => {
+  const dataset: Record<string, string> = article ? { articleFont: 'default', readingFontStorageKey: siteConfig.articleReading.fontPreferenceStorageKey } : {};
+  const warning = vi.fn();
+  const getItem = vi.fn((key: string) => {
+    if (storageBlocked) throw new Error('Storage unavailable');
+    return key === siteConfig.articleReading.fontPreferenceStorageKey ? storedFont : null;
+  });
+  const listeners = new Map<string, (event: { persisted?: boolean }) => void>();
+  runInNewContext(presentationScript, {
+    document: { documentElement: { dataset, classList: { contains: () => false, toggle: vi.fn() } }, querySelector: () => null },
+    location: { pathname: '/articles/1' },
+    matchMedia: () => ({ matches: false }),
+    localStorage: { getItem },
+    window: { addEventListener: (name: string, listener: (event: { persisted?: boolean }) => void) => listeners.set(name, listener) },
+    console: { warn: warning },
+  });
+  return { dataset, getItem, warning, listeners };
+};
+
+describe('reading font presentation', () => {
+  it.each([null, '', 'invalid', 'default'])('uses the default font when the stored preference is %s', (storedFont) => {
+    const { dataset, warning } = restoreFontPreference(storedFont);
+    expect(dataset.articleFont).toBe('default');
+    expect(warning).not.toHaveBeenCalled();
+  });
+  it('restores an explicitly selected artistic font before the first frame', () => {
+    expect(restoreFontPreference('handwritten').dataset.articleFont).toBe('handwritten');
+  });
+  it('keeps the server-rendered default when browser storage is blocked', () => {
+    const { dataset, warning } = restoreFontPreference(null, true);
+    expect(dataset.articleFont).toBe('default');
+    expect(warning).toHaveBeenCalledOnce();
+  });
+  it('does not apply the reading font preference to other pages', () => {
+    const { dataset, getItem } = restoreFontPreference('handwritten', false, false);
+    expect(dataset.articleFont).toBeUndefined();
+    expect(getItem).not.toHaveBeenCalledWith(siteConfig.articleReading.fontPreferenceStorageKey);
+  });
+  it('refreshes a manually changed preference when returning from the page cache', () => {
+    const { dataset, getItem, listeners } = restoreFontPreference(null);
+    getItem.mockImplementation((key) => key === siteConfig.articleReading.fontPreferenceStorageKey ? 'handwritten' : null);
+    listeners.get('pageshow')!({ persisted: true });
+    expect(dataset.articleFont).toBe('handwritten');
+  });
+});
 
 describe('local reading typography', () => {
   it('restores bounded sizes and supported spacing, falling back independently', () => {

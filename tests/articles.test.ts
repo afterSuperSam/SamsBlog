@@ -17,7 +17,11 @@ import { GET as getRss } from '../src/pages/rss.xml';
 import { GET as getSiteCard } from '../src/pages/api/public/site-card.json';
 import { GET as getFeaturedLink } from '../src/pages/api/public/featured-link.json';
 import { listArticleDrafts, saveArticleDraft, publishArticleDraft, deleteArticleDraft, restoreArticleDraft } from '../src/lib/article-drafts';
-import { searchArticleIds, withdrawArticle } from '../src/lib/articles';
+import { getArticlePage, searchArticleIds, withdrawArticle } from '../src/lib/articles';
+import { readArticleFilters } from '../src/lib/article-catalog';
+import { articleSearchTokens } from '../src/lib/article-search';
+import { GET as searchArticles } from '../src/pages/api/articles/search.json';
+import * as markdown from '../src/lib/markdown';
 
 const input = { title: '验证文章', coverUrl: 'https://images.example.com/cover.webp', source: 'original', category: 'discussion', content: '# 正文\n\n[链接](https://example.com)\n\n![图片](https://images.example.com/body.webp)' };
 
@@ -44,6 +48,67 @@ describe('article persistence and authenticated management', () => {
     expect(listArticles({ includeDeleted: true })).toEqual([]);
     expect(getDatabase().prepare('SELECT * FROM articles').all()).toEqual([{ id: 1, title: '历史记录' }]);
     expect(getDatabase().prepare("SELECT id FROM schema_migrations WHERE id = '20261017-blog-articles-v1'").get()).toBeTruthy();
+  });
+
+  it('pages filtered public results in SQL and keeps archive months stable across page boundaries', () => {
+    const identifiers: number[] = [];
+    const tag = '分页边界测试';
+    try {
+      for (let index = 0; index < 27; index += 1) {
+        const id = saveArticle({ ...input, title: `分页 ${index}`, contentType: 'note', tags: [tag], source: 'repost', category: 'journal' });
+        identifiers.push(id);
+        getDatabase().prepare('UPDATE blog_articles SET starred=1, created_at=?, updated_at=? WHERE id=?').run(
+          index < 14 ? '2026-09-30T16:05:00Z' : '2026-09-29T00:00:00Z', `2026-11-${String(index + 1).padStart(2, '0')}T00:00:00Z`, id,
+        );
+      }
+      const filters = readArticleFilters(new URLSearchParams({ tag, source: 'repost', category: 'journal', contentType: 'note', starred: '1', view: 'archive', sort: 'updated-asc', page: '2' }));
+      const page = getArticlePage(filters);
+      expect(page).toMatchObject({ total: 27, page: 2, pageCount: 3, pageSize: 12 });
+      const expected = [...identifiers.slice(14), ...identifiers.slice(0, 14)];
+      expect(page.articles.map((article) => article.id)).toEqual(expected.slice(12, 24));
+      expect(getArticlePage({ ...filters, period: '2026-10', page: '99' })).toMatchObject({ total: 14, page: 2, pageCount: 2 });
+      expect(getArticlePage({ ...filters, q: '没有这种内容', page: '99' })).toMatchObject({ total: 0, page: 1, pageCount: 1, articles: [] });
+      expect(getArticlePage({ ...filters, tag: '不存在标签' }).articles).toEqual([]);
+    } finally { identifiers.forEach(deleteArticle); }
+  });
+
+  it('uses short Chinese indexes, exact literal matching and incremental invalidation without rendering unchanged bodies', async () => {
+    const id = saveArticle({ ...input, title: '索引验证 ＡＢＣ', content: '前缀 深海星辰 后缀 " OR * : - 文字\n\n旧正文独有词' });
+    const decoy = saveArticle({ ...input, title: '相邻字干扰', content: '深海 别处 海星 以及 星辰' });
+    const hidden = saveArticleDraft({ ...input, draftId: randomUUID(), revision: 0, title: '未公开草稿秘密', content: '未公开草稿秘密' });
+    const plainText = vi.spyOn(markdown, 'articlePlainText');
+    try {
+      expect(searchArticleIds('深')).toContain(id);
+      expect(searchArticleIds('深海')).toContain(id);
+      expect(searchArticleIds('深海星辰')).toEqual([id]);
+      expect(searchArticleIds('abc')).toContain(id);
+      expect(searchArticleIds('" OR * : -')).toEqual([id]);
+      expect(searchArticleIds('未公开草稿秘密')).toEqual([]);
+      plainText.mockClear();
+      searchArticleIds('海星');
+      searchArticleIds('星辰');
+      expect(plainText).not.toHaveBeenCalled();
+      getDatabase().prepare('UPDATE blog_articles SET content=? WHERE id=?').run('新正文独有词 深海星辰', id);
+      expect(searchArticleIds('旧正文独有词')).toEqual([]);
+      expect(searchArticleIds('新正文独有词')).toEqual([id]);
+      expect(plainText).toHaveBeenCalledTimes(1);
+      const queryPlan = getDatabase().prepare('EXPLAIN QUERY PLAN SELECT rowid FROM blog_article_search_fts WHERE blog_article_search_fts MATCH ?').all(articleSearchTokens('深海', true)) as Array<{ detail: string }>;
+      expect(queryPlan.some((row) => row.detail.includes('VIRTUAL TABLE INDEX'))).toBe(true);
+      expect(getDatabase().prepare("SELECT name FROM sqlite_master WHERE name='blog_article_search_fts_content'").get()).toBeUndefined();
+      withdrawArticle(id);
+      expect(searchArticleIds('新正文独有词')).toEqual([]);
+      expect(getDatabase().prepare('SELECT 1 FROM blog_article_search WHERE article_id=?').get(id)).toBeUndefined();
+      saveArticle({ ...input, id, content: '重新发布索引词' });
+      expect(searchArticleIds('重新发布索引词')).toEqual([id]);
+      deleteArticle(id);
+      expect(searchArticleIds('重新发布索引词')).toEqual([]);
+      restoreArticle(id);
+      expect(searchArticleIds('重新发布索引词')).toEqual([id]);
+      const response = await searchArticles({ url: new URL('https://example.com/api/articles/search.json?q=重新发布索引词&page=50') } as APIContext) as Response;
+      expect(await response.json()).toMatchObject({ ids: [id], total: 1, page: 1, pageCount: 1, pageSize: 12 });
+    } finally {
+      plainText.mockRestore(); deleteArticle(id); deleteArticle(decoy); deleteArticleDraft(hidden);
+    }
   });
 
   it('cycles through public links, skips deleted items and wraps to the newest link', () => {
@@ -437,20 +502,19 @@ describe('project settings and automatically refreshed feeds', () => {
     const before = getProjectSettings();
     expect(before.projects.map((project) => project.status)).toEqual(['active', 'maintenance', 'active', 'archived']);
     const projects = before.projects.map((project) => ({ ...project }));
-    const payload = { currentWork: '最近在做：测试项目', projects };
+    const payload = { projects, revision: before.revision };
     payload.projects[0].name = '项目的新名字';
     payload.projects[0].url = 'https://example.com/project';
     payload.projects[0].description = '新的项目简介';
     payload.projects[0].keyword = '';
     expect((await call(saveProjects, 'PUT', payload, false)).status).toBe(401);
     expect((await call(saveProjects, 'PUT', payload)).status).toBe(200);
-    expect(getProjectSettings().currentWork).toBe(payload.currentWork);
+    expect(getProjectSettings()).not.toHaveProperty('currentWork');
     expect(getProjectSettings().projects[0]).toMatchObject(payload.projects[0]);
     expect(() => saveProjectSettings({ ...payload, projects: [...projects, projects[0]] })).toThrow();
     expect(() => saveProjectSettings({ ...payload, projects: projects.map((project) => ({ ...project, status: 'unknown' })) })).toThrow();
     expect(() => saveProjectSettings({ ...payload, projects: projects.map((project) => ({ ...project, url: 'javascript:alert(1)' })) })).toThrow();
-    expect(() => saveProjectSettings({ ...payload, currentWork: ' ' })).toThrow();
-    expect(getProjectSettings().currentWork).toBe(payload.currentWork);
+    expect(getProjectSettings().projects[0]).toMatchObject(payload.projects[0]);
   });
 
   it('coalesces commit requests and keeps valid dates when GitHub later fails', async () => {
@@ -512,7 +576,7 @@ describe('project settings and automatically refreshed feeds', () => {
     expect(feed).toContain('&amp;lt;script&amp;gt;alert(1)&amp;lt;/script&amp;gt;');
     expect(feed).toContain('xmlns:content="http://purl.org/rss/1.0/modules/content/"');
     expect(feed).toContain('<description>只是一只大黄狗</description>');
-    expect(feed).toContain('<link>https://blog.moesam.com/</link>');
+    expect(feed).toContain(`<link>${new URL('/', siteConfig.siteUrl).href}</link>`);
     expect(feed).not.toContain('localhost');
     const item = feed.split('<item>').find((item) => item.includes(`/articles/${id}</link>`))!;
     expect(item).not.toContain('不要直接展示的结局');

@@ -1,15 +1,28 @@
+const publicSiteUrl = new URL(import.meta.env.PUBLIC_SITE_URL || 'http://localhost:4321');
+if (!['http:', 'https:'].includes(publicSiteUrl.protocol) || publicSiteUrl.username || publicSiteUrl.password
+  || publicSiteUrl.pathname !== '/' || publicSiteUrl.search || publicSiteUrl.hash
+  || publicSiteUrl.protocol === 'http:' && !['localhost', '127.0.0.1', '[::1]'].includes(publicSiteUrl.hostname)) {
+  throw new Error('Invalid public site origin: HTTP is only available for local preview');
+}
+
 export const siteConfig = {
   name: 'SamsBlog',
   description: '二次元与日常，收藏想象，也认真生活',
-  siteUrl: import.meta.env.PUBLIC_SITE_URL || 'http://localhost:4321',
+  siteUrl: publicSiteUrl.origin,
   locale: 'zh-CN',
-  rss: { description: '只是一只大黄狗', siteUrl: 'https://blog.moesam.com/' },
+  rss: { description: '只是一只大黄狗', siteUrl: publicSiteUrl.href },
+  blogsClubBadgeUrl: 'https://www.blogsclub.org/badge/blog.moesam.com',
   nav: [
     { href: '/', label: '首页' },
     { href: '/content', label: '内容' },
     { href: '/about', label: '关于' },
+    { href: '/reader', label: '读者' },
   ],
-  effects: { particleCount: 60, mobileParticleCount: 18, pointerTiltDegrees: 2.5, constellation: { desktopLineCount: 10, mobileLineCount: 5, desktopPointCount: 14, mobilePointCount: 8, refreshMilliseconds: 4200, fadeMilliseconds: 1100, maximumDistanceRatio: 0.26, maximumDegree: 2, scrollPeriodScreens: 2 } },
+  effects: {
+    particleCount: 40, mobileParticleCount: 12, pointerTiltDegrees: 2.5,
+    twinkle: { minimumSeconds: 15, rangeSeconds: 12, delayCycleSeconds: 18 },
+    constellation: { desktopLineCount: 6, mobileLineCount: 3, desktopPointCount: 10, mobilePointCount: 6, connectionProbability: .5, refreshMilliseconds: 4200, fadeMilliseconds: 1100, maximumDistanceRatio: .26, maximumDegree: 2, scrollPeriodScreens: 2 },
+  },
   navigation: { sectionActivationRatio: 0.35 },
   analytics: { visibleMilliseconds: 10000 },
   network: { sampleCount: 3, timeoutMilliseconds: 5000 },
@@ -22,17 +35,28 @@ export const siteConfig = {
   ],
   sponsorPresentation: { twoColumnMinimumCount: 6, avatarSizePixels: 64, avatarBaseUrl: 'https://minotar.net/helm/', avatarTimeoutMilliseconds: 4000, avatarPreloadMarginPixels: 240 },
   sponsorFields: { nameMaximumLength: 60, maximumAmount: 1000000 },
-  articles: { initialVisibleTagCount: 3, homepageCount: 1, homepageNoteCount: 2, homepageLinkCount: 1, feedCount: 20, cardCount: 3, reorderMilliseconds: 420, maximumTags: 8, tagMaximumLength: 24, searchMaximumLength: 120, searchDelayMilliseconds: 180, searchRevealMilliseconds: 280, searchDismissMilliseconds: 180 },
-  articleReading: { positionStorageKey: 'sams-blog-reading-positions', preferenceStorageKey: 'sams-blog-reading-mode', fontPreferenceStorageKey: 'sams-blog-reading-font', typographyStorageKey: 'sams-blog-reading-typography', fontSizeMinimum: 18, fontSizeMaximum: 26, fontSizeDefault: 20, fontSizeStep: 2, imageLoadTimeoutMilliseconds: 15000, positionLimit: 50, positionSaveMilliseconds: 1000, positionMinimumPixels: 240, imageZoomScale: 2, copyFeedbackMilliseconds: 1800, codeCollapsedLines: 16 },
+  articles: { pageSize: 12, paginationRadius: 2, searchIndexBatchSize: 32, searchSnippetLength: 160, searchSnippetContext: 36, initialVisibleTagCount: 3, homepageCount: 1, homepageNoteCount: 2, homepageLinkCount: 1, feedCount: 20, cardCount: 3, reorderMilliseconds: 420, maximumTags: 8, tagMaximumLength: 24, searchMaximumLength: 120, searchDelayMilliseconds: 180, searchRevealMilliseconds: 280, searchDismissMilliseconds: 180 },
+  articleReading: { positionStorageKey: 'sams-blog-reading-positions', fontPreferenceStorageKey: 'sams-blog-reading-font', typographyStorageKey: 'sams-blog-reading-typography', fontSizeMinimum: 18, fontSizeMaximum: 26, fontSizeDefault: 20, fontSizeStep: 2, imageLoadTimeoutMilliseconds: 15000, positionLimit: 50, positionSaveMilliseconds: 1000, positionMinimumPixels: 240, imageZoomScale: 2, copyFeedbackMilliseconds: 1800, codeCollapsedLines: 16 },
   visitorProfile: { storageKey: 'sams-blog-visitor-profile', nicknameMaximumLength: 24, emailMaximumLength: 254 },
   discussion: { textareaMaximumLines: 8, visibleReplyCount: 3, collapsedContentCharacters: 180, quoteMaximumCharacters: 180, recentEmoticonLimit: 6, recentEmoticonStorageKey: 'sams-blog-recent-emoticons', emoticons: [
     '(≧▽≦)', '(｡･ω･｡)ﾉ♡', '(๑•̀ㅂ•́)و✧', '(つ≧▽≦)つ', '(´･ω･`)', '(￣▽￣)ノ', '(｡•́︿•̀｡)', '( ˘▽˘)っ♨',
     '٩(ˊᗜˋ*)و', '(ﾉ◕ヮ◕)ﾉ*:･ﾟ✧',
   ] },
   readingExtras: { historyVisibleCount: 2, quoteMaximumCharacters: 450, quoteWidth: 1080, quoteWordmarkWidth: 210, quoteFontSize: 42, quoteLineHeight: 72, quotePadding: 88, quoteMinimumHeight: 720 },
+  readingEstimate: { charactersPerMinute: 400, wordsPerMinute: 220 },
+  commentDrafts: { storageKey: 'sams-blog-comment-drafts', maximumEntries: 40, maximumCharacters: 1000, lifetimeDays: 7 },
+  interactionFeedback: { glideMilliseconds: 240, segmentMilliseconds: 440, segmentStretchRatio: .14, statusSpinMilliseconds: 1100 },
+  readerPresentation: { readyTimeoutMilliseconds: 2000 },
+  readerEffects: { rippleMilliseconds: 420, stillFeedbackMilliseconds: 100, rippleOpacity: .13 },
+  readerCodeSlots: { entryMilliseconds: 180, cascadeMilliseconds: 30, mergeMilliseconds: 360, checkMilliseconds: 240, successHoldMilliseconds: 180, stillSuccessMilliseconds: 300, errorRevealMilliseconds: 160, errorHoldMilliseconds: 480, stillErrorMilliseconds: 480, deadlineMilliseconds: 1600 },
+  readerPopup: { widthPixels: 520, heightPixels: 720, pollMilliseconds: 3000, timeoutMilliseconds: 600000 },
   interactions: { feedbackResizeMilliseconds: 260, themeRevealMilliseconds: 760, keyboardInsetPixels: 18, requestTimeoutMilliseconds: 15000, tooltipDismissMilliseconds: 160, tooltipRevealMilliseconds: 180, receiptDurationMilliseconds: 1440 },
   projectPresentation: { initialVisibleCount: 4 },
-  friendPresentation: { homepageCount: 6, feedVisibleCount: 6 },
+  friendDeck: {
+    autoPauseMilliseconds: 2500, autoTransitionMilliseconds: 500, maximumCardsPerSecond: 3, velocityResponse: 7, inertiaFriction: 2.2, settleResponse: 7, wheelResponse: 18,
+    dragThresholdPixels: 6, wheelIdleMilliseconds: 160, clickSuppressionMilliseconds: 350, maximumFrameMilliseconds: 48,
+    settleEpsilon: 0.001, maximumStepPixels: 285, cardStepRatio: 0.73, viewportStepRatio: 0.33,
+  },
   friendApplications: {
     draftStorageKey: 'sams-blog-friend-application', ownerName: 'SuperSam', iconUrl: '/media/brand/logo.jpg',
     backgroundUrl: '/uploads/2dc4ab1565c204e969aaab5618e9354cc21fdb690cef6788d5c453d8fe132edb.webp',
@@ -51,7 +75,6 @@ export const siteConfig = {
     { repository: 'afterSuperSam/SamsBlog', name: 'SamsBlog', description: '夏日插画风的个人项目与日常站点', keyword: '站点', status: 'active' },
     { repository: 'afterSuperSam/ItemsaddderConfigGenerator', name: 'ItemsAdder 配置生成器', description: '批量生成普通 2D 材质的配置文件', keyword: '材质', status: 'archived' },
   ],
-  currentWork: { defaultText: '最近在做：YetAnotherTown', maximumLength: 80 },
   projectFields: { nameMaximumLength: 60, descriptionMaximumLength: 240, urlMaximumLength: 2048, keywordMaximumLength: 60, repositoryMaximumLength: 200 },
   statistics: { countDurationMilliseconds: 1400, countStaggerMilliseconds: 90, easingPower: 3, visibilityThreshold: 0.35 },
   reveal: { durationMilliseconds: 620, distancePixels: 24, itemStaggerMilliseconds: 75, maximumStaggerMilliseconds: 225, characterDurationMilliseconds: 580, characterStaggerMilliseconds: 48, visibilityThreshold: 0.08, bottomInsetPercent: 6 },
@@ -64,6 +87,14 @@ export const siteConfig = {
 } as const;
 
 const rssUrl = new URL(siteConfig.rss.siteUrl);
+if (!/^https:\/\/www\.blogsclub\.org\/badge\/[a-z0-9]+(?:[.-][a-z0-9]+)*$/.test(siteConfig.blogsClubBadgeUrl)) {
+  throw new Error('Invalid BlogsClub badge URL');
+}
+if (!Object.values(siteConfig.readingEstimate).every((value) => Number.isSafeInteger(value) && value > 0)
+  || !siteConfig.commentDrafts.storageKey || ![siteConfig.commentDrafts.maximumEntries, siteConfig.commentDrafts.maximumCharacters, siteConfig.commentDrafts.lifetimeDays].every((value) => Number.isSafeInteger(value) && value > 0)
+  || siteConfig.commentDrafts.maximumEntries > 100 || siteConfig.commentDrafts.maximumCharacters > 2000 || siteConfig.commentDrafts.lifetimeDays > 30
+  || ![siteConfig.interactionFeedback.glideMilliseconds, siteConfig.interactionFeedback.segmentMilliseconds, siteConfig.interactionFeedback.statusSpinMilliseconds].every((value) => Number.isSafeInteger(value) && value > 0)
+  || ![siteConfig.interactionFeedback.segmentStretchRatio].every((value) => Number.isFinite(value) && value >= 0 && value <= .4)) throw new Error('Invalid feedback or comment draft configuration');
 if (!siteConfig.friendApplications.ownerName.trim()
   || ![siteConfig.friendApplications.iconUrl, siteConfig.friendApplications.backgroundUrl].every((value) => /^\/(?!\/)[\w./-]+$/.test(value)
     && value.slice(1).split('/').every((segment) => segment !== '' && segment !== '.' && segment !== '..'))) {
@@ -76,7 +107,7 @@ if (sponsorAvatarUrl.protocol !== 'https:' || sponsorAvatarUrl.username || spons
   || ![siteConfig.sponsorPresentation.avatarTimeoutMilliseconds, siteConfig.sponsorPresentation.avatarPreloadMarginPixels].every((value) => Number.isSafeInteger(value) && value > 0)
   || !Number.isSafeInteger(siteConfig.sponsorFields.nameMaximumLength) || siteConfig.sponsorFields.nameMaximumLength < 1
   || !Number.isSafeInteger(siteConfig.sponsorFields.maximumAmount) || siteConfig.sponsorFields.maximumAmount < 1) throw new Error('Invalid sponsor configuration');
-if (!siteConfig.rss.description.trim() || rssUrl.protocol !== 'https:' || rssUrl.username || rssUrl.password
+if (!siteConfig.rss.description.trim() || rssUrl.origin !== publicSiteUrl.origin || rssUrl.username || rssUrl.password
   || rssUrl.pathname !== '/' || rssUrl.search || rssUrl.hash) {
   throw new Error('Invalid RSS configuration');
 }
@@ -90,11 +121,10 @@ if (!Number.isSafeInteger(siteConfig.network.sampleCount) || siteConfig.network.
 if (!Object.values(siteConfig.interactions).every((value) => Number.isSafeInteger(value) && value > 0)
   || !Number.isSafeInteger(siteConfig.articles.initialVisibleTagCount) || siteConfig.articles.initialVisibleTagCount < 1
   || !Number.isSafeInteger(siteConfig.projectPresentation.initialVisibleCount) || siteConfig.projectPresentation.initialVisibleCount < 1
-  || !Object.values(siteConfig.friendPresentation).every((value) => Number.isSafeInteger(value) && value > 0)
   || !Object.values(siteConfig.readingExtras).every((value) => Number.isSafeInteger(value) && value > 0)
   || ![siteConfig.articleReading.positionLimit, siteConfig.articleReading.positionSaveMilliseconds, siteConfig.articleReading.positionMinimumPixels, siteConfig.articleReading.imageZoomScale, siteConfig.articleReading.copyFeedbackMilliseconds, siteConfig.articleReading.codeCollapsedLines, siteConfig.visitorProfile.nicknameMaximumLength, siteConfig.visitorProfile.emailMaximumLength].every((value) => Number.isSafeInteger(value) && value > 0)
   || !siteConfig.visitorProfile.storageKey || !siteConfig.friendApplications.draftStorageKey
-  || !siteConfig.articleReading.positionStorageKey || !siteConfig.articleReading.preferenceStorageKey || !siteConfig.articleReading.fontPreferenceStorageKey) {
+  || !siteConfig.articleReading.positionStorageKey || !siteConfig.articleReading.fontPreferenceStorageKey) {
   throw new Error('Invalid interaction configuration');
 }
 
@@ -112,6 +142,32 @@ if (![reading.fontSizeMinimum, reading.fontSizeMaximum, reading.fontSizeDefault,
   || reading.fontSizeMinimum < 14 || reading.fontSizeMaximum > 36 || reading.fontSizeMinimum > reading.fontSizeDefault || reading.fontSizeDefault > reading.fontSizeMaximum
   || (reading.fontSizeDefault - reading.fontSizeMinimum) % reading.fontSizeStep || (reading.fontSizeMaximum - reading.fontSizeMinimum) % reading.fontSizeStep
   || !reading.typographyStorageKey) throw new Error('Invalid reading typography configuration');
+
+const friendDeck = siteConfig.friendDeck;
+const effects = siteConfig.effects;
+const constellation = effects.constellation;
+if (![effects.particleCount, effects.mobileParticleCount].every((value) => Number.isSafeInteger(value) && value >= 0 && value <= 60)
+  || effects.mobileParticleCount > effects.particleCount
+  || !Object.values(effects.twinkle).every((value) => Number.isSafeInteger(value) && value > 0 && value <= 60)
+  || ![constellation.desktopLineCount, constellation.mobileLineCount, constellation.desktopPointCount, constellation.mobilePointCount, constellation.maximumDegree, constellation.refreshMilliseconds, constellation.fadeMilliseconds].every((value) => Number.isSafeInteger(value) && value > 0)
+  || constellation.desktopPointCount > effects.particleCount || constellation.mobilePointCount > effects.mobileParticleCount
+  || constellation.mobileLineCount > constellation.desktopLineCount || constellation.maximumDegree > 3
+  || constellation.desktopLineCount > constellation.desktopPointCount * constellation.maximumDegree / 2
+  || constellation.mobileLineCount > constellation.mobilePointCount * constellation.maximumDegree / 2
+  || constellation.refreshMilliseconds <= constellation.fadeMilliseconds * 2
+  || !Number.isFinite(constellation.connectionProbability) || constellation.connectionProbability < 0 || constellation.connectionProbability > 1
+  || !Number.isFinite(constellation.maximumDistanceRatio) || constellation.maximumDistanceRatio <= 0 || constellation.maximumDistanceRatio > 1
+  || !Number.isFinite(constellation.scrollPeriodScreens) || constellation.scrollPeriodScreens <= 0) {
+  throw new Error('Invalid ambient particle configuration');
+}
+
+if (!Object.values(friendDeck).every((value) => Number.isFinite(value) && value > 0)
+  || friendDeck.cardStepRatio > 1 || friendDeck.viewportStepRatio > 1
+  || friendDeck.maximumFrameMilliseconds < 16 || friendDeck.maximumFrameMilliseconds > 100
+  || friendDeck.autoPauseMilliseconds < friendDeck.autoTransitionMilliseconds
+  || friendDeck.wheelResponse < friendDeck.settleResponse) {
+  throw new Error('Invalid friend deck configuration');
+}
 
 const statistics = siteConfig.statistics;
 const terrain = siteConfig.projectTerrain;
@@ -150,13 +206,14 @@ if (![reveal.durationMilliseconds, reveal.characterDurationMilliseconds].every((
   throw new Error('Invalid reveal animation configuration');
 }
 
-if (!Object.values(siteConfig.articles).every((value) => Number.isSafeInteger(value) && value > 0)) {
+if (!Object.values(siteConfig.articles).every((value) => Number.isSafeInteger(value) && value > 0)
+  || siteConfig.articles.pageSize > 100 || siteConfig.articles.paginationRadius > 5
+  || siteConfig.articles.searchIndexBatchSize > 100 || siteConfig.articles.searchMaximumLength > 200
+  || siteConfig.articles.searchSnippetLength > 500 || siteConfig.articles.searchSnippetContext >= siteConfig.articles.searchSnippetLength) {
   throw new Error('Invalid article display configuration');
 }
 
-if (!Number.isSafeInteger(siteConfig.currentWork.maximumLength) || siteConfig.currentWork.maximumLength < 1
-  || !Object.values(siteConfig.projectFields).every((value) => Number.isSafeInteger(value) && value > 0)
-  || siteConfig.currentWork.defaultText.length > siteConfig.currentWork.maximumLength
+if (!Object.values(siteConfig.projectFields).every((value) => Number.isSafeInteger(value) && value > 0)
   || new Set(siteConfig.projects.map((project) => project.repository)).size !== siteConfig.projects.length
   || siteConfig.projects.some((project) => !/^[\w.-]+\/[\w.-]+$/.test(project.repository)
     || !project.keyword || !project.description.includes(project.keyword)
@@ -178,22 +235,16 @@ if (!Number.isFinite(siteConfig.navigation.sectionActivationRatio) || siteConfig
   throw new Error('Invalid section navigation configuration');
 }
 
-const { particleCount, mobileParticleCount } = siteConfig.effects;
-const constellation = siteConfig.effects.constellation;
-if (![constellation.desktopLineCount, constellation.mobileLineCount, constellation.desktopPointCount, constellation.mobilePointCount, constellation.maximumDegree].every((value) => Number.isSafeInteger(value) && value > 0)
-  || constellation.desktopPointCount > particleCount || constellation.mobilePointCount > mobileParticleCount
-  || constellation.mobileLineCount > constellation.desktopLineCount || constellation.maximumDegree > 3
-  || constellation.desktopLineCount > constellation.desktopPointCount * constellation.maximumDegree / 2
-  || constellation.mobileLineCount > constellation.mobilePointCount * constellation.maximumDegree / 2
-  || ![constellation.refreshMilliseconds, constellation.fadeMilliseconds].every((value) => Number.isSafeInteger(value) && value > 0)
-  || constellation.refreshMilliseconds <= constellation.fadeMilliseconds * 2
-  || !Number.isFinite(constellation.maximumDistanceRatio) || constellation.maximumDistanceRatio <= 0 || constellation.maximumDistanceRatio > 1
-  || !Number.isFinite(constellation.scrollPeriodScreens) || constellation.scrollPeriodScreens <= 0) {
-  throw new Error('Invalid constellation configuration');
-}
 if (!Number.isFinite(siteConfig.effects.pointerTiltDegrees) || siteConfig.effects.pointerTiltDegrees < 0 || siteConfig.effects.pointerTiltDegrees > 3) {
   throw new Error('Invalid pointer tilt configuration');
 }
-if (![particleCount, mobileParticleCount].every((value) => Number.isInteger(value) && value >= 0 && value <= 60) || mobileParticleCount > particleCount) {
-  throw new Error('Invalid visual effects configuration');
+
+if (!Object.values(siteConfig.readerPopup).every((value) => Number.isSafeInteger(value) && value > 0) || siteConfig.readerPopup.pollMilliseconds >= siteConfig.readerPopup.timeoutMilliseconds) {
+  throw new Error('Invalid reader popup configuration');
 }
+
+if (!Number.isSafeInteger(siteConfig.readerPresentation.readyTimeoutMilliseconds) || siteConfig.readerPresentation.readyTimeoutMilliseconds <= 0 || siteConfig.readerPresentation.readyTimeoutMilliseconds > 5000) throw new Error('Invalid reader presentation deadline');
+
+if (![siteConfig.readerEffects.rippleMilliseconds, siteConfig.readerEffects.stillFeedbackMilliseconds].every((value) => Number.isSafeInteger(value) && value > 0 && value <= 1000) || siteConfig.readerEffects.rippleOpacity <= 0 || siteConfig.readerEffects.rippleOpacity > .3) throw new Error('Invalid reader effects configuration');
+
+if (!Object.values(siteConfig.readerCodeSlots).every((value) => Number.isSafeInteger(value) && value > 0 && value <= 5000) || siteConfig.readerCodeSlots.deadlineMilliseconds <= siteConfig.readerCodeSlots.mergeMilliseconds + siteConfig.readerCodeSlots.checkMilliseconds + siteConfig.readerCodeSlots.successHoldMilliseconds) throw new Error('Invalid reader code slots timing');

@@ -15,7 +15,7 @@ const labels = { pending: '待处理', accepted: '已通过', declined: '未通�
 </section>
 <script>
   import { requestJson } from '../lib/client-request';
-  import { setFeedbackText } from '../lib/motion';
+  import { setTaskFeedback } from '../lib/micro-feedback';
   import { prepareAdminNavigation, registerAdminDraft } from '../lib/admin-dialog';
   document.querySelectorAll<HTMLFormElement>('[data-application-form]').forEach((form) => {
     registerAdminDraft(form, () => JSON.stringify([...new FormData(form)]));
@@ -24,16 +24,17 @@ const labels = { pending: '待处理', accepted: '已通过', declined: '未通�
       const payload = { ...Object.fromEntries(new FormData(form)), id: Number(form.dataset.id), accepted: (event.submitter as HTMLButtonElement)?.value === 'accept' };
       const feedback = form.querySelector<HTMLElement>('[role="status"]')!;
       const invalid = payload.accepted && [...form.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input,textarea')].find((field) => !field.validity.valid || field.required && !field.value.trim());
-      if (invalid) { setFeedbackText(feedback, '请检查名称、网址、简介和图标地址。'); invalid.focus(); return; }
+      if (invalid) { setTaskFeedback(feedback, '请检查名称、网址、简介和图标地址。', 'error'); invalid.focus(); return; }
       const release = await prepareAdminNavigation(form);
       if (!release) return;
       form.setAttribute('aria-busy', 'true');
-      setFeedbackText(feedback, '正在处理申请…');
+      setTaskFeedback(feedback, '正在处理申请…', 'pending');
       try {
         await requestJson('/api/admin/applications.json', 'PATCH', payload, '暂时无法处理申请。');
+        setTaskFeedback(feedback, '申请已处理。', 'success');
         location.reload();
       } catch (error) {
-        setFeedbackText(feedback, error instanceof Error ? error.message : '处理失败，请稍后再试。');
+        setTaskFeedback(feedback, error instanceof Error ? error.message : '处理失败，请稍后再试。', 'error');
         form.removeAttribute('aria-busy');
         release();
       }

@@ -14,18 +14,21 @@ export function publicPagePath(pathname: string) {
 }
 
 // 去重与两个汇总在同一事务提交，多标签页和并发重试不会重复计数。
-export function recordConfirmedPageView(visitorHash: string, pathname: string, viewedAt = new Date()) {
+export function recordConfirmedPageView(visitorHash: string, pathname: string, viewedAt = new Date(), readerId?: number) {
   const path = publicPagePath(pathname);
   if (!path) return false;
   const database = getDatabase();
   return database.transaction(() => {
     const articleId = path.startsWith('/articles/') ? Number(path.slice('/articles/'.length)) : undefined;
     if (articleId && (!Number.isSafeInteger(articleId) || !database.prepare("SELECT 1 FROM blog_articles WHERE id=? AND deleted_at IS NULL AND publication_status='published'").get(articleId))) return false;
+    const reader = readerId === undefined ? undefined : database.prepare('SELECT id FROM readers WHERE id=? AND deleted_at IS NULL').get(readerId) as { id: number } | undefined;
+    if (reader) database.prepare('UPDATE confirmed_site_visitors SET reader_id=? WHERE visitor_hash=?').run(reader.id, visitorHash);
     const cutoff = new Date(viewedAt.getTime() - serverConfig.analyticsDeduplicationSeconds * 1000).toISOString();
     database.prepare('DELETE FROM confirmed_page_visits WHERE viewed_at <= ?').run(cutoff);
     const inserted = database.prepare('INSERT OR IGNORE INTO confirmed_page_visits(visitor_hash,path,viewed_at) VALUES (?,?,?)').run(visitorHash, path, viewedAt.toISOString());
     if (!inserted.changes) return false;
     recordPageView(visitorHash, viewedAt, articleId);
+    if (reader) database.prepare('UPDATE confirmed_site_visitors SET reader_id=? WHERE visitor_hash=?').run(reader.id, visitorHash);
     return true;
   })();
 }
@@ -43,6 +46,24 @@ export function recordPageView(visitorHash: string, viewedAt = new Date(), artic
       page_views = confirmed_site_visitors.page_views + 1`).run(visitorHash, timestamp, timestamp);
   if (articleId) getDatabase().prepare(`INSERT INTO confirmed_article_daily_visitors(article_id, day, visitor_hash) VALUES (?, date(?, '+8 hours'), ?)
     ON CONFLICT(article_id,day,visitor_hash) DO UPDATE SET views = views + 1`).run(articleId, timestamp, visitorHash);
+}
+
+// 累计计数属于匿名浏览器，账号只标记该浏览器最近一次验证登录的关联。
+export function getVisitorAnalytics(options: { page?: number; sort?: 'recent' | 'views' } = {}) {
+  const database = getDatabase();
+  const pageSize = serverConfig.analyticsVisitorPageSize;
+  const sort = options.sort === 'views' ? 'views' : 'recent';
+  const total = (database.prepare('SELECT COUNT(*) AS count FROM confirmed_site_visitors').get() as { count: number }).count;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const page = Math.min(totalPages, Number.isSafeInteger(options.page) && options.page! > 0 ? options.page! : 1);
+  const order = sort === 'views' ? 'visitors.page_views DESC, visitors.last_seen DESC' : 'visitors.last_seen DESC, visitors.page_views DESC';
+  const visitors = database.prepare(`SELECT substr(visitors.visitor_hash,1,12) AS visitorId, visitors.page_views AS pageViews,
+      visitors.first_seen AS firstSeen, visitors.last_seen AS lastSeen, readers.display_name AS lastReaderDisplayName
+    FROM confirmed_site_visitors AS visitors LEFT JOIN readers ON readers.id=visitors.reader_id AND readers.deleted_at IS NULL
+    ORDER BY ${order}, visitors.visitor_hash LIMIT ? OFFSET ?`).all(pageSize, (page - 1) * pageSize) as Array<{
+      visitorId: string; pageViews: number; firstSeen: string; lastSeen: string; lastReaderDisplayName: string | null;
+    }>;
+  return { visitors, total, page, pageSize, totalPages, sort };
 }
 
 export function getArticleAnalytics(days = 30) {

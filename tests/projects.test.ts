@@ -23,9 +23,23 @@ beforeAll(async () => {
 });
 
 describe('dynamic project management', () => {
+  it('rejects stale edits with unchanged members and records only object metadata', () => {
+    const original = getProjectSettings();
+    const saved = saveProjectSettings({ ...original, projects: original.projects.map((project, index) => index ? project : { ...project, name: '并发更新' }) });
+    expect(saved.revision).toBe(original.revision + 1);
+    expect(() => saveProjectSettings({ ...original, projects: [...original.projects].reverse() })).toThrow('当前输入已保留');
+    expect(getProjectSettings()).toEqual(saved);
+    const events = getDatabase().prepare("SELECT object_type,object_id,operation,result,revision FROM admin_audit WHERE object_type='projects' ORDER BY id DESC LIMIT 2").all();
+    expect(events).toEqual([
+      { object_type: 'projects', object_id: null, operation: 'update', result: 'conflict', revision: original.revision },
+      { object_type: 'projects', object_id: null, operation: 'update', result: 'success', revision: saved.revision },
+    ]);
+    saveProjectSettings({ ...original, revision: saved.revision });
+  });
   it('migrates the original projects and preserves admin edits and dates', () => {
     const settings = getProjectSettings();
-    expect(settings.currentWork).toBe('保留最近工作');
+    expect(settings).not.toHaveProperty('currentWork');
+    expect(getDatabase().prepare("SELECT value FROM site_settings WHERE key='current-work'").get()).toEqual({ value: '保留最近工作' });
     expect(settings.projects).toHaveLength(4);
     expect(settings.projects[0]).toMatchObject({ name: '旧后台名称', description: '保留后台简介', url: 'https://custom.example.com/', status: 'maintenance', keyword: '', visible: true });
     expect(settings.projects.every((project) => Number.isSafeInteger(project.id))).toBe(true);
@@ -37,7 +51,7 @@ describe('dynamic project management', () => {
     const original = before.projects[0];
     const added = { repository: '', name: '小工具', description: '日常小工具', keyword: '工具', url: 'https://tools.example.com', status: 'active', visible: true };
     const projects = [added, ...before.projects.slice(1), { ...original, visible: false }];
-    const saved = saveProjectSettings({ currentWork: before.currentWork, projects });
+    const saved = saveProjectSettings({ projects, revision: before.revision });
     expect(saved.projects).toHaveLength(5);
     expect(saved.projects[0]).toMatchObject({ ...added, url: 'https://tools.example.com/', position: 0, id: expect.any(Number) });
     expect(saved.projects.at(-1)).toMatchObject({ id: original.id, visible: false, position: 4 });
@@ -145,7 +159,7 @@ describe('dynamic project management', () => {
       for (const project of saved.projects.filter((project) => !before.projects.some((original) => original.id === project.id))) {
         getDatabase().prepare('UPDATE blog_projects SET deleted_at=? WHERE id=?').run(new Date().toISOString(), project.id);
       }
-      saveProjectSettings(before);
+      saveProjectSettings({ ...before, revision: getProjectSettings().revision });
     }
   });
 });

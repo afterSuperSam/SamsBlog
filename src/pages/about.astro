@@ -7,20 +7,23 @@ import { siteConfig } from '../config/site';
 import { buildContributionCalendar, buildTokenUsageCalendar, getGithubContributions, type TokenUsage } from '../lib/contributions';
 import { getArticlePublicationCounts } from '../lib/articles';
 import { listSponsors, sponsorAvatarUrl } from '../lib/sponsors';
+import { getSiteStats } from '../lib/stats';
 import '../styles/simple-pages.css';
 
 const githubContributions = await getGithubContributions();
 const sponsors = listSponsors();
+const siteStats = getSiteStats();
 const latestContribution = githubContributions.available ? githubContributions.days.findLast((day) => day.count > 0)?.date : undefined;
 const publicationCounts = getArticlePublicationCounts();
 const publicationCalendar = {
   ...buildContributionCalendar(new Map(publicationCounts.map(({ date, count }) => [date, count])), new Date(`${new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' })}T00:00:00Z`)),
   total: publicationCounts.reduce((total, day) => total + day.count, 0),
 };
-const gptTokenUsage = buildTokenUsageCalendar(new Map<string, TokenUsage>([
+// CCswitch 全部应用按北京时间汇总，缓存创建计入未命中，只保存每日用量快照。
+const modelTokenUsage = buildTokenUsageCalendar(new Map<string, TokenUsage>([
   ['2026-07-23', { cacheHit: 60218880, cacheMiss: 1425016, output: 251793 }],
   ['2026-07-24', { cacheHit: 66291968, cacheMiss: 3071170, output: 216141 }],
-  ['2026-07-25', { cacheHit: 101629696, cacheMiss: 3007611, output: 467086 }],
+  ['2026-07-25', { cacheHit: 101664256, cacheMiss: 3034302, output: 468307 }],
   ['2026-07-26', { cacheHit: 220374784, cacheMiss: 6058955, output: 825617 }],
   ['2026-07-27', { cacheHit: 126547456, cacheMiss: 3435642, output: 467481 }],
   ['2026-07-28', { cacheHit: 90019584, cacheMiss: 2266999, output: 264622 }],
@@ -34,8 +37,8 @@ const gptTokenUsage = buildTokenUsageCalendar(new Map<string, TokenUsage>([
   ['2026-08-11', { cacheHit: 15643520, cacheMiss: 350820, output: 49591 }],
   ['2026-08-12', { cacheHit: 75536384, cacheMiss: 1777937, output: 179584 }],
   ['2026-08-13', { cacheHit: 18131968, cacheMiss: 278639, output: 47249 }],
-  ['2026-08-14', { cacheHit: 24832, cacheMiss: 448437, output: 4751 }],
-  ['2026-08-15', { cacheHit: 9693440, cacheMiss: 312511, output: 45037 }],
+  ['2026-08-14', { cacheHit: 21689728, cacheMiss: 604076, output: 269631 }],
+  ['2026-08-15', { cacheHit: 9715072, cacheMiss: 315473, output: 46650 }],
   ['2026-08-17', { cacheHit: 532736, cacheMiss: 96001, output: 4719 }],
   ['2026-08-18', { cacheHit: 80038912, cacheMiss: 1767692, output: 274954 }],
   ['2026-08-19', { cacheHit: 10168320, cacheMiss: 358105, output: 56336 }],
@@ -54,7 +57,7 @@ const gptTokenUsage = buildTokenUsageCalendar(new Map<string, TokenUsage>([
   ['2026-09-04', { cacheHit: 19998592, cacheMiss: 595170, output: 73542 }],
   ['2026-09-05', { cacheHit: 687616, cacheMiss: 108317, output: 7076 }],
   ['2026-09-06', { cacheHit: 40576, cacheMiss: 12474, output: 42 }],
-  ['2026-09-29', { cacheHit: 8854656, cacheMiss: 690777, output: 117816 }],
+  ['2026-09-29', { cacheHit: 9001823, cacheMiss: 731020, output: 118737 }],
   ['2026-09-30', { cacheHit: 1884928, cacheMiss: 174099, output: 10211 }],
   ['2026-10-02', { cacheHit: 1190272, cacheMiss: 168617, output: 8173 }],
   ['2026-10-04', { cacheHit: 1007616, cacheMiss: 79756, output: 8193 }],
@@ -77,7 +80,14 @@ const gptTokenUsage = buildTokenUsageCalendar(new Map<string, TokenUsage>([
   ['2026-10-22', { cacheHit: 144335360, cacheMiss: 3946487, output: 496262 }],
   ['2026-10-23', { cacheHit: 252651264, cacheMiss: 6406873, output: 1201421 }],
   ['2026-10-24', { cacheHit: 496765184, cacheMiss: 7109072, output: 1871602 }],
-  ['2026-10-25', { cacheHit: 208319744, cacheMiss: 4362043, output: 936860 }],
+  ['2026-10-25', { cacheHit: 318331008, cacheMiss: 8042393, output: 1352626 }],
+  ['2026-10-26', { cacheHit: 13101568, cacheMiss: 548456, output: 80342 }],
+  ['2026-10-28', { cacheHit: 271488, cacheMiss: 335027, output: 14362 }],
+  ['2026-10-29', { cacheHit: 14228864, cacheMiss: 214810, output: 163089 }],
+  ['2026-10-30', { cacheHit: 24637568, cacheMiss: 839101, output: 65979 }],
+  ['2026-11-05', { cacheHit: 66991488, cacheMiss: 847045, output: 82553 }],
+  ['2026-11-06', { cacheHit: 161201081, cacheMiss: 15434230, output: 647738 }],
+  ['2026-11-07', { cacheHit: 88226453, cacheMiss: 2011096, output: 335238 }],
 ]));
 ---
 
@@ -86,6 +96,7 @@ const gptTokenUsage = buildTokenUsageCalendar(new Map<string, TokenUsage>([
   { href: '#activity', label: '痕迹' },
   { href: '#sponsor', label: '赞赏' },
   { href: '#friends', label: '友链' },
+  { href: '#site-stats', label: '统计', description: '站点统计' },
 ]}>
   <section class="about-contact" id="contact" data-reveal>
     <div class="shell">
@@ -95,19 +106,23 @@ const gptTokenUsage = buildTokenUsageCalendar(new Map<string, TokenUsage>([
       </header>
     </div>
     <nav class="shell about-links" aria-label="个人链接">
-      <a class="about-link" href={siteConfig.social.bilibili} target="_blank" rel="noreferrer">
+      <a class="about-link c2-shape" href={siteConfig.social.bilibili} target="_blank" rel="noreferrer">
+        <span class="about-link__shadow" aria-hidden="true"></span><span class="about-link__light c2-clip" aria-hidden="true"></span>
         <span class="about-link__icon"><SocialIcon name="bilibili" /></span>
         <span class="about-link__copy"><strong>Bilibili</strong><small>动态与视频</small></span>
       </a>
-      <a class="about-link" href={siteConfig.social.github} target="_blank" rel="noreferrer">
+      <a class="about-link c2-shape" href={siteConfig.social.github} target="_blank" rel="noreferrer">
+        <span class="about-link__shadow" aria-hidden="true"></span><span class="about-link__light c2-clip" aria-hidden="true"></span>
         <span class="about-link__icon"><SocialIcon name="github" /></span>
         <span class="about-link__copy"><strong>GitHub</strong><small>afterSuperSam</small></span>
       </a>
-      <button class="about-link" type="button" data-about-copy-qq data-qq={siteConfig.social.qq} aria-label={`复制 QQ 号 ${siteConfig.social.qq}`}>
+      <button class="about-link c2-shape" type="button" data-about-copy-qq data-qq={siteConfig.social.qq} aria-label={`复制 QQ 号 ${siteConfig.social.qq}`}>
+        <span class="about-link__shadow" aria-hidden="true"></span><span class="about-link__light c2-clip" aria-hidden="true"></span>
         <span class="about-link__icon"><SocialIcon name="qq" /></span>
         <span class="about-link__copy"><strong>QQ</strong><small role="status" data-about-qq-label>{siteConfig.social.qq}</small></span>
       </button>
-      <a class="about-link" href="https://moesam.com" target="_blank" rel="noreferrer">
+      <a class="about-link c2-shape" href="https://moesam.com" target="_blank" rel="noreferrer">
+        <span class="about-link__shadow" aria-hidden="true"></span><span class="about-link__light c2-clip" aria-hidden="true"></span>
         <span class="about-link__icon"><SocialIcon name="town" /></span>
         <span class="about-link__copy"><strong>楹雾镇</strong><small>moesam.com</small></span>
       </a>
@@ -122,7 +137,7 @@ const gptTokenUsage = buildTokenUsageCalendar(new Map<string, TokenUsage>([
       </header>
       <div class="contribution-panels">
         <ContributionGraph title="GitHub 提交" eyebrow="CODE" calendar={githubContributions} href={siteConfig.social.github} inlineTotal latestContribution={latestContribution} />
-        <ContributionGraph title="ChatGPT 用量" eyebrow="TOKENS" calendar={gptTokenUsage} unit="Token" period="CCswitch 记录 · 2026-10-25（当日未完）" showUsage inlineTotal />
+        <ContributionGraph title="ChatGPT 用量" eyebrow="TOKENS" calendar={modelTokenUsage} unit="Token" period="截至 2026-11-07" showUsage inlineTotal />
         <ContributionGraph title="文章数量" eyebrow="ARTICLES" calendar={publicationCalendar} unit="篇" period="累计文章 · 近一年分布" inlineTotal />
       </div>
     </div>
@@ -144,7 +159,7 @@ const gptTokenUsage = buildTokenUsageCalendar(new Map<string, TokenUsage>([
           <ol>{sponsors.map((sponsor) => {
             const avatarUrl = sponsorAvatarUrl(sponsor);
             return <li>
-            <span class="sponsor-avatar" aria-hidden="true"><span>{Array.from(sponsor.name)[0]}</span>{avatarUrl && <img src={avatarUrl} width={siteConfig.sponsorPresentation.avatarSizePixels} height={siteConfig.sponsorPresentation.avatarSizePixels} loading="lazy" decoding="async" referrerpolicy="no-referrer" alt="" data-sponsor-avatar />}</span>
+            <span class="sponsor-avatar c2-clip" aria-hidden="true"><span>{Array.from(sponsor.name)[0]}</span>{avatarUrl && <img src={avatarUrl} width={siteConfig.sponsorPresentation.avatarSizePixels} height={siteConfig.sponsorPresentation.avatarSizePixels} loading="lazy" decoding="async" referrerpolicy="no-referrer" alt="" data-sponsor-avatar />}</span>
             <span>{sponsor.name}</span><strong>¥{sponsor.amount}</strong>
           </li>})}</ol>
         </div>
@@ -153,6 +168,14 @@ const gptTokenUsage = buildTokenUsageCalendar(new Map<string, TokenUsage>([
     </div>
   </section>
   <FriendsSection />
+  <section class="site-stats shell" id="site-stats" aria-label="站点统计" data-reveal data-statistics-config={JSON.stringify(siteConfig.statistics)}>
+    <div class="site-stats__panel c2-surface">
+      <dl>
+        <div><dt>运行天数</dt><dd><span data-stat-value={siteStats.runtimeDays} aria-hidden="true">{siteStats.runtimeDays.toLocaleString('zh-CN')}</span><span class="stat-reader-value">{siteStats.runtimeDays.toLocaleString('zh-CN')}</span><small>天</small></dd></div>
+        {[['友链', siteStats.friends, 'friends'], ['累计访客', siteStats.visitors, 'visitors'], ['总浏览量', siteStats.pageViews, 'pageViews']].map(([label, value, key]) => <div><dt>{label}</dt><dd><span data-stat-value={value} data-stat-key={key} aria-hidden="true">{Number(value).toLocaleString('zh-CN')}</span><span class="stat-reader-value">{Number(value).toLocaleString('zh-CN')}</span></dd></div>)}
+      </dl>
+    </div>
+  </section>
 </BaseLayout>
 
 <script>
@@ -226,5 +249,77 @@ const gptTokenUsage = buildTokenUsageCalendar(new Map<string, TokenUsage>([
       if (copyLabel) copyLabel.textContent = qq;
     }, 1600);
   });
+
+  // 统计在首次进入视野时从零增长，读屏始终读取真实数值。
+  const statisticsSection = document.querySelector<HTMLElement>('[data-statistics-config]');
+  const statisticsPanel = statisticsSection?.querySelector<HTMLElement>('.site-stats__panel');
+  if (statisticsSection && statisticsPanel) {
+    const configuration = JSON.parse(statisticsSection.dataset.statisticsConfig!) as {
+      countDurationMilliseconds: number; countStaggerMilliseconds: number; easingPower: number; visibilityThreshold: number;
+    };
+    const counters = [...statisticsPanel.querySelectorAll<HTMLElement>('[data-stat-value]')].map((element) => ({ element, value: Number(element.dataset.statValue), displayed: -1 }));
+    const formatter = new Intl.NumberFormat('zh-CN');
+    counters.forEach((counter) => { counter.element.style.minInlineSize = `${formatter.format(counter.value).length}ch`; });
+    const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+    const motionIsDisabled = () => reducedMotion.matches || document.documentElement.classList.contains('motion-paused');
+    let countFrame = 0;
+    let started = false;
+    const finishCounters = () => {
+      cancelAnimationFrame(countFrame);
+      countFrame = 0;
+      counters.forEach((counter) => { counter.element.textContent = formatter.format(counter.value); });
+    };
+    document.addEventListener('site-statistics-updated', (event) => {
+      const totals = (event as CustomEvent<Record<string, number>>).detail;
+      counters.forEach((counter) => {
+        const value = totals[counter.element.dataset.statKey || ''];
+        if (!Number.isSafeInteger(value) || value < 0) return;
+        counter.value = value; counter.element.dataset.statValue = String(value);
+        counter.element.style.minInlineSize = `${formatter.format(value).length}ch`;
+        const reader = counter.element.parentElement?.querySelector('.stat-reader-value');
+        if (reader) reader.textContent = formatter.format(value);
+      });
+      if (!countFrame) finishCounters();
+    });
+    const startCounters = () => {
+      if (started) return;
+      started = true;
+      if (motionIsDisabled()) { finishCounters(); return; }
+      const start = performance.now();
+      const update = (now: number) => {
+        if (motionIsDisabled()) { finishCounters(); return; }
+        let complete = true;
+        counters.forEach((counter, index) => {
+          const elapsed = now - start - index * configuration.countStaggerMilliseconds;
+          const progress = Math.max(0, Math.min(1, elapsed / configuration.countDurationMilliseconds));
+          const eased = progress < .5 ? Math.pow(2 * progress, configuration.easingPower) / 2 : 1 - Math.pow(2 * (1 - progress), configuration.easingPower) / 2;
+          const value = Math.round(counter.value * eased);
+          if (value !== counter.displayed) {
+            counter.element.textContent = formatter.format(value);
+            counter.displayed = value;
+          }
+          if (progress < 1) complete = false;
+        });
+        if (complete) finishCounters();
+        else countFrame = requestAnimationFrame(update);
+      };
+      counters.forEach((counter) => { counter.element.textContent = '0'; });
+      countFrame = requestAnimationFrame(update);
+    };
+    if ('IntersectionObserver' in window) {
+      const observer = new IntersectionObserver((entries) => {
+        if (!entries.some((entry) => entry.isIntersecting && entry.intersectionRatio >= configuration.visibilityThreshold)) return;
+        observer.disconnect();
+        startCounters();
+      }, { threshold: configuration.visibilityThreshold });
+      observer.observe(statisticsPanel);
+    }
+    const syncMotion = () => {
+      if (!motionIsDisabled()) return;
+      finishCounters();
+    };
+    reducedMotion.addEventListener('change', syncMotion);
+    new MutationObserver(syncMotion).observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+  }
 
 </script>

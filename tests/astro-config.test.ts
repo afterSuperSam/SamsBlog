@@ -72,6 +72,16 @@ describe('production Astro configuration', () => {
   });
 });
 
+describe('canonical site and RSS origin', () => {
+  it.each(['https://blog.example.com', 'http://localhost:4321'])('uses %s for both pages and feeds', (origin) => {
+    const source = readFileSync(new URL('../src/config/site.ts', import.meta.url), 'utf8').replace('import.meta.env.PUBLIC_SITE_URL', JSON.stringify(origin));
+    const exports: { siteConfig?: { siteUrl: string; rss: { siteUrl: string } } } = {};
+    runInNewContext(transpile(source, { module: ModuleKind.CommonJS }), { exports, URL });
+    expect(exports.siteConfig!.siteUrl).toBe(origin);
+    expect(exports.siteConfig!.rss.siteUrl).toBe(`${origin}/`);
+  });
+});
+
 describe('public friend profile image configuration', () => {
   const source = readFileSync(new URL('../src/config/site.ts', import.meta.url), 'utf8')
     .replace('import.meta.env.PUBLIC_SITE_URL', JSON.stringify('https://blog.example.com'))

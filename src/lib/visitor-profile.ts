@@ -37,9 +37,12 @@ export function rememberVisitor(form: HTMLFormElement) {
     enabled: () => remember.checked,
     save: () => {
       if (!remember.checked) return;
-      const profile = parseVisitorProfile(JSON.stringify({ nickname: nickname.value.trim(), email: email?.value.trim() || '' }));
-      if (!profile) return;
-      try { localStorage.setItem(key, JSON.stringify(profile)); status.textContent = ''; }
+      try {
+        const previousNickname = nickname.readOnly ? parseVisitorProfile(localStorage.getItem(key))?.nickname || '' : nickname.value.trim();
+        const profile = parseVisitorProfile(JSON.stringify({ nickname: previousNickname, email: email?.value.trim() || '' }));
+        if (!profile) return;
+        localStorage.setItem(key, JSON.stringify(profile)); status.textContent = '';
+      }
       catch { status.textContent = '资料未能保存在本机，本次留言已经送出。'; }
     },
   };

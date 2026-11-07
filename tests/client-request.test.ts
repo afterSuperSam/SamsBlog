@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { siteConfig } from '../src/config/site';
-import { requestJson, RequestTimeoutError } from '../src/lib/client-request';
+import { requestJson, RequestTimeoutError, RequestError } from '../src/lib/client-request';
 
 const failureMessage = '保存失败，请稍后重试';
 const address = '/api/admin/articles.json';
@@ -13,6 +13,16 @@ afterEach(() => {
 });
 
 describe('client JSON requests', () => {
+  it('preserves reauthentication status and code while remaining compatible with Error catches', async () => {
+    const fetchRequest = vi.fn().mockResolvedValue(Response.json({ error: '请重新验证身份', code: 'reauth_required' }, { status: 401 }));
+    vi.stubGlobal('fetch', fetchRequest);
+    const error = await requestJson('/api/reader/passkeys.json', 'DELETE', { id: 1 }, failureMessage).catch((error: unknown) => error);
+    expect(error).toBeInstanceOf(Error);
+    expect(error).toBeInstanceOf(RequestError);
+    expect(error).toMatchObject({ message: '请重新验证身份', status: 401, code: 'reauth_required' });
+    expect(fetchRequest).toHaveBeenCalledOnce();
+    expect(vi.getTimerCount()).toBe(0);
+  });
   it('lets the browser add multipart boundaries without encoding the file as JSON', async () => {
     const fetchRequest = vi.fn().mockResolvedValue(Response.json({ media: { id: 1 } }));
     vi.stubGlobal('fetch', fetchRequest);

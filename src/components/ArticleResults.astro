@@ -1,0 +1,36 @@
+---
+import type { ArticlePage } from '../lib/articles';
+import { articleMonth, articleCatalogHref, articlePagination } from '../lib/article-catalog';
+import ArticleCard from './ArticleCard.astro';
+
+interface Props { result: ArticlePage }
+const { result } = Astro.props;
+const { articles, filters, total, page, pageCount, pageSize } = result;
+const months = new Map<string, { first: number; count: number }>();
+for (const article of articles) {
+  const month = articleMonth(article.createdAt);
+  const group = months.get(month) || { first: article.id, count: 0 };
+  group.count += 1;
+  months.set(month, group);
+}
+const pageHref = (value: number) => articleCatalogHref({ ...filters, page: String(value) });
+---
+<div class="article-browser__main" data-article-results-container data-catalog-url={pageHref(page)}>
+  <div class="article-grid" data-article-grid data-view={filters.view}>
+    {articles.map((article) => {
+      const month = articleMonth(article.createdAt);
+      const group = months.get(month)!;
+      return <>
+        {filters.view === 'archive' && group.first === article.id && <h2 class="article-archive-heading" data-archive-month={month}>{month.slice(0, 4)} 年 {Number(month.slice(5))} 月 <span>本页 {group.count} 条</span></h2>}
+        <ArticleCard article={article} headingLevel={filters.view === 'archive' ? 3 : 2} filterable searchQuery={filters.q} searchSnippet={result.snippets[article.id]} returnTo={pageHref(page)} />
+      </>;
+    })}
+  </div>
+  {!total && <p class="articles-empty c2-surface" data-article-empty><span aria-hidden="true">⌕</span><span>还没有找到这样的内容，试试其他关键词或重置筛选</span></p>}
+  <p class="article-results" role="status" aria-live="polite" data-article-results>共 {total} 条内容{total > 0 && ` · 第 ${(page - 1) * pageSize + 1}–${Math.min(page * pageSize, total)} 条`}</p>
+  {pageCount > 1 && <nav class="article-pagination" aria-label="内容分页" data-article-pagination>
+    {page > 1 ? <a class="articles-more" href={pageHref(page - 1)} rel="prev" data-catalog-page>上一页</a> : <span aria-disabled="true">上一页</span>}
+    {articlePagination(page, pageCount).map((value) => value === null ? <span aria-hidden="true">…</span> : <a class="c2-surface" href={pageHref(value)} aria-current={value === page ? 'page' : undefined} aria-label={`第 ${value} 页`} data-catalog-page>{value}</a>)}
+    {page < pageCount ? <a class="articles-more" href={pageHref(page + 1)} rel="next" data-catalog-page>下一页</a> : <span aria-disabled="true">下一页</span>}
+  </nav>}
+</div>

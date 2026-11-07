@@ -27,7 +27,7 @@ function messageBody(content: string) {
 // 与首屏组件共用折叠条件和签名字形，发表后只替换列表，不触碰正在编辑的表单。
 export function renderCommentList(list: HTMLElement, messages: MessageRecord[], publishedId?: number) {
   const makeMessage = (message: MessageRecord, parentId: number, reply = false) => {
-    const node = element(reply ? 'div' : 'article', reply ? `message-reply${message.isAdmin ? ' is-owner' : ''}` : 'article-comment');
+    const node = element(reply ? 'div' : 'article', reply ? `message-reply c2-surface${message.isAdmin ? ' is-owner' : ''}` : 'article-comment c2-surface');
     node.id = `comment-${message.id}`; node.dataset.messageId = String(message.id); node.dataset.commentRoot = String(parentId); node.dataset.messageName = message.isAdmin ? 'SuperSam' : message.nickname;
     const header = element('header');
     if (message.isAdmin) {
@@ -42,7 +42,7 @@ export function renderCommentList(list: HTMLElement, messages: MessageRecord[], 
     const button = element('button', '', '回复'); button.type = 'button'; button.dataset.commentReply = String(parentId); button.dataset.commentMessage = String(message.id); button.dataset.commentName = node.dataset.messageName; header.append(button);
     node.append(header);
     if (message.quoteContent) {
-      const quote = element('blockquote', 'comment-quote'); quote.append(element('b', '', `引用 ${message.quoteNickname}`), element('p', '', message.quoteContent)); node.append(quote);
+      const quote = element('blockquote', 'comment-quote c2-surface'); quote.append(element('b', '', `引用 ${message.quoteNickname}`), element('p', '', message.quoteContent)); node.append(quote);
     }
     node.append(messageBody(message.content)); return node;
   };

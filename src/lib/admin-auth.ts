@@ -3,7 +3,7 @@ import { promisify } from 'node:util';
 import { serverConfig } from '../config/server';
 
 const deriveKey = promisify(scrypt);
-const cookieName = 'samsblog_admin';
+const legacyCookieName = 'samsblog_admin';
 const production = () => import.meta.env.PROD || process.env.NODE_ENV === 'production';
 
 function readSecret() {
@@ -48,12 +48,13 @@ export function verifyAdminSession(token?: string) {
 }
 
 export function readAdminSession(cookies: { get(name: string): { value: string } | undefined }) {
-  return verifyAdminSession(cookies.get(cookieName)?.value);
+  return verifyAdminSession(cookies.get(adminCookie.name)?.value);
 }
 
 export const adminCookie = {
-  name: cookieName,
-  options: { httpOnly: true, secure: production(), sameSite: 'strict' as const, path: '/', maxAge: serverConfig.sessionSeconds },
+  get name() { return production() ? '__Host-samsblog_admin' : legacyCookieName; },
+  legacyName: legacyCookieName,
+  get options() { return { httpOnly: true, secure: production(), sameSite: 'strict' as const, path: '/', maxAge: serverConfig.sessionSeconds }; },
 };
 
 const attempts = new Map<string, { count: number; expiresAt: number }>();

@@ -1,0 +1,72 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import ReaderMethodBadge from '../components/ReaderMethodBadge.astro';
+import ReaderLogin from '../components/ReaderLogin.astro';
+import { getReaderAuthOptions, readReaderSession } from '../lib/readers';
+import { getReaderAccount, listReaderComments } from '../lib/reader-account';
+import { readerConfig } from '../config/readers';
+import '../styles/reader.css';
+const reader = readReaderSession(Astro.cookies);
+const account = reader ? getReaderAccount(reader) : null;
+const comments = reader ? listReaderComments(reader.id) : null;
+const authOptions = getReaderAuthOptions();
+const methodNames: Record<string, string> = { email: '邮箱', blogsclub: 'BlogsClub', github: 'GitHub', google: 'Google' };
+const date = (value: string | null | undefined) => value ? new Date(value).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '尚未使用';
+const totalPages = comments ? Math.max(1, Math.ceil(comments.total / comments.pageSize)) : 1;
+const statusLabels: Record<string, string> = { pending: '待审核', published: '已公开', hidden: '已隐藏' };
+Astro.response.headers.set('Cache-Control', 'private, no-store');
+Astro.response.headers.set('Vary', 'Cookie');
+Astro.response.headers.set('Referrer-Policy', 'no-referrer');
+Astro.response.headers.set('X-Robots-Tag', 'noindex, nofollow');
+---
+<BaseLayout title="我的账号" description="管理读者资料、Passkey 和自己的留言。" bodyClass="reader-page" reader={reader}>
+  <section class="shell reader-account-page" data-reader-account-page data-account-initial={account && comments ? JSON.stringify({ account, comments }) : undefined} data-reader-id={reader?.id || ''} data-name-maximum={readerConfig.displayNameMaximumLength} data-avatar-maximum={readerConfig.avatarMaximumBytes} aria-labelledby="reader-account-title">
+    <h1 class="sr-only" id="reader-account-title">我的账号</h1>
+    <div data-account-signed-out hidden={Boolean(reader)}><ReaderLogin reader={reader} /></div>
+    <div data-account-content hidden={!reader}>
+      <section class="reader-paper reader-account-summary" aria-label="读者资料">
+        <button type="button" class="reader-avatar reader-avatar-edit" data-avatar-select aria-label="更换头像，不超过 2 MB" disabled><span data-account-initial aria-hidden="true">{Array.from(reader?.displayName || '读')[0]}</span><img data-account-avatar src={reader?.avatarUrl || undefined} hidden={!reader?.avatarUrl} alt="" width="72" height="72" referrerpolicy="no-referrer" /><span class="reader-avatar-edit__overlay" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="m15 4 5 5M4 20l5-1L20 8a3.5 3.5 0 0 0-5-5L4 14Z" /><path d="M4 14v6h6" /></svg></span></button>
+        <div><div class="reader-identity-heading"><h2 data-account-name tabindex="-1">{reader?.displayName}</h2></div><input class="sr-only" type="file" data-avatar-file accept="image/png,image/jpeg,image/webp,image/gif" tabindex="-1" disabled /></div>
+        <p class="reader-feedback" data-avatar-feedback role="status" aria-live="polite"></p>
+        <dl><div class="reader-account-registration"><ReaderMethodBadge method={reader?.loginMethod} /><dt>注册时间</dt><dd><time data-account-created datetime={account?.reader.createdAt}>{date(account?.reader.createdAt)}</time></dd></div><div><dt>累计留言与评论</dt><dd data-account-comment-count>{account?.commentCount ?? 0} 次</dd></div><div class="reader-account-logout"><button type="button" data-reader-logout disabled>退出登录</button></div></dl>
+      </section>
+      <div class="reader-account-grid">
+        <section class="reader-paper reader-account-wide reader-profile-card" aria-labelledby="reader-profile-title"><div class="reader-card-heading"><h2 id="reader-profile-title">个人资料</h2></div>
+          <form method="post" action="/api/reader/account.json" data-account-profile autocomplete="off" novalidate>
+            <div class="reader-profile-fields"><label class="reader-field reader-profile-field paper-input-label"><span>昵称</span><input name="displayName" value={reader?.displayName || ''} minlength="2" maxlength={readerConfig.displayNameMaximumLength * 2} autocomplete="nickname" required disabled /></label>
+            <label class="reader-field reader-profile-field paper-input-label"><span>回复通知邮箱 · 可选</span><input name="notificationEmail" value={account?.notificationEmail || ''} type="text" inputmode="email" maxlength="254" autocomplete="off" autocapitalize="none" spellcheck="false" disabled /></label>
+            <div class="reader-profile-website"><label class="reader-field reader-profile-field paper-input-label"><span>个人网站 · 可选</span><input name="websiteUrl" value={account?.reader.websiteUrl || ''} type="text" inputmode="url" maxlength="2048" placeholder="https://example.com" autocomplete="url" disabled /></label><button type="submit" disabled>保存资料</button></div></div>
+            <p class="reader-feedback" data-profile-feedback role="status" aria-live="polite"></p>
+          </form>
+          <div class="reader-passkey-confirm" data-notification-verification hidden={!account?.notificationEmail}><span data-notification-verification-status>{account?.notificationEmailVerified ? '邮箱已验证' : account?.verifiedNotificationEmail ? '新邮箱待验证，原邮箱继续接收' : '邮箱待验证'}</span><button type="button" data-notification-resend hidden={account?.notificationEmailVerified} disabled>发送验证邮件</button></div>
+        </section>
+        <section class="reader-paper reader-account-wide" aria-labelledby="reader-identities-title"><div class="reader-card-heading"><h2 id="reader-identities-title">登录方式</h2></div>
+          <ul class="reader-passkeys" data-account-identities>{account?.identities.map((identity) => <li><span>{methodNames[identity.provider]}</span><small>{identity.count > 1 ? `${identity.count} 个身份` : '已绑定'}</small></li>)}</ul>
+          <div class="reader-passkey-confirm"><button type="button" data-identity-provider="email" disabled={!authOptions.email}>绑定邮箱</button>{authOptions.providers.map((provider) => <button type="button" data-identity-provider={provider.id} disabled={!provider.enabled}>绑定 {provider.name}</button>)}<button type="button" data-identity-cancel hidden>取消</button></div>
+          <form class="reader-passkey-add" data-identity-email autocomplete="off" novalidate hidden><label class="reader-field paper-input-label"><span>备用登录邮箱</span><input name="email" type="text" inputmode="email" maxlength="254" autocomplete="off" autocapitalize="none" spellcheck="false" /></label><button type="button" data-identity-email-send>获取验证码</button><label class="reader-field paper-input-label"><span>验证码</span><input name="code" type="text" inputmode="numeric" maxlength="3" pattern="[0-9]{3}" autocomplete="one-time-code" /></label><button type="submit">绑定</button></form>
+          <p class="reader-feedback" data-identity-feedback role="status" aria-live="polite"></p>
+        </section>
+        <section class="reader-paper reader-account-wide" aria-labelledby="reader-passkeys-title"><div class="reader-card-heading"><h2 id="reader-passkeys-title">Passkey</h2><span class="reader-card-count" data-passkey-count>{account?.passkeys.length ?? 0} 个</span></div>
+          <ul class="reader-passkeys" data-account-passkeys>{account?.passkeys.map((passkey) => <li><div><strong>{passkey.label}</strong><small>添加于 {date(passkey.createdAt)} · 最近使用 {date(passkey.lastUsedAt)}</small></div><button type="button" disabled>移除</button></li>)}</ul><p class="reader-help" data-passkeys-empty hidden={Boolean(account?.passkeys.length)}>暂无 Passkey</p>
+          <form class="reader-passkey-add" method="post" data-passkey-add autocomplete="off" novalidate><label class="reader-field reader-profile-field paper-input-label"><span>给设备起个名字</span><input name="label" type="text" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="120" placeholder="例如：我的笔记本" required disabled /></label><button type="submit" disabled>添加</button></form>
+          <p class="reader-feedback" data-passkey-feedback role="status" aria-live="polite"></p>
+        </section>
+        <section class="reader-paper reader-account-wide" aria-labelledby="reader-comments-title"><div class="reader-card-heading"><h2 id="reader-comments-title" tabindex="-1">我的留言与评论</h2><span class="reader-card-count" data-comment-count>{comments?.total ?? 0} 条</span></div>
+          <ol class="reader-comments" data-account-comments>{comments?.comments.map((comment) => <li><header><time datetime={comment.createdAt}>{date(comment.createdAt)}</time><span>{statusLabels[comment.status] || '未公开'}</span><span>{comment.articleTitle || (comment.articleId ? '文章评论' : '留言纸条')}</span></header><p>{comment.content}</p>{comment.url && <a href={comment.url}>查看原文 ↗</a>}</li>)}</ol><p class="reader-help" data-comments-empty hidden={Boolean(comments?.comments.length)}>暂无留言</p>
+          <nav class="reader-pagination" aria-label="我的留言分页"><button type="button" data-comments-previous disabled>上一页</button><span data-comments-page>第 1 / {totalPages} 页 · 共 {comments?.total ?? 0} 条</span><button type="button" data-comments-next disabled>下一页</button></nav>
+          <p class="reader-feedback" data-comments-feedback role="status" aria-live="polite"></p>
+        </section>
+      </div>
+    </div>
+    <p class="reader-feedback" data-account-feedback role="status" aria-live="polite">{Astro.url.searchParams.get('error') === 'oauth' ? '这次登录未能完成，请重新打开登录面板。' : ''}</p>
+    <noscript><p>账号管理需要启用 JavaScript，文章仍可正常阅读。</p></noscript>
+  </section>
+</BaseLayout>
+<script>
+  import { initializeReaderAccount } from '../lib/reader-account-client';
+  import { initializeReaderSurfaces } from '../lib/reader-surface-geometry';
+  import { initializeReaderEffects } from '../lib/reader-effects';
+  initializeReaderAccount();
+  const root = document.querySelector<HTMLElement>('[data-reader-account-page]');
+  if (root) { initializeReaderSurfaces(root); initializeReaderEffects(root); }
+</script>

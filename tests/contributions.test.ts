@@ -27,6 +27,24 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+describe('token usage calendar', () => {
+  it('adds all input, cache and output counts while preserving missing dates', async () => {
+    const { buildTokenUsageCalendar } = await import('../src/lib/contributions');
+    const firstDay = { cacheHit: 120, cacheMiss: 40, output: 10 };
+    const lastDay = { cacheHit: 80, cacheMiss: 20, output: 5 };
+    const calendar = buildTokenUsageCalendar(new Map([['2026-10-16', firstDay], ['2026-10-18', lastDay]]));
+    expect(calendar.total).toBe(275);
+    expect(calendar.available).toBe(true);
+    expect(calendar.days.find((day) => day.date === '2026-10-16')).toMatchObject({ count: 170, usage: firstDay });
+    expect(calendar.days.find((day) => day.date === '2026-10-17')).toMatchObject({ count: 0, usage: undefined });
+    expect(calendar.days.at(-1)).toMatchObject({ date: '2026-10-18', count: 105, usage: lastDay });
+  });
+  it('does not report an empty snapshot as recorded zero usage', async () => {
+    const { buildTokenUsageCalendar } = await import('../src/lib/contributions');
+    expect(buildTokenUsageCalendar(new Map())).toMatchObject({ available: false, total: 0 });
+  });
+});
+
 describe('GitHub contribution cache', () => {
   it('preserves thousands separators in daily counts', async () => {
     const { parseGithubContributions } = await import('../src/lib/contributions');

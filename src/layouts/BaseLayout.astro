@@ -1,13 +1,18 @@
 ---
 import Header from '../components/Header.astro';
+import { readReaderSession, type ReaderPublic } from '../lib/readers';
+import { publicPagePath } from '../lib/stats';
 import Footer from '../components/Footer.astro';
 import { siteConfig } from '../config/site';
 import { version } from '../../package.json';
 import '../styles/global.css';
 import '../styles/legacy-layout.css';
+import '../styles/surfaces.css';
+import { createReaderSurfacePath } from '../lib/reader-surface-geometry';
 import AmbientScene from '../components/AmbientScene.astro';
 
 interface Props {
+  reader?: ReaderPublic | null;
   title?: string;
   description?: string;
   image?: string;
@@ -24,6 +29,7 @@ const {
   quickNavigation = [],
   articleMetadata,
 } = Astro.props;
+const reader = Astro.props.reader === undefined ? readReaderSession(Astro.cookies) : Astro.props.reader;
 const pageTitle = title ? `${title} — ${siteConfig.name}` : siteConfig.name;
 const canonical = new URL(Astro.url.pathname, siteConfig.siteUrl);
 const sharingImage = image || '/media/anime/hero/1719656915755.webp';
@@ -31,7 +37,7 @@ const sharingImage = image || '/media/anime/hero/1719656915755.webp';
 ---
 
 <!doctype html>
-<html lang="zh-CN" data-theme="dark" data-reading-font-storage-key={articleMetadata ? siteConfig.articleReading.fontPreferenceStorageKey : undefined}
+<html lang="zh-CN" data-reader-surface-timeout={bodyClass.includes('reader-page') ? siteConfig.readerPresentation.readyTimeoutMilliseconds : undefined} data-theme="dark" data-article-font={articleMetadata ? 'default' : undefined} data-reading-font-storage-key={articleMetadata ? siteConfig.articleReading.fontPreferenceStorageKey : undefined}
   data-reading-typography={articleMetadata ? JSON.stringify({ storageKey: siteConfig.articleReading.typographyStorageKey, minimum: siteConfig.articleReading.fontSizeMinimum, maximum: siteConfig.articleReading.fontSizeMaximum, step: siteConfig.articleReading.fontSizeStep }) : undefined}>
   <head>
     <meta charset="utf-8" />
@@ -42,6 +48,7 @@ const sharingImage = image || '/media/anime/hero/1719656915755.webp';
     <link rel="icon" href="/media/brand/logo.jpg" type="image/jpeg" />
     <link rel="canonical" href={canonical} />
     <link rel="alternate" type="application/rss+xml" title="SamsBlog RSS" href="/rss.xml" />
+    {Astro.response.status === 200 && publicPagePath(Astro.url.pathname) && <link rel="prefetch" as="image" href={siteConfig.blogsClubBadgeUrl} />}
     <link rel="expect" href="#page-content-ready" blocking="render" />
     {articleMetadata && image && <link rel="preload" as="image" href={image} referrerpolicy="no-referrer" fetchpriority="high" />}
     <meta property="og:title" content={pageTitle} />
@@ -59,10 +66,11 @@ const sharingImage = image || '/media/anime/hero/1719656915755.webp';
     <script is:inline src={`/scripts/page-presentation.js?v=${version}`} {...{ blocking: 'render' }}></script>
   </head>
   <body class={bodyClass} data-reveal-config={!bodyClass.includes('admin-page') ? JSON.stringify(siteConfig.reveal) : undefined}>
+    <svg class="public-surface-definitions" aria-hidden="true" focusable="false"><defs><clipPath id="public-c2-cell" clipPathUnits="objectBoundingBox"><path d={createReaderSurfacePath(1, 1, .35)} /></clipPath></defs></svg>
     <a class="skip-link" href="#main-content">跳到主要内容</a>
     {!bodyClass.includes('admin-page') && <div class="reading-progress" aria-hidden="true" data-reading-progress hidden></div>}
     {!bodyClass.includes('admin-page') && <AmbientScene />}
-    <Header showMotion={!bodyClass.includes('admin-page')} />
+    <Header reader={reader} showMotion={!bodyClass.includes('admin-page')} />
     <main id="main-content" tabindex="-1">
       {quickNavigation.length > 0 && <nav class:list={['home-quick-nav', { visible: !bodyClass.includes('home-page') }]} aria-label={`${title || '首页'}快捷导航`} aria-hidden={bodyClass.includes('home-page')} inert={bodyClass.includes('home-page')} data-quick-nav data-reveal-after-hero={String(bodyClass.includes('home-page'))} data-activation-ratio={siteConfig.navigation.sectionActivationRatio}>
         {quickNavigation.map((item) => <a href={item.href} aria-label={item.description || item.label}><span>{item.label}</span><i></i></a>)}
@@ -71,12 +79,15 @@ const sharingImage = image || '/media/anime/hero/1719656915755.webp';
       <span id="page-content-ready" hidden></span>
     </main>
     <Footer showSignature={!bodyClass.includes('admin-page')} />
-    {!bodyClass.includes('admin-page') && <div id="site-tooltip" class="site-tooltip" popover="manual" role="tooltip"></div>}
+    {!bodyClass.includes('admin-page') && <div id="site-tooltip" class="site-tooltip c2-surface" popover="manual" role="tooltip"></div>}
     <script>
+  import { initializeMicroFeedback } from '../lib/micro-feedback';
+  initializeMicroFeedback();
       import { initializePageView } from '../lib/page-view';
       initializePageView();
       import { animateMotion as animate, createCharacters, animateCharacters } from '../lib/motion';
       import { createTooltip } from '../lib/tooltip';
+      import { isInitiallyVisible, preparePageReveal } from '../lib/page-reveal';
       // 返回链接走原历史记录，保留文章列表的筛选结果及滚动位置。
       const pageNavigation = (window as Window & { navigation?: { currentEntry?: { key: string }; entries(): { key: string }[]; traverseTo(key: string): unknown } }).navigation;
       try {
@@ -86,12 +97,12 @@ const sharingImage = image || '/media/anime/hero/1719656915755.webp';
           requestAnimationFrame(() => window.scrollTo({ top: restore.scrollY, behavior: 'instant' }));
         }
       } catch (error) { console.warn('Article list position unavailable', error); }
-      document.querySelectorAll<HTMLAnchorElement>('a.article-card__link').forEach((link) => {
-        link.addEventListener('click', (event) => {
-          if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-          try { sessionStorage.setItem('article-return', JSON.stringify({ article: new URL(link.href).pathname, from: location.href, key: pageNavigation?.currentEntry?.key, scrollY: window.scrollY })); }
-          catch (error) { console.warn('Article return state unavailable', error); }
-        });
+      document.addEventListener('click', (event) => {
+        if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+        const link = (event.target as Element).closest<HTMLAnchorElement>('.article-card a[href^="/articles/"]');
+        if (!link) return;
+        try { sessionStorage.setItem('article-return', JSON.stringify({ article: new URL(link.href).pathname, from: location.href, key: pageNavigation?.currentEntry?.key, scrollY: window.scrollY })); }
+        catch (error) { console.warn('Article return state unavailable', error); }
       });
       const back = document.querySelector<HTMLAnchorElement>('.article-reading__back');
       if (back) {
@@ -144,7 +155,7 @@ const sharingImage = image || '/media/anime/hero/1719656915755.webp';
           if (window.scrollY > 0 && window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 1) currentIndex = quickNavItems.length - 1;
           if (quickNav.dataset.revealAfterHero === 'true') {
             const section = quickNavItems[currentIndex]?.section.id;
-            const atmosphere = section === 'projects' ? 'blue' : section === 'latest-article' ? 'pink' : 'neutral';
+            const atmosphere = section === 'projects' ? 'blue' : 'neutral';
             if (document.body.dataset.homeAtmosphere !== atmosphere) document.body.dataset.homeAtmosphere = atmosphere;
           }
           const spacingIndex = hoveredNavigation ?? focusedNavigation ?? currentIndex;
@@ -236,7 +247,7 @@ const sharingImage = image || '/media/anime/hero/1719656915755.webp';
           kicker.setAttribute('data-reveal', 'kicker');
         });
         document.querySelectorAll<HTMLElement>('.section-title, .home-guestbook__header h2, .about-section-heading h1, .about-section-heading h2, .sponsor-copy h2').forEach((heading) => {
-          if (heading.children.length) return;
+          if (heading.children.length || isInitiallyVisible(heading, window.innerHeight)) return;
           const text = heading.textContent || '';
           heading.setAttribute('aria-label', text);
           heading.replaceChildren(...createCharacters(text));
@@ -273,8 +284,7 @@ const sharingImage = image || '/media/anime/hero/1719656915755.webp';
           });
         }, { rootMargin: `0px 0px -${configuration.bottomInsetPercent}% 0px`, threshold: configuration.visibilityThreshold });
         revealTargets.forEach((target) => {
-          revealObserver.observe(target);
-          target.classList.add('reveal-pending');
+          if (preparePageReveal(target, window.innerHeight)) revealObserver.observe(target);
         });
         const stopReveals = () => {
           if (!revealIsDisabled()) return;

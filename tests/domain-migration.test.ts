@@ -39,6 +39,168 @@ afterEach(() => {
 });
 
 describe('domain migration transaction', () => {
+  it.each([false, true])('adds notification email idempotently and preserves existing reader data: column present %s', async (columnPresent) => {
+    const legacy = new Database(path.join(directory, 'blog.sqlite'));
+    legacy.prepare('DELETE FROM schema_migrations WHERE id=?').run('20261107-reader-notification-email');
+    legacy.prepare("INSERT INTO readers(id,display_name,created_at,updated_at,notification_email) VALUES (95,'历史读者','2026-01-01','2026-01-02','saved@example.com')").run();
+    if (!columnPresent) legacy.exec('ALTER TABLE readers DROP COLUMN notification_email');
+    legacy.close();
+    connection = openDatabase();
+    expect(connection.prepare('SELECT display_name,notification_email FROM readers WHERE id=95').get()).toEqual({ display_name: '历史读者', notification_email: columnPresent ? 'saved@example.com' : null });
+    expect(connection.prepare('SELECT id FROM schema_migrations WHERE id=?').get('20261107-reader-notification-email')).toBeTruthy();
+    connection.close(); connection = undefined; vi.resetModules();
+    connection = (await import('../src/lib/db')).getDatabase();
+    expect(connection.prepare('SELECT notification_email FROM readers WHERE id=95').get()).toEqual({ notification_email: columnPresent ? 'saved@example.com' : null });
+  });
+
+  it.each(['original', 'oauth-provider', 'legacy-verifier', 'all-fields'])('upgrades reader draft schemas without losing identities or readding columns: %s', async (variant) => {
+    const legacy = new Database(path.join(directory, 'blog.sqlite'));
+    legacy.prepare('DELETE FROM schema_migrations WHERE id=?').run('20261107-reader-account-passkeys');
+    legacy.prepare(`INSERT INTO readers(id,display_name,avatar_url,created_at,updated_at,website_url,webauthn_user_id)
+      VALUES (91,'历史读者',NULL,'2026-01-01','2026-02-02','https://example.com/','fixture-existing-handle')`).run();
+    legacy.prepare("INSERT INTO reader_identities(provider,subject,reader_id) VALUES ('email','existing-subject',91)").run();
+    legacy.prepare("INSERT INTO reader_sessions(token_hash,reader_id,created_at,expires_at,login_method) VALUES ('existing-session',91,1,9999999999999,'passkey')").run();
+    legacy.prepare(`INSERT INTO reader_oauth_states(state_hash,browser_hash,created_at,expires_at,provider,pkce_verifier,nonce)
+      VALUES ('existing-state','existing-browser',1,9999999999999,'github','existing-verifier','existing-nonce')`).run();
+    if (variant === 'all-fields') {
+      legacy.exec(`INSERT INTO reader_passkeys(id,credential_id,reader_id,public_key,counter,transports,label,device_type,backed_up,created_at,last_used_at)
+        VALUES (92,'existing-credential',91,X'010203',17,'["internal"]','历史设备','multiDevice',1,'2026-01-01','2026-02-02');
+        UPDATE reader_sessions SET passkey_id=92;
+        INSERT INTO reader_passkey_challenges(token_hash,challenge,kind,reader_id,session_hash,created_at,expires_at)
+          VALUES ('existing-challenge-token','existing-challenge','register',91,'existing-session',1,9999999999999);`);
+    }
+    if (variant !== 'all-fields') {
+      legacy.exec(`DROP INDEX readers_webauthn_user_idx;
+        ALTER TABLE readers DROP COLUMN website_url;
+        ALTER TABLE readers DROP COLUMN webauthn_user_id;
+        ALTER TABLE reader_sessions DROP COLUMN passkey_id;
+        ALTER TABLE reader_sessions DROP COLUMN login_method;
+        DROP TABLE reader_passkey_challenges;
+        DROP TABLE reader_passkeys;`);
+    }
+    const oauthSchema = legacy.prepare("SELECT sql FROM sqlite_master WHERE name='reader_oauth_states'").get() as { sql: string };
+    legacy.exec(`${oauthSchema.sql.replace('reader_oauth_states', 'reader_oauth_states_legacy').replaceAll(",'google'", '')};
+      INSERT INTO reader_oauth_states_legacy SELECT * FROM reader_oauth_states;
+      DROP TABLE reader_oauth_states;
+      ALTER TABLE reader_oauth_states_legacy RENAME TO reader_oauth_states;`);
+    if (variant === 'original') legacy.exec('ALTER TABLE reader_oauth_states DROP COLUMN provider; ALTER TABLE reader_oauth_states DROP COLUMN pkce_verifier; ALTER TABLE reader_oauth_states DROP COLUMN nonce');
+    if (variant === 'legacy-verifier') {
+      legacy.exec(`CREATE TABLE reader_oauth_states_draft (
+        state_hash TEXT PRIMARY KEY, provider TEXT NOT NULL CHECK(provider IN ('github','google','blogsclub')),
+        browser_hash TEXT NOT NULL, verifier TEXT NOT NULL, nonce TEXT NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL
+      );
+      INSERT INTO reader_oauth_states_draft(state_hash,provider,browser_hash,verifier,nonce,created_at,expires_at)
+        SELECT state_hash,provider,browser_hash,pkce_verifier,nonce,created_at,expires_at FROM reader_oauth_states;
+      DROP TABLE reader_oauth_states;
+      ALTER TABLE reader_oauth_states_draft RENAME TO reader_oauth_states;`);
+    }
+    legacy.close();
+    connection = openDatabase();
+    expect(connection.prepare('SELECT display_name,website_url,webauthn_user_id FROM readers WHERE id=91').get()).toMatchObject({
+      display_name: '历史读者', website_url: variant === 'all-fields' ? 'https://example.com/' : '',
+      webauthn_user_id: variant === 'all-fields' ? 'fixture-existing-handle' : expect.stringMatching(/^[A-Za-z0-9_-]{43}$/),
+    });
+    expect(connection.prepare('SELECT provider,subject,reader_id FROM reader_identities WHERE reader_id=91').all()).toEqual([{ provider: 'email', subject: 'existing-subject', reader_id: 91 }]);
+    expect(connection.prepare("SELECT login_method FROM reader_sessions WHERE token_hash='existing-session'").get()).toEqual({ login_method: variant === 'all-fields' ? 'passkey' : 'email' });
+    expect(connection.prepare("SELECT provider,pkce_verifier,nonce FROM reader_oauth_states WHERE state_hash='existing-state'").get())
+      .toEqual(variant === 'original' ? { provider: 'blogsclub', pkce_verifier: null, nonce: null }
+        : { provider: 'github', pkce_verifier: 'existing-verifier', nonce: 'existing-nonce' });
+    expect(() => connection!.prepare("INSERT INTO reader_oauth_states(state_hash,browser_hash,created_at,expires_at,provider) VALUES ('new-state','new-browser',1,2,'blogsclub')").run()).not.toThrow();
+    expect(() => connection!.prepare("UPDATE reader_oauth_states SET provider='google'").run()).not.toThrow();
+    expect(() => connection!.prepare("UPDATE reader_oauth_states SET provider='invalid'").run()).toThrow(/CHECK/);
+    expect(connection.pragma('foreign_key_check')).toEqual([]);
+    if (variant === 'all-fields') {
+      expect(connection.prepare('SELECT id,credential_id,hex(public_key) AS publicKey,counter,label,last_used_at FROM reader_passkeys WHERE id=92').get())
+        .toEqual({ id: 92, credential_id: 'existing-credential', publicKey: '010203', counter: 17, label: '历史设备', last_used_at: '2026-02-02' });
+      expect(connection.prepare("SELECT passkey_id FROM reader_sessions WHERE token_hash='existing-session'").get()).toEqual({ passkey_id: 92 });
+      expect(connection.prepare("SELECT challenge FROM reader_passkey_challenges WHERE token_hash='existing-challenge-token'").get()).toEqual({ challenge: 'existing-challenge' });
+    }
+    expect(() => connection!.prepare("INSERT INTO reader_identities(provider,subject,reader_id) VALUES ('google','new-google',91)").run()).not.toThrow();
+    expect(() => connection!.prepare("UPDATE reader_sessions SET login_method='google' WHERE token_hash='existing-session'").run()).not.toThrow();
+    connection.close(); connection = undefined; vi.resetModules();
+    connection = (await import('../src/lib/db')).getDatabase();
+    expect(connection.prepare("SELECT count(*) AS count FROM schema_migrations WHERE id='20261107-reader-account-passkeys'").get()).toEqual({ count: 1 });
+  });
+
+  it.each([true, false])('adds or adopts the feed summary column without losing cached entries, existing column=%s', async (existingColumn) => {
+    const legacy = new Database(path.join(directory, 'blog.sqlite'));
+    legacy.prepare('DELETE FROM schema_migrations WHERE id=?').run('20261107-friend-feed-summary');
+    if (existingColumn) legacy.prepare('UPDATE friend_feed_cache SET summary=? WHERE friend_id=10').run('既有摘要');
+    else legacy.exec('ALTER TABLE friend_feed_cache DROP COLUMN summary');
+    legacy.close();
+    connection = openDatabase();
+    expect(connection.prepare('SELECT title,summary,published_at,checked_at FROM friend_feed_cache WHERE friend_id=10').get())
+      .toEqual({ title: '历史订阅', summary: existingColumn ? '既有摘要' : '', published_at: '2026-01-01', checked_at: '2026-02-02' });
+    connection.close();
+    connection = undefined;
+    vi.resetModules();
+    connection = (await import('../src/lib/db')).getDatabase();
+    expect(connection.prepare('SELECT summary FROM friend_feed_cache WHERE friend_id=10').get()).toEqual({ summary: existingColumn ? '既有摘要' : '' });
+  });
+
+  it.each([true, false])('preserves queue identities, snapshots and existing friend relations when adding acceptance receipts, old queue=%s', async (oldQueue) => {
+    const legacy = new Database(path.join(directory, 'blog.sqlite'));
+    legacy.prepare('DELETE FROM schema_migrations WHERE id=?').run('20261107-friend-application-receipt');
+    legacy.prepare(`INSERT INTO friend_applications(id,name,url,description,icon_url,email,fingerprint_hash,created_at,updated_at,friend_id)
+      VALUES (20,'既有申请','https://moesam.com/','保留关联','https://example.com/icon.png','migration@example.com','migration','2026-01-01','2026-02-02',20)`).run();
+    if (oldQueue) {
+      const schema = legacy.prepare("SELECT sql FROM sqlite_master WHERE name='mail_notifications'").get() as { sql: string };
+      legacy.exec(`${schema.sql.replace('mail_notifications', 'mail_notifications_legacy').replaceAll(",'application_accepted'", '')};
+        DROP TABLE mail_notifications;
+        ALTER TABLE mail_notifications_legacy RENAME TO mail_notifications;`);
+    }
+    const snapshot = { id: 777, kind: 'application', message_id: null, reply_id: null, application_id: 20, status: 'pending', attempts: 2,
+      created_at: '2026-11-07T00:00:00Z', updated_at: '2026-11-07T00:05:00Z', retry_at: '2026-11-07T00:10:00Z', provider_id: 'old-provider', request_payload: '{"subject":"已保存请求"}' };
+    legacy.prepare(`INSERT INTO mail_notifications(id,kind,message_id,reply_id,application_id,status,attempts,created_at,updated_at,retry_at,provider_id,request_payload)
+      VALUES (@id,@kind,@message_id,@reply_id,@application_id,@status,@attempts,@created_at,@updated_at,@retry_at,@provider_id,@request_payload)`).run(snapshot);
+    legacy.prepare("UPDATE sqlite_sequence SET seq=900 WHERE name='mail_notifications'").run();
+    legacy.close();
+    connection = openDatabase();
+    expect(connection.prepare('SELECT * FROM mail_notifications WHERE id=777').get()).toEqual(snapshot);
+    expect(connection.prepare('SELECT friend_id FROM friend_applications WHERE id=20').get()).toEqual({ friend_id: 20 });
+    expect(connection.prepare("SELECT COUNT(*) AS count FROM mail_notifications WHERE kind='application_accepted'").get()).toEqual({ count: 0 });
+    const insert = connection.prepare("INSERT INTO mail_notifications(kind,application_id,created_at,updated_at) VALUES ('application_accepted',20,'','')");
+    expect(Number(insert.run().lastInsertRowid)).toBeGreaterThan(900);
+    expect(() => insert.run()).toThrow(/UNIQUE/);
+    expect(() => connection!.prepare("INSERT INTO mail_notifications(kind,created_at,updated_at) VALUES ('application_accepted','','')").run()).toThrow(/CHECK/);
+    connection.close();
+    connection = undefined;
+    vi.resetModules();
+    connection = (await import('../src/lib/db')).getDatabase();
+    expect(connection.prepare('SELECT * FROM mail_notifications WHERE id=777').get()).toEqual(snapshot);
+  });
+
+  it.each([true, false])('adopts existing recommendation columns and status caches without the current marker, legacy cache=%s', async (legacyCache) => {
+    const legacy = new Database(path.join(directory, 'blog.sqlite'));
+    legacy.prepare('DELETE FROM schema_migrations WHERE id=?').run('20261107-friend-groups');
+    legacy.prepare('UPDATE friends SET recommended=1,starred=1 WHERE id=20').run();
+    if (legacyCache) {
+      legacy.exec(`DROP TABLE friend_status_cache;
+        CREATE TABLE friend_status_cache (
+          friend_id INTEGER PRIMARY KEY REFERENCES friends(id) ON DELETE CASCADE, url TEXT NOT NULL,
+          status TEXT NOT NULL CHECK(status IN ('online','slow','offline','restricted','blocked')),
+          failures INTEGER NOT NULL DEFAULT 0 CHECK(failures >= 0), checked_at TEXT NOT NULL
+        )`);
+    }
+    legacy.prepare('INSERT INTO friend_status_cache(friend_id,url,status,checked_at) VALUES (?,?,?,?)')
+      .run(20, 'https://moesam.com/', 'restricted', '2026-11-07T00:00:00.000Z');
+    legacy.close();
+    connection = openDatabase();
+    expect(connection.prepare('SELECT recommended,starred,visible,created_at,updated_at FROM friends WHERE id=20').get())
+      .toEqual({ recommended: 1, starred: 1, visible: 0, created_at: '2026-01-01', updated_at: '2026-02-02' });
+    expect(connection.prepare('SELECT friend_id,url,status,checked_at,latency_milliseconds FROM friend_status_cache').get())
+      .toEqual({ friend_id: 20, url: 'https://moesam.com/', status: 'restricted', checked_at: '2026-11-07T00:00:00.000Z', latency_milliseconds: null });
+    expect(() => connection!.prepare('UPDATE friends SET recommended=2 WHERE id=20').run()).toThrow(/CHECK/);
+    expect(() => connection!.prepare("UPDATE friend_status_cache SET status='invalid'").run()).toThrow(/CHECK/);
+    expect(connection.prepare("SELECT id FROM schema_migrations WHERE id='20261107-friend-groups'").get()).toBeTruthy();
+    expect(connection.prepare("SELECT name FROM sqlite_master WHERE name='friends_active_url_idx'").get()).toBeTruthy();
+    connection.close();
+    connection = undefined;
+    vi.resetModules();
+    connection = (await import('../src/lib/db')).getDatabase();
+    expect(connection.prepare('SELECT recommended FROM friends WHERE id=20').get()).toEqual({ recommended: 1 });
+  });
+
   it.each([true, false])('retains new-domain records and recoverable history with existing index=%s', async (indexed) => {
     if (!indexed) {
       const legacy = new Database(path.join(directory, 'blog.sqlite'));

@@ -1,14 +1,19 @@
 ---
+import { ensureCommentIdentity } from '../lib/comment-submissions';
 import { listPublishedMessages } from '../lib/db';
 import { replyNotificationsConfigured } from '../lib/reply-notifications';
+import { readReaderSession } from '../lib/readers';
 import PaperCheckbox from './PaperCheckbox.astro';
 import FriendApplication from './FriendApplication.astro';
 import MessageBody from './MessageBody.astro';
 import MessageReplies from './MessageReplies.astro';
 import MessageSignature from './MessageSignature.astro';
+import GuestbookPaper from './GuestbookPaper.astro';
 import '../styles/guestbook.css';
 
 const messages = listPublishedMessages();
+const reader = readReaderSession(Astro.cookies);
+ensureCommentIdentity(Astro.cookies, Astro.url);
 const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' });
 ---
 
@@ -21,17 +26,19 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
     </header>
 
     <div class="guestbook-layout">
-      <form method="post" class="message-form" data-message-form autocomplete="off" novalidate>
+      <form method="post" class="message-form" data-message-form data-reader-authenticated={String(Boolean(reader))} data-draft-reader={reader?.id} autocomplete="off" novalidate>
+        <GuestbookPaper folded />
         <span class="message-form__decor" aria-hidden="true"><i>✿</i><i>✧</i><i>✦</i></span>
         <div class="message-form__title">
-          <span aria-hidden="true">
+          <span class="c2-clip" aria-hidden="true">
             <svg viewBox="0 0 24 24"><path d="M4 5.5h16v11H8l-4 3v-14Z" /><path d="M8 10h8M8 13h5" /></svg>
           </span>
           <h3>写一张小纸条</h3>
         </div>
-        <label class="paper-input-label">
+        <p class="reader-comment-identity"><span data-guestbook-reader hidden={!reader}>以读者 <b>{reader?.displayName}</b> 的身份留言</span><span data-guestbook-anonymous hidden={Boolean(reader)}>匿名留言审核后公开，也可以先 <a href="/reader">登录读者身份</a>。</span></p>
+        <label class="paper-input-label" data-guestbook-nickname hidden={Boolean(reader)}>
           <span>怎么称呼你</span>
-          <input name="nickname" type="text" minlength="2" maxlength="48" data-character-maximum="24" autocomplete="off" spellcheck="false" placeholder="2–24 个字符" aria-required="true" aria-describedby="message-form-status" />
+          <input name="nickname" type="text" minlength="2" maxlength="48" data-character-maximum="24" autocomplete="off" spellcheck="false" placeholder="2–24 个字符" aria-required="true" aria-describedby="message-form-status" value={reader?.displayName || ''} readonly={Boolean(reader)} />
         </label>
         <label class="paper-input-label">
           <span>想说的话</span>
@@ -41,9 +48,9 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
           <span>网站</span><input name="website" tabindex="-1" autocomplete="off" />
         </label>
         <div class="message-contact">
-          <label class="paper-input-label"><span>邮箱 · 可选，不公开</span><input name="email" type="text" inputmode="email" maxlength="254" autocomplete="off" /></label>
+          <label class="paper-input-label" data-guestbook-email hidden={Boolean(reader)}><span>邮箱 · 可选，不公开</span><input name="email" type="text" inputmode="email" maxlength="254" autocomplete="off" /></label>
           <div class="visitor-preferences">
-            {replyNotificationsConfigured && <PaperCheckbox name="notifyReply">收到回复邮件通知</PaperCheckbox>}
+            {replyNotificationsConfigured && <PaperCheckbox name="notifyReply">验证邮箱后接收回复通知</PaperCheckbox>}
             <PaperCheckbox remember>记住称呼和邮箱</PaperCheckbox>
           </div>
           <small data-remember-status role="status"></small>
@@ -78,6 +85,7 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
             {messages.map((message) => (
               <li class="message-item" data-reveal>
                 <div class="message-item__note">
+                  <GuestbookPaper />
                   <header><b>{message.nickname}</b><time datetime={message.createdAt}>{dateFormatter.format(new Date(message.createdAt))}</time></header>
                   <MessageBody content={message.content} />
                   <MessageReplies replies={message.replies} parentId={message.id} />
@@ -99,12 +107,35 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
   import { requestJson } from '../lib/client-request';
   import { rememberVisitor } from '../lib/visitor-profile';
   import { initializeCommentInput } from '../lib/comment-tools';
+  import { initializeCommentDraft } from '../lib/comment-drafts';
+  import { markTaskState } from '../lib/micro-feedback';
   const form = document.querySelector<HTMLFormElement>('[data-message-form]');
   const visitor = form ? rememberVisitor(form) : undefined;
   const nickname = form?.querySelector<HTMLInputElement>('input[name="nickname"]');
+  let anonymousNickname = nickname?.readOnly ? '' : nickname?.value || '';
+  document.addEventListener('reader:session', (event) => {
+    if (!form || !nickname) return;
+    const reader = (event as CustomEvent<{ id: number; displayName: string } | null>).detail;
+    if (reader) {
+      if (!nickname.readOnly) anonymousNickname = nickname.value;
+      nickname.value = reader.displayName;
+    } else if (nickname.readOnly) nickname.value = anonymousNickname;
+    drafts?.switchIdentity(reader?.id ?? null);
+    nickname.readOnly = Boolean(reader);
+    form.dataset.readerAuthenticated = String(Boolean(reader));
+    form.querySelector<HTMLElement>('[data-guestbook-nickname]')!.hidden = Boolean(reader);
+    form.querySelector<HTMLElement>('[data-guestbook-email]')!.hidden = Boolean(reader);
+    form.querySelector<HTMLElement>('[data-guestbook-reader]')!.hidden = !reader;
+    form.querySelector<HTMLElement>('[data-guestbook-anonymous]')!.hidden = Boolean(reader);
+    const name = form.querySelector<HTMLElement>('[data-guestbook-reader] b');
+    if (name) name.textContent = reader?.displayName || '';
+    nickname.dispatchEvent(new Event('input'));
+  });
   const textarea = form?.querySelector<HTMLTextAreaElement>('textarea[name="content"]');
   const inputTools = form && textarea ? initializeCommentInput(form, textarea) : undefined;
+  const drafts = form && textarea ? initializeCommentDraft(textarea, 'guestbook', Number(form.dataset.draftReader) || null) : undefined;
   const counter = form?.querySelector<HTMLElement>('[data-message-count]');
+  if (counter) counter.textContent = String(Array.from(textarea?.value || '').length);
   const status = form?.querySelector<HTMLElement>('[data-form-status]');
   const messageScroll = document.querySelector<HTMLElement>('[data-message-scroll]');
   const messageWall = messageScroll?.parentElement;
@@ -125,7 +156,7 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
       const animation = animateMotion(element, frames.map((frame) => ({ ...frame, easing })), { duration: duration * length, delay: duration * start, fill: 'both' });
       if (animation) receiptAnimations.push(animation);
     };
-    [...form.children].filter((element) => element !== receipt && element !== status).forEach((element) => play(element,
+    [...form.children].filter((element) => element !== receipt && element !== status && !element.classList.contains('guestbook-paper')).forEach((element) => play(element,
       [{ opacity: 1 }, { opacity: 0, offset: .14 }, { opacity: 0, offset: .8 }, { opacity: 1 }]));
     play(receipt.querySelector('[data-receipt-paper]')!, [
       { opacity: 0, transform: 'translateY(12px) scale(.92)' },
@@ -158,6 +189,7 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
   let submitting = false;
   const showStatus = (text: string, state: string) => {
     if (!status) return;
+    markTaskState(status, !text ? 'idle' : state === 'loading' ? 'pending' : state === 'success' ? 'success' : 'error');
     status.querySelectorAll('.reveal-character').forEach((character) => character.getAnimations().forEach((animation) => animation.cancel()));
     animateContentHeight(status, () => {
       if (!text) { status.replaceChildren(); delete status.dataset.state; return; }
@@ -211,7 +243,7 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
   form?.addEventListener('submit', async (event) => {
     event.preventDefault();
     if (submitting || nickname?.dataset.composing === 'true' || textarea?.dataset.composing === 'true') return;
-    const invalidField = [nickname, textarea].find((field) => field && (field.value.includes('\0') || Array.from(field.value.trim()).length < field.minLength || Array.from(field.value.trim()).length > Number(field.dataset.characterMaximum)));
+    const invalidField = [nickname, textarea].find((field) => field && !field.readOnly && (field.value.includes('\0') || Array.from(field.value.trim()).length < field.minLength || Array.from(field.value.trim()).length > Number(field.dataset.characterMaximum)));
     if (invalidField) {
       const label = invalidField.name === 'nickname' ? '称呼' : '留言';
       if (status) {
@@ -221,24 +253,29 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
       invalidField.focus();
       return;
     }
-    submitting = true;
     const submit = form.querySelector<HTMLButtonElement>('button[type="submit"]');
     const data = new FormData(form);
-    const email = String(data.get('email') || '').trim();
-    const notifyReply = data.has('notifyReply') && email.length > 0;
+    const authenticated = form.dataset.readerAuthenticated === 'true';
+    const email = authenticated ? '' : String(data.get('email') || '').trim();
+    const notifyReply = data.has('notifyReply');
+    if (notifyReply && !authenticated && !email) { showStatus('接收回复通知需要填写邮箱。', 'invalid'); form.querySelector<HTMLInputElement>('[name="email"]')?.focus(); return; }
+    submitting = true;
+    const body = { nickname: authenticated ? '' : data.get('nickname'), content: data.get('content'), website: data.get('website'), email: notifyReply ? email : '', notifyReply };
     submit?.setAttribute('disabled', 'true');
     showStatus('正在送出…', 'loading');
     try {
+      const draftSnapshot = await drafts?.captureSubmission(body);
       const result = await requestJson<{ ok?: boolean; message?: string; error?: string }>(
         '/api/guestbook/messages.json', 'POST',
-        { nickname: data.get('nickname'), content: data.get('content'), website: data.get('website'), email: notifyReply ? email : '', notifyReply },
+        { ...body, operationId: draftSnapshot?.operationId || crypto.randomUUID(), submissionIdentity: draftSnapshot?.key.split('/')[0] },
         '留言服务暂时不可用，请稍后重试。',
       );
       if (!result.ok) throw new Error(result.error || '提交失败，请稍后重试。');
       visitor?.save();
       // 只清空本次送出后未变化的字段，不打断等待期间的新输入或中文组词。
-      [nickname, textarea].forEach((field) => {
-        if (!field || (field === nickname && visitor?.enabled()) || field.dataset.composing === 'true' || field.value !== data.get(field.name)) return;
+      if (draftSnapshot) drafts?.complete(draftSnapshot);
+      [nickname].forEach((field) => {
+        if (!field || field.readOnly || (field === nickname && visitor?.enabled()) || field.dataset.composing === 'true' || field.value !== data.get(field.name)) return;
         field.value = '';
         field.dispatchEvent(new Event('input', { bubbles: true }));
       });
@@ -254,4 +291,5 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
     }
   });
   form?.querySelector<HTMLButtonElement>('button[type="submit"]')?.removeAttribute('disabled');
+  window.addEventListener('pagehide', (event) => { if (!event.persisted) { drafts?.destroy(); inputTools?.destroy(); } });
 </script>

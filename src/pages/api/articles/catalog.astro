@@ -1,0 +1,8 @@
+---
+import ArticleResults from '../../../components/ArticleResults.astro';
+import { getArticlePage } from '../../../lib/articles';
+import { readArticleFilters } from '../../../lib/article-catalog';
+const result = getArticlePage(readArticleFilters(Astro.url.searchParams));
+Astro.response.headers.set('Cache-Control', 'no-store');
+---
+<ArticleResults result={result} />

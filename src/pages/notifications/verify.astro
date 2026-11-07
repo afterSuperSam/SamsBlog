@@ -1,0 +1,27 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import '../../styles/articles.css';
+import { confirmNotificationEmail } from '../../lib/reply-notifications';
+import { HttpError, readRequestBytes, requireSameOrigin } from '../../lib/http';
+Astro.response.headers.set('Cache-Control', 'private, no-store');
+Astro.response.headers.set('Referrer-Policy', 'no-referrer');
+Astro.response.headers.set('X-Robots-Tag', 'noindex, nofollow');
+let message = '';
+if (Astro.request.method === 'POST') {
+  try {
+    requireSameOrigin(Astro.request);
+    const form = new URLSearchParams((await readRequestBytes(Astro.request, 2048)).toString('utf8'));
+    confirmNotificationEmail(form.get('token') || '');
+    message = '邮箱已验证。今后的回复会按你的通知选择发送。';
+  } catch (error) {
+    if (!(error instanceof HttpError)) throw error;
+    Astro.response.status = error.status; message = error.message;
+  }
+}
+---
+<BaseLayout title="确认通知邮箱" description="验证回复通知邮箱。">
+  <section class="shell notification-preferences"><span class="section-kicker">NOTIFICATIONS</span><h1 class="section-title">确认通知邮箱</h1>
+    {message ? <p role="status">{message}</p> : <form method="post"><p>确认这是你的邮箱，并同意接收你选择订阅的评论回复通知。若不是你本人申请，请关闭此页。</p><input type="hidden" name="token" value={Astro.url.searchParams.get('token') || ''} /><button type="submit" class="articles-more">确认并启用</button></form>}
+    <a href="/" class="articles-more">回到首页</a>
+  </section>
+</BaseLayout>

@@ -1,5 +1,6 @@
 ---
 import type { ArticleRecord } from '../lib/articles';
+import { articleHighlight, type ArticleTextPart } from '../lib/article-search';
 import { articleExcerpt, renderMarkdown } from '../lib/markdown';
 import { articleContentTypes, articleDateLabel, articleLinkHost } from '../lib/article-catalog';
 
@@ -9,8 +10,13 @@ interface Props {
   headingLevel?: number;
   filterable?: boolean;
   preview?: boolean;
+  searchQuery?: string;
+  searchSnippet?: ArticleTextPart[];
+  returnTo?: string;
 }
-const { article, hidden = false, headingLevel = 3, filterable = false, preview = false } = Astro.props;
+const { article, hidden = false, headingLevel = 3, filterable = false, preview = false, searchQuery = '', searchSnippet, returnTo } = Astro.props;
+const titleParts = articleHighlight(article.title || (preview ? '文章题目' : ''), searchQuery);
+const articleHref = `/articles/${article.id}${returnTo ? `?${new URLSearchParams({ from: returnTo })}` : ''}`;
 const excerpt = article.summary || articleExcerpt(article.content);
 const showCover = article.contentType === 'article' && Boolean(article.coverUrl) && article.cardLayout !== 'text';
 const external = article.contentType === 'link';
@@ -22,25 +28,29 @@ const dateLabel = articleDateLabel(article.createdAt, article.contentType === 'u
 ---
 
 <article class:list={['article-card', { 'article-card--cover': showCover }]} data-preview-card={preview ? '' : undefined} data-article-card={!preview ? article.id : undefined} hidden={hidden} data-content-type={article.contentType} data-image-side={article.cardLayout} data-source={article.source} data-category={article.category} data-created={article.createdAt} data-updated={article.updatedAt} data-tags={filterable ? JSON.stringify(article.tags) : undefined} data-starred={filterable ? String(article.starred) : undefined}>
-  <Link class="article-card__link" href={!preview && !inlineContent ? '/articles/' + article.id : undefined}>
-    {(showCover || preview) && <div class="article-card__cover" aria-hidden="true" hidden={!showCover}>
-      <img class="article-card__glow" src={article.coverUrl || undefined} alt="" loading={preview ? 'eager' : 'lazy'} referrerpolicy="no-referrer" />
-      <img class="article-card__image" src={article.coverUrl || undefined} alt="" loading={preview ? 'eager' : 'lazy'} referrerpolicy="no-referrer" />
+  <div class="article-card__surface c2-surface" aria-hidden="true"></div>
+  <Link class="article-card__link" href={!preview && !inlineContent ? articleHref : undefined}>
+    {(showCover || preview) && <div class="article-card__media c2-clip" aria-hidden="true">
+      <div class="article-card__cover" hidden={!showCover}>
+        <img class="article-card__glow" src={article.coverUrl || undefined} alt="" loading={preview ? 'eager' : 'lazy'} referrerpolicy="no-referrer" />
+        <img class="article-card__image" src={article.coverUrl || undefined} alt="" loading={preview ? 'eager' : 'lazy'} referrerpolicy="no-referrer" />
+      </div>
     </div>}
     <div class="article-card__copy">
-      <div class="article-tags"><span data-card-source>{article.source === 'original' ? '原创' : '搬运'}</span><span data-card-category>{article.category === 'discussion' ? '杂谈' : '日志'}</span></div>
+      <div class="article-tags"><span class="c2-surface" data-card-source>{article.source === 'original' ? '原创' : '搬运'}</span><span class="c2-surface" data-card-category>{article.category === 'discussion' ? '杂谈' : '日志'}</span></div>
       <span class="article-card__destination" data-card-host hidden={!external}>{articleLinkHost(article.externalUrl)}</span>
-      <h3 class:list={{ 'article-title--starred': article.starred }} aria-level={headingLevel} data-card-title>{inlineContent && !preview ? <a href={external ? article.externalUrl : '/articles/' + article.id} target={external ? '_blank' : undefined} rel={external ? 'noopener noreferrer' : undefined} data-card-title-link>{article.title}</a> : article.title || (preview ? '文章题目' : '')}</h3>
+      <h3 class:list={{ 'article-title--starred': article.starred }} aria-level={headingLevel} data-card-title>{inlineContent && !preview ? <a href={external ? article.externalUrl : articleHref} target={external ? '_blank' : undefined} rel={external ? 'noopener noreferrer' : undefined} data-card-title-link>{titleParts.map((part) => part.highlighted ? <mark class="article-search-mark">{part.text}</mark> : part.text)}</a> : titleParts.map((part) => part.highlighted ? <mark class="article-search-mark">{part.text}</mark> : part.text)}</h3>
+      {searchSnippet && <p class="article-search-snippet">{searchSnippet.map((part) => part.highlighted ? <mark class="article-search-mark">{part.text}</mark> : part.text)}</p>}
       {inlineContent || preview ? <div class="article-note__content" id={noteContentId} data-note-content>
         <p data-card-excerpt>{excerpt || (preview ? '正文的前两行摘要会显示在这里。' : '')}</p>
-        <div class="article-prose article-note__prose" data-note-prose hidden set:html={inlineContent ? renderMarkdown(article.content, new URL('/articles/' + article.id, Astro.url).href) : ''} />
-      </div> : <p data-card-excerpt>{excerpt}</p>}
+        <div class="article-prose article-note__prose" data-note-prose hidden set:html={inlineContent ? renderMarkdown(article.content, new URL(articleHref, Astro.url).href) : ''} />
+      </div> : !searchSnippet && <p data-card-excerpt>{excerpt}</p>}
       {(article.tags.length > 0 || preview) && <div class="article-keywords" data-card-tags hidden={!article.tags.length}>{article.tags.map((tag) => <span># {tag}</span>)}</div>}
       <footer>
         <span class="article-card__kind" data-card-kind>{articleContentTypes.find((type) => type.value === article.contentType)?.label}</span>
-        {inlineNote && !preview ? <a href={'/articles/' + article.id} aria-label={`阅读短记录：${article.title}`}><time datetime={article.createdAt || undefined} data-card-date>{dateLabel}</time></a> : <time datetime={article.createdAt || undefined} data-card-date>{dateLabel}</time>}
-        {(inlineContent || preview) && <button type="button" class="article-note__toggle" data-note-toggle hidden aria-expanded="false" aria-controls={noteContentId}>展开</button>}
-        {inlineContent && !preview && <a class="article-note__toggle" href={'/articles/' + article.id} data-note-fallback>{external ? '完整说明' : '阅读全文'}</a>}
+        {inlineNote && !preview ? <a href={articleHref} aria-label={`阅读短记录：${article.title}`}><time datetime={article.createdAt || undefined} data-card-date>{dateLabel}</time></a> : <time datetime={article.createdAt || undefined} data-card-date>{dateLabel}</time>}
+        {(inlineContent || preview) && <button type="button" class="article-note__toggle c2-surface" data-note-toggle hidden aria-expanded="false" aria-controls={noteContentId}>展开</button>}
+        {inlineContent && !preview && <a class="article-note__toggle c2-surface" href={articleHref} data-note-fallback>{external ? '完整说明' : '阅读全文'}</a>}
       </footer>
       {external && !preview && <span class="sr-only">在新标签页打开外部链接</span>}
     </div>

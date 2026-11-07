@@ -1,0 +1,63 @@
+/* 同一八段三次 C2 曲线用于背景、媒体和交互反馈；首帧始终有服务端 SVG 遮罩。 */
+:where(body:not(.admin-page),.article-preview__home,.article-preview__reading) :is(.c2-shape,.c2-surface,.c2-clip,.article-prose img,.article-prose blockquote,.article-prose pre,.article-prose code,.article-explanation,.article-code,.article-code-tools,.article-image-trigger,.article-image-dialog__viewport img,.article-reading__cover,.quote-dialog canvas,.article-comment,.article-tags>span,.article-toc nav,.article-toc a){
+  --c2-radius:min(var(--c2-corner,var(--surface-corner-large)),50%);
+  --c2-clip:inset(0);
+  --c2-mask:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%201%201%22%3E%3Cpath%20fill%3D%22white%22%20d%3D%22M%201%200%20L%201%200%20C%201.333333%200%201.666667%200%201.833333%200.166667%20C%202%200.333333%202%200.666667%202%201%20L%202%201%20C%202%201.333333%202%201.666667%201.833333%201.833333%20C%201.666667%202%201.333333%202%201%202%20L%201%202%20C%200.666667%202%200.333333%202%200.166667%201.833333%20C%200%201.666667%200%201.333333%200%201%20L%200%201%20C%200%200.666667%200%200.333333%200.166667%200.166667%20C%200.333333%200%200.666667%200%201%200%20Z%22%2F%3E%3C%2Fsvg%3E"),url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%221%200%201%201%22%3E%3Cpath%20fill%3D%22white%22%20d%3D%22M%201%200%20L%201%200%20C%201.333333%200%201.666667%200%201.833333%200.166667%20C%202%200.333333%202%200.666667%202%201%20L%202%201%20C%202%201.333333%202%201.666667%201.833333%201.833333%20C%201.666667%202%201.333333%202%201%202%20L%201%202%20C%200.666667%202%200.333333%202%200.166667%201.833333%20C%200%201.666667%200%201.333333%200%201%20L%200%201%20C%200%200.666667%200%200.333333%200.166667%200.166667%20C%200.333333%200%200.666667%200%201%200%20Z%22%2F%3E%3C%2Fsvg%3E"),url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%221%201%201%201%22%3E%3Cpath%20fill%3D%22white%22%20d%3D%22M%201%200%20L%201%200%20C%201.333333%200%201.666667%200%201.833333%200.166667%20C%202%200.333333%202%200.666667%202%201%20L%202%201%20C%202%201.333333%202%201.666667%201.833333%201.833333%20C%201.666667%202%201.333333%202%201%202%20L%201%202%20C%200.666667%202%200.333333%202%200.166667%201.833333%20C%200%201.666667%200%201.333333%200%201%20L%200%201%20C%200%200.666667%200%200.333333%200.166667%200.166667%20C%200.333333%200%200.666667%200%201%200%20Z%22%2F%3E%3C%2Fsvg%3E"),url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%201%201%201%22%3E%3Cpath%20fill%3D%22white%22%20d%3D%22M%201%200%20L%201%200%20C%201.333333%200%201.666667%200%201.833333%200.166667%20C%202%200.333333%202%200.666667%202%201%20L%202%201%20C%202%201.333333%202%201.666667%201.833333%201.833333%20C%201.666667%202%201.333333%202%201%202%20L%201%202%20C%200.666667%202%200.333333%202%200.166667%201.833333%20C%200%201.666667%200%201.333333%200%201%20L%200%201%20C%200%200.666667%200%200.333333%200.166667%200.166667%20C%200.333333%200%200.666667%200%201%200%20Z%22%2F%3E%3C%2Fsvg%3E"),linear-gradient(#fff 0 0),linear-gradient(#fff 0 0);
+  --c2-mask-size:var(--c2-radius) var(--c2-radius),var(--c2-radius) var(--c2-radius),var(--c2-radius) var(--c2-radius),var(--c2-radius) var(--c2-radius),calc(100% - var(--c2-radius)*2) 100%,100% calc(100% - var(--c2-radius)*2);
+  --c2-mask-position:left top,right top,right bottom,left bottom,center,center;
+}
+@supports(clip-path:shape(from 0 0,line to 100% 0,line to 100% 100%,close)){
+  :where(body:not(.admin-page),.article-preview__home,.article-preview__reading) :is(.c2-shape,.c2-surface,.c2-clip,.article-prose img,.article-prose blockquote,.article-prose pre,.article-prose code,.article-explanation,.article-code,.article-code-tools,.article-image-trigger,.article-image-dialog__viewport img,.article-reading__cover,.quote-dialog canvas,.article-comment,.article-tags>span,.article-toc nav,.article-toc a){
+    --c2-clip:shape(from var(--c2-radius) 0,
+      line to calc(100% - var(--c2-radius)) 0,
+      curve to calc(100% - var(--c2-radius)/6) calc(var(--c2-radius)/6) with calc(100% - var(--c2-radius)*2/3) 0 / calc(100% - var(--c2-radius)/3) 0,
+      curve to 100% var(--c2-radius) with 100% calc(var(--c2-radius)/3) / 100% calc(var(--c2-radius)*2/3),
+      line to 100% calc(100% - var(--c2-radius)),
+      curve to calc(100% - var(--c2-radius)/6) calc(100% - var(--c2-radius)/6) with 100% calc(100% - var(--c2-radius)*2/3) / 100% calc(100% - var(--c2-radius)/3),
+      curve to calc(100% - var(--c2-radius)) 100% with calc(100% - var(--c2-radius)/3) 100% / calc(100% - var(--c2-radius)*2/3) 100%,
+      line to var(--c2-radius) 100%,
+      curve to calc(var(--c2-radius)/6) calc(100% - var(--c2-radius)/6) with calc(var(--c2-radius)*2/3) 100% / calc(var(--c2-radius)/3) 100%,
+      curve to 0 calc(100% - var(--c2-radius)) with 0 calc(100% - var(--c2-radius)/3) / 0 calc(100% - var(--c2-radius)*2/3),
+      line to 0 var(--c2-radius),
+      curve to calc(var(--c2-radius)/6) calc(var(--c2-radius)/6) with 0 calc(var(--c2-radius)*2/3) / 0 calc(var(--c2-radius)/3),
+      curve to var(--c2-radius) 0 with calc(var(--c2-radius)/3) 0 / calc(var(--c2-radius)*2/3) 0,close);
+  }
+}
+:where(body:not(.admin-page),.article-preview__home,.article-preview__reading) .c2-surface{isolation:isolate;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;filter:var(--c2-shadow,none)}
+:where(body:not(.admin-page),.article-preview__home,.article-preview__reading) .c2-surface:not([data-c2-layered])::before,:where(body:not(.admin-page),.article-preview__home,.article-preview__reading) .c2-background{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;border:0;border-radius:0;background:var(--c2-background,var(--surface));clip-path:var(--c2-clip)}
+:where(body:not(.admin-page),.article-preview__home,.article-preview__reading) .c2-surface[data-c2-layered]::before{content:none}
+:where(body:not(.admin-page),.article-preview__home,.article-preview__reading) .c2-clip{border-radius:0;clip-path:var(--c2-clip)}
+.public-surface-definitions{position:absolute;width:0;height:0;overflow:hidden;pointer-events:none}
+
+/* 通用公开控件只改变既有纸面，文字操作仍保持下划线反馈。 */
+:where(body:not(.admin-page)) :is(.site-tooltip,.mobile-menu,.network-status__details,.rss-subscription).c2-surface{--c2-background:var(--gradient-surface);--c2-corner:var(--surface-corner-medium);--c2-shadow:var(--surface-control-shadow)}
+:where(body:not(.admin-page)) :is(.site-tooltip,.rss-subscription).c2-surface{position:fixed}
+:where(body:not(.admin-page)) .mobile-menu.c2-surface{position:absolute}
+:where(body:not(.admin-page)) .network-status__details.c2-surface{position:absolute}
+:where(body:not(.admin-page)) .site-stats__panel.c2-surface{--c2-background:color-mix(in srgb,var(--surface) 82%,var(--surface-2));--c2-corner:var(--surface-corner-large)}
+:where(body:not(.admin-page)) .project-status.c2-surface{--c2-background:color-mix(in oklab,var(--status-color) 13%,transparent);--c2-corner:var(--surface-corner-small)}
+:where(body:not(.admin-page)) .rss-subscription__field.c2-surface{display:block;--c2-background:color-mix(in srgb,var(--bg) 65%,transparent);--c2-corner:var(--surface-corner-small)}
+:where(body:not(.admin-page)) .rss-subscription__field input{background:transparent;border-radius:0}
+:where(body:not(.admin-page)) .friend-application-dialog.c2-shape{--c2-corner:var(--surface-corner-large);border-radius:0}
+:where(body:not(.admin-page)) .friend-application-dialog.c2-shape::before{border-radius:0;clip-path:var(--c2-clip)}
+:where(body:not(.admin-page)) .friend-site-preview .c2-clip{--c2-corner:var(--surface-corner-medium)}
+:where(body:not(.admin-page)) .friend-application-dialog :is(input,textarea).c2-clip{--c2-corner:var(--surface-corner-small)}
+:where(body:not(.admin-page)) :is(.button,.footer-signature__link,.friend-card__rss,.friend-deck__controls output,[data-message-fold]>summary,.comment-input-tools button,.comment-input-tools summary):focus-visible{outline:none;text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:5px}
+:where(body:not(.admin-page)) .mobile-menu a{border-radius:0;background:none}
+:where(body:not(.admin-page)) .mobile-menu a:focus-visible{outline:none;text-decoration:underline;text-underline-offset:5px}
+:where(body:not(.admin-page)) .mobile-menu a.c2-surface{--c2-background:transparent;--c2-corner:var(--surface-corner-small)}
+:where(body:not(.admin-page)) .mobile-menu a.c2-surface:is(:hover,:focus-visible){--c2-background:var(--hover)}
+:where(body:not(.admin-page)) .message-form__title .c2-clip{--c2-corner:var(--surface-corner-small)}
+:where(body:not(.admin-page)) .sponsor-toggle:focus-visible{outline:none}
+:where(body:not(.admin-page)) .contribution-cell{border-radius:0;clip-path:url(#public-c2-cell);box-shadow:none}
+:where(body:not(.admin-page)) .contribution-cell:is(:focus-visible,:hover){outline:none;box-shadow:none;background:var(--graph-accent);color:var(--graph-accent)}
+:where(body:not(.admin-page)) .theme-select__options.c2-surface{position:absolute;--c2-background:var(--surface);--c2-corner:var(--surface-corner-medium);--c2-shadow:var(--surface-control-shadow)}
+:where(body:not(.admin-page)) .theme-select__options button.c2-surface{--c2-background:transparent;--c2-corner:var(--surface-corner-small)}
+:where(body:not(.admin-page)) .theme-select__options button.c2-surface.is-active{--c2-background:color-mix(in oklab,var(--summer-blue) 13%,transparent)}
+:where(body:not(.admin-page)) .theme-select__trigger:focus-visible{outline:0;border-bottom-color:var(--summer-blue);text-decoration:underline;text-underline-offset:5px}
+:where(body:not(.admin-page)) .paper-checkbox input:focus-visible+svg{outline:none;filter:drop-shadow(0 0 3px var(--summer-blue))}
+:where(body:not(.admin-page)) .paper-checkbox input:focus-visible~span{text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:5px}
+
+:where(body:not(.admin-page) .c2-surface,.article-preview__home .c2-surface,.article-preview__reading .c2-surface){position:relative}
+
+:where(body:not(.admin-page),.article-preview__home,.article-preview__reading) :is(.c2-clip,.c2-background,.article-prose img,.article-reading__cover,.article-image-dialog__viewport img,.quote-dialog canvas),:where(body:not(.admin-page),.article-preview__home,.article-preview__reading) :is(.c2-surface,.c2-shape)::before,:where(body:not(.admin-page),.article-preview__home,.article-preview__reading) .c2-shape::after{mask-image:var(--c2-mask);mask-size:var(--c2-mask-size);mask-position:var(--c2-mask-position);mask-repeat:no-repeat}

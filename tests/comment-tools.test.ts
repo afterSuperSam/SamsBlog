@@ -4,6 +4,7 @@ import { siteConfig } from '../src/config/site';
 import { isLongMessage, renderCommentList } from '../src/lib/comment-rendering';
 import type { MessageRecord } from '../src/lib/db';
 import { animateMotion } from '../src/lib/motion';
+import { rememberVisitor } from '../src/lib/visitor-profile';
 
 vi.mock('../src/lib/motion', () => ({ animateMotion: vi.fn() }));
 
@@ -71,22 +72,43 @@ function key(target: ElementStub, type: string, properties: Record<string, unkno
 
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.mocked(animateMotion).mockReset(); });
 
+describe('reader identity and private visitor preferences', () => {
+  it('keeps the remembered anonymous name and notification email separate from the signed-in reader', () => {
+    let stored = JSON.stringify({ nickname: '原来的称呼', email: 'notifications@example.com' });
+    vi.stubGlobal('localStorage', { getItem: () => stored, setItem: (_key: string, value: string) => { stored = value; } });
+    const nickname = { value: '已登录读者', readOnly: true };
+    const email = { value: '' };
+    const remember = Object.assign(new EventTarget(), { checked: true });
+    const status = { textContent: '' };
+    const form = {
+      elements: { namedItem: (name: string) => name === 'nickname' ? nickname : email },
+      querySelector: (selector: string) => selector === '[data-remember-visitor]' ? remember : status,
+    };
+    const visitor = rememberVisitor(form as unknown as HTMLFormElement);
+    expect(nickname.value).toBe('已登录读者');
+    expect(email.value).toBe('notifications@example.com');
+    email.value = 'new-notification@example.com';
+    visitor.save();
+    expect(JSON.parse(stored)).toEqual({ nickname: '原来的称呼', email: 'new-notification@example.com' });
+  });
+});
+
 describe('comment list refresh', () => {
   it('uses trusted owner identity, folds long replies, retains quotes and reveals the submitted reply', () => {
     class DetailsStub extends ElementStub { constructor() { super('details'); } }
     vi.stubGlobal('HTMLDetailsElement', DetailsStub);
     vi.stubGlobal('document', { createElement: (tag: string) => tag === 'details' ? new DetailsStub() : new ElementStub(tag), createElementNS: (_namespace: string, tag: string) => new ElementStub(tag) });
     const list = new ElementStub();
-    const base: MessageRecord = { id: 1, parentId: null, articleId: 1, nickname: 'SuperSam', isAdmin: false, content: '访客内容', status: 'published', createdAt: '2026-10-25T00:00:00Z', quoteMessageId: null, quoteContent: '', quoteNickname: '' };
+    const base: MessageRecord = { id: 1, parentId: null, replyTargetId: null, replyTargetNickname: '', articleId: 1, nickname: 'SuperSam', isAdmin: false, content: '访客内容', status: 'published', createdAt: '2026-10-25T00:00:00Z', quoteMessageId: null, quoteContent: '', quoteNickname: '' };
     const replies = Array.from({ length: 5 }, (_, index) => ({ ...base, id: index + 2, parentId: 1, isAdmin: index === 0, content: index === 1 ? '长'.repeat(181) : '<script>纯文本</script>', quoteMessageId: 1, quoteContent: '访客内容', quoteNickname: 'SuperSam' }));
     renderCommentList(list as unknown as HTMLElement, [{ ...base, replies }], 6);
     const nodes = list.descendants();
     expect(nodes.filter((node) => node.tagName === 'svg')).toHaveLength(1);
     expect(nodes.find((node) => node.tagName === 'use')?.attributes.href).toBe('#message-owner-signature');
     expect(nodes.find((node) => node.id === 'comment-1')?.querySelector('b')?.textContent).toBe('SuperSam');
-    expect(nodes.filter((node) => node.className === 'comment-quote')).toHaveLength(5);
-    expect(nodes.find((node) => node.className === 'message-collapse')?.open).toBe(false);
-    expect(nodes.find((node) => node.className === 'message-replies-more')?.open).toBe(true);
+    expect(nodes.filter((node) => node.className.split(/\s+/).includes('comment-quote'))).toHaveLength(5);
+    expect(nodes.find((node) => node.className.split(/\s+/).includes('message-collapse'))?.open).toBe(false);
+    expect(nodes.find((node) => node.className.split(/\s+/).includes('message-replies-more'))?.open).toBe(true);
     expect(nodes.filter((node) => node.textContent === '<script>纯文本</script>')).toHaveLength(4);
     expect(nodes.find((node) => node.id === 'comment-6')?.querySelector('button')?.dataset).toMatchObject({ commentReply: '1', commentMessage: '6' });
   });

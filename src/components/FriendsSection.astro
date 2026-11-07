@@ -1,22 +1,22 @@
 ---
-import { listFriends } from '../lib/friends';
-import { getCachedFriendFeed, getCachedFriendFeeds } from '../lib/friend-feeds';
+import { listFriends, type FriendGroup } from '../lib/friends';
+import { getCachedFriendFeeds } from '../lib/friend-feeds';
 import { serverConfig } from '../config/server';
-import { siteConfig } from '../config/site';
 import '../styles/friends.css';
 import FriendApplication from './FriendApplication.astro';
 
 interface Props { featured?: boolean; }
 const { featured = false } = Astro.props;
 const allFriends = listFriends();
-const friends = (featured ? allFriends.slice(0, siteConfig.friendPresentation.homepageCount) : allFriends).map((friend) => ({
+const cachedFeeds = new Map((featured ? getCachedFriendFeeds() : []).map((entry) => [entry.id, entry]));
+const friends = allFriends.map((friend) => ({
   ...friend,
-  latest: friend.rssUrl ? getCachedFriendFeed(friend.id, friend.rssUrl) : null,
   description: friend.description.replace(/[。.]+$/u, ''),
-  hostname: new URL(friend.url).hostname.replace(/^www\./, ''),
+  latest: cachedFeeds.get(friend.id),
 }));
+const groupTitles: Record<FriendGroup, string> = { starred: '星标友链', recommended: '推荐友链', default: '默认友链', lost: '失联友链' };
+const groups = featured ? [{ key: 'all', title: '', friends }] : Object.entries(groupTitles).map(([key, title]) => ({ key, title, friends: friends.filter((friend) => friend.group === key) }));
 const friendStatusTimeout = Math.ceil(allFriends.length / serverConfig.friendStatusConcurrency) * serverConfig.friendStatusTimeoutMilliseconds + 2000;
-const updates = featured ? getCachedFriendFeeds().slice(0, siteConfig.friendPresentation.feedVisibleCount) : [];
 ---
 
 <section class="friends-section shell" id="friends" aria-labelledby="friends-title" data-reveal data-status-timeout={friendStatusTimeout}>
@@ -25,80 +25,118 @@ const updates = featured ? getCachedFriendFeeds().slice(0, siteConfig.friendPres
       {featured && <a class="friends-more" href="/about#friends">全部友链<span aria-hidden="true">↗</span></a>}
       {!featured && <FriendApplication />}
     </header>
-    <div class:list={['friends-layout', { 'friends-layout--featured': featured }]}>
-    <div class="friend-grid">
-      {friends.map((friend) => (
-        <article class="friend-card" data-friend-feed={friend.rssUrl ? friend.id : undefined}>
-          <img class:list={['friend-card__background', { 'is-avatar-background': !friend.backgroundUrl }]} src={friend.backgroundUrl || friend.iconUrl} alt="" loading="lazy" referrerpolicy="no-referrer" data-friend-background data-fallback={friend.iconUrl} />
-          <span class="friend-card__icon"><b>{friend.name.slice(0, 1)}</b><img src={friend.iconUrl} alt="" loading="lazy" referrerpolicy="no-referrer" data-friend-icon /></span>
+    <div class:list={['friends-layout', { 'friend-deck': featured }]} data-friend-deck={featured ? '' : undefined} tabindex={featured ? 0 : undefined} role={featured ? 'region' : undefined} aria-label={featured ? '网站友链卡组' : undefined} aria-describedby={featured ? 'friend-deck-instructions' : undefined}>
+    {featured && <>
+      <p class="sr-only" id="friend-deck-instructions">使用左右方向键、横向滑动或拖动切换友链，滑动期间暂停自动切换，悬停不影响自动播放。</p>
+      <p class="sr-only" data-friend-deck-status aria-live="polite"></p>
+    </>}
+    <div class="friend-groups">
+    {groups.map((group) => <section class="friend-group" data-friend-group={group.key} aria-labelledby={featured ? undefined : `friend-group-${group.key}`} hidden={(featured || group.key === 'lost') && !group.friends.length}>
+    {!featured && <h3 class="friend-group__title" id={`friend-group-${group.key}`}>{group.title}</h3>}
+    <div class:list={['friend-grid', { 'friend-deck__stage': featured }]} data-friend-deck-stage={featured ? '' : undefined}>
+      {group.friends.map((friend) => (
+        <article class="friend-card c2-shape" data-friend-card={friend.id} data-friend-group-key={friend.group} data-reordered={featured ? 'true' : undefined}>
+          <span class="friend-card__paper c2-surface" aria-hidden="true"></span>
+          <span class="friend-card__media c2-clip"><img class:list={['friend-card__background', { 'is-avatar-background': !friend.backgroundUrl }]} src={friend.backgroundUrl || friend.iconUrl} alt="" loading="lazy" referrerpolicy="no-referrer" data-friend-background data-fallback={friend.iconUrl} draggable={featured ? false : undefined} /></span>
+          <span class="friend-card__icon c2-clip"><b>{friend.name.slice(0, 1)}</b><img src={friend.iconUrl} alt="" loading="lazy" referrerpolicy="no-referrer" data-friend-icon draggable={featured ? false : undefined} /></span>
           <div class="friend-card__body">
             <div class="friend-card__heading">
               <a class="friend-card__copy" href={friend.url} target="_blank" rel="noopener noreferrer"><strong class:list={{ 'starred-text': friend.starred }}>{friend.name}</strong></a>
               {friend.starred && <span class="friend-card__star starred-text" role="img" aria-label="星标友链">★</span>}
-              {friend.rssUrl && <>
-                <time class="friend-card__date" data-feed-date datetime={friend.latest?.publishedAt || undefined} hidden={!friend.latest?.publishedAt}>{friend.latest?.publishedAt && new Date(friend.latest.publishedAt).toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' })}</time>
-                <a class="friend-card__rss" href={friend.rssUrl} target="_blank" rel="noopener noreferrer" aria-label={`订阅 ${friend.name} 的 RSS`}>
+              {friend.rssUrl &&
+                <a class="friend-card__rss c2-shape" href={friend.rssUrl} target="_blank" rel="noopener noreferrer" aria-label={`订阅 ${friend.name} 的 RSS`}>
                 <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="19" r="1.5" /><path pathLength="1" d="M5 11a8 8 0 0 1 8 8" /><path pathLength="1" d="M5 5a14 14 0 0 1 14 14" /></svg><span>RSS</span>
                 </a>
-              </>}
+              }
             </div>
             <small class="friend-card__description">{friend.description}</small>
           </div>
+          {featured && <div class="friend-card__update" data-friend-update hidden={!friend.latest}>
+            <a class="friend-card__update-title" data-friend-update-title href={friend.latest?.url} target="_blank" rel="noopener noreferrer">{friend.latest?.title}</a>
+            <p data-friend-update-summary hidden={!friend.latest?.summary}>{friend.latest?.summary}</p>
+          </div>}
           <span class="friend-card__footer">
-            <em>{friend.hostname}</em>
-            <span class="friend-card__status" data-friend-status={friend.id} data-state="checking" role="status" aria-live="polite" hidden><i aria-hidden="true"></i><span data-friend-status-label></span></span>
+            <span class="friend-card__status" data-friend-status={friend.id} data-state="unknown" role="status" aria-live="polite"><i aria-hidden="true"></i><span data-friend-status-label>状态未知</span></span>
           </span>
         </article>
       ))}
     </div>
-    {featured && <aside class="friend-updates" data-friend-updates hidden={!updates.length} aria-labelledby="friend-updates-title">
-      <h3 id="friend-updates-title">朋友最近写下</h3>
-      <ol data-friend-update-list>{updates.map((entry) => <li>
-        <a class="friend-update__title" href={entry.url} target="_blank" rel="noopener noreferrer">{entry.title}<span aria-hidden="true">↗</span></a>
-        <div class="friend-update__meta"><a href={entry.sourceUrl} target="_blank" rel="noopener noreferrer">{entry.sourceName}</a>{entry.publishedAt && <time datetime={entry.publishedAt}>{new Date(entry.publishedAt).toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' })}</time>}</div>
-      </li>)}</ol>
-    </aside>}
+    {!featured && <p class="friends-empty" data-friend-group-empty hidden={group.friends.length > 0}>暂无{group.title}。</p>}
+    </section>)}
+    {featured && <p class="friends-empty" hidden={friends.length > 0} data-friends-empty>还没有公开友链。</p>}
+    </div>
+    {featured && <>
+      <div class="friend-deck__controls">
+        <output data-friend-deck-count aria-label="当前友链位置" aria-live="off">1 / {friends.length}</output>
+      </div>
+    </>}
     </div>
   </section>
 
 <script>
   import type { FriendFeedUpdate } from '../lib/friend-feeds';
-  import { siteConfig } from '../config/site';
-  const feedCards = [...document.querySelectorAll<HTMLElement>('[data-friend-feed]')];
-  const updates = document.querySelector<HTMLElement>('[data-friend-updates]');
+  import type { FriendRecord } from '../lib/friends';
+  import { initializeFriendDeck } from '../lib/home-friend-deck';
+  const friendSection = document.querySelector<HTMLElement>('#friends');
+  const friendCards = new Map([...document.querySelectorAll<HTMLElement>('[data-friend-card]')].map((card) => [Number(card.dataset.friendCard), card]));
+  const groupSections = [...document.querySelectorAll<HTMLElement>('[data-friend-group]')];
+  const deckRoot = friendSection?.querySelector<HTMLElement>('[data-friend-deck]');
+  const deck = deckRoot ? initializeFriendDeck(deckRoot) : undefined;
+  let pendingFriends: FriendRecord[] | undefined;
+  // 完整列表保留焦点；首页卡组由控制器协调交互期间的数据更新。
+  const reorderFriends = (friends: FriendRecord[]) => {
+    if (!deck && document.activeElement?.closest('[data-friend-card]')) { pendingFriends = friends; return; }
+    pendingFriends = undefined;
+    const visibleIds = new Set<number>();
+    friends.forEach((friend) => {
+      const card = friendCards.get(friend.id);
+      const group = groupSections.find((section) => section.dataset.friendGroup === (deck ? 'all' : friend.group));
+      const grid = group?.querySelector<HTMLElement>('.friend-grid');
+      if (!card || !grid) return;
+      card.dataset.friendGroupKey = friend.group;
+      card.dataset.reordered = 'true';
+      card.hidden = false;
+      visibleIds.add(friend.id);
+      grid.append(card);
+    });
+    friendCards.forEach((card, id) => { if (!visibleIds.has(id)) card.hidden = true; });
+    groupSections.forEach((group) => {
+      const hasCards = Boolean(group.querySelector('.friend-card:not([hidden])'));
+      group.hidden = Boolean((deck || group.dataset.friendGroup === 'lost') && !hasCards);
+      const empty = group.querySelector<HTMLElement>('[data-friend-group-empty]');
+      if (empty) empty.hidden = hasCards;
+    });
+    const empty = friendSection?.querySelector<HTMLElement>('[data-friends-empty]');
+    if (empty) empty.hidden = visibleIds.size > 0;
+  };
+  friendSection?.addEventListener('focusout', () => queueMicrotask(() => {
+    if (pendingFriends) reorderFriends(pendingFriends);
+  }));
   const loadFriendFeeds = async () => {
     const timeout = Number(document.querySelector<HTMLElement>('[data-status-timeout]')?.dataset.statusTimeout) || 7000;
     try {
       const response = await fetch('/api/friends/feeds.json', { signal: AbortSignal.timeout(timeout) });
       if (!response.ok) throw new Error(`Friend feeds returned ${response.status}`);
-      const { feeds } = await response.json() as { feeds: FriendFeedUpdate[] };
-      if (!Array.isArray(feeds)) throw new Error('Invalid friend feed response');
-      feedCards.forEach((details) => {
-        const entry = feeds.find((feed) => feed.id === Number(details.dataset.friendFeed));
-        if (!entry?.title) return;
-        const date = details.querySelector<HTMLTimeElement>('[data-feed-date]')!;
-        const hasDate = Boolean(entry.publishedAt && Number.isFinite(Date.parse(entry.publishedAt)));
-        date.hidden = !hasDate;
-        date.textContent = hasDate ? new Date(entry.publishedAt!).toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' }) : '';
-        if (hasDate) date.dateTime = entry.publishedAt!;
-        else date.removeAttribute('datetime');
-      });
-      const list = updates?.querySelector<HTMLOListElement>('[data-friend-update-list]');
-      if (list && updates) {
-        const rows = feeds.slice(0, siteConfig.friendPresentation.feedVisibleCount).flatMap((entry) => {
-          if (!entry.title || !entry.sourceName || !/^https?:\/\//i.test(entry.url) || !/^https?:\/\//i.test(entry.sourceUrl)) return [];
-          const row = document.createElement('li');
-          const title = document.createElement('a'); title.className = 'friend-update__title'; title.href = entry.url; title.target = '_blank'; title.rel = 'noopener noreferrer'; title.textContent = entry.title;
-          const arrow = document.createElement('span'); arrow.setAttribute('aria-hidden', 'true'); arrow.textContent = '↗'; title.append(arrow);
-          const meta = document.createElement('div'); meta.className = 'friend-update__meta';
-          const source = document.createElement('a'); source.href = entry.sourceUrl; source.target = '_blank'; source.rel = 'noopener noreferrer'; source.textContent = entry.sourceName; meta.append(source);
-          if (entry.publishedAt && Number.isFinite(Date.parse(entry.publishedAt))) {
-            const date = document.createElement('time'); date.dateTime = entry.publishedAt; date.textContent = new Date(entry.publishedAt).toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' }); meta.append(date);
-          }
-          row.append(title, meta); return [row];
+      const { feeds, friends } = await response.json() as { feeds: FriendFeedUpdate[]; friends: FriendRecord[] };
+      if (!Array.isArray(feeds) || !Array.isArray(friends)) throw new Error('Invalid friend feed response');
+      const updateFeeds = () => {
+        reorderFriends(friends);
+        if (!deck) return;
+        friendCards.forEach((card, id) => {
+          const entry = feeds.find((feed) => feed.id === id);
+          const update = card.querySelector<HTMLElement>('[data-friend-update]');
+          const title = card.querySelector<HTMLAnchorElement>('[data-friend-update-title]');
+          const summary = card.querySelector<HTMLElement>('[data-friend-update-summary]');
+          if (!update || !title || !summary) return;
+          const available = Boolean(entry?.title && /^https?:\/\//i.test(entry.url));
+          update.hidden = !available;
+          if (!available || !entry) return;
+          title.href = entry.url; title.textContent = entry.title;
+          summary.textContent = entry.summary; summary.hidden = !entry.summary;
         });
-        list.replaceChildren(...rows); updates.hidden = !rows.length;
-      }
+      };
+      if (deck) deck.refresh(updateFeeds);
+      else updateFeeds();
     } catch (error) { console.warn('Friend feeds unavailable', error); }
   };
   import type { FriendStatus } from '../lib/friend-status';
@@ -119,47 +157,49 @@ const updates = featured ? getCachedFriendFeeds().slice(0, siteConfig.friendPres
     if (image.complete && image.naturalWidth === 0) recoverBackground();
   });
 
-  const friendSection = document.querySelector<HTMLElement>('#friends');
   const statusNodes = [...document.querySelectorAll<HTMLElement>('[data-friend-status]')];
-  const statusLabels: Record<FriendStatus['status'], string> = { online: '可访问', slow: '响应较慢', offline: '暂时不可达', restricted: '访问受限', blocked: '无法检测' };
+  const statusLabels: Record<FriendStatus['status'], string> = { online: '访问流畅', slow: '响应较慢', offline: '状态未知', restricted: '状态未知', blocked: '状态未知' };
   const loadFriendStatuses = async () => {
     try {
       const response = await fetch('/api/friends/status.json', { cache: 'no-store', signal: AbortSignal.timeout(Number(friendSection?.dataset.statusTimeout)) });
       if (!response.ok) throw new Error(`Friend connectivity API failed: ${response.status}`);
-      const result = await response.json() as { statuses: FriendStatus[] };
-      if (!Array.isArray(result.statuses)) throw new Error('Invalid friend connectivity response');
-      const statuses = new Map(result.statuses.map((status) => [String(status.id), status]));
-      statusNodes.forEach((node) => {
-        const status = statuses.get(node.dataset.friendStatus || '');
-        const label = node.querySelector('[data-friend-status-label]');
-        if (!status || !statusLabels[status.status] || status.status === 'blocked' || !label) { node.hidden = true; return; }
-        node.dataset.state = status.status;
-        const latency = Number.isSafeInteger(status.latencyMilliseconds) && Number(status.latencyMilliseconds) > 0 ? ` · ${status.latencyMilliseconds} ms` : '';
-        label.textContent = `${statusLabels[status.status]}${latency}`;
-        node.hidden = false;
-      });
+      const result = await response.json() as { statuses: FriendStatus[]; friends: FriendRecord[] };
+      if (!Array.isArray(result.statuses) || !Array.isArray(result.friends)) throw new Error('Invalid friend connectivity response');
+      const updateStatuses = () => {
+        reorderFriends(result.friends);
+        const statuses = new Map(result.statuses.map((status) => [String(status.id), status]));
+        statusNodes.forEach((node) => {
+          const status = statuses.get(node.dataset.friendStatus || '');
+          const label = node.querySelector('[data-friend-status-label]');
+          if (!label) return;
+          node.dataset.state = status?.status === 'online' || status?.status === 'slow' ? status.status : 'unknown';
+          label.textContent = status ? statusLabels[status.status] || '状态未知' : '状态未知';
+        });
+      };
+      if (deck) deck.refresh(updateStatuses);
+      else updateStatuses();
     } catch (error) {
       console.warn('Friend connectivity display unavailable', error);
       statusNodes.forEach((node) => {
-        if (node.dataset.state !== 'checking') return;
         node.dataset.state = 'unknown';
-        node.hidden = true;
+        const label = node.querySelector('[data-friend-status-label]');
+        if (label) label.textContent = '状态未知';
       });
     }
   };
-  if (friendSection && (statusNodes.length || updates)) {
-    const loadFriends = () => {
-      if (statusNodes.length) void loadFriendStatuses();
-      if (feedCards.length || updates) void loadFriendFeeds();
+  if (friendSection && statusNodes.length) {
+    const loadFriends = async () => {
+      if (statusNodes.length) await loadFriendStatuses();
+      if (friendCards.size) await loadFriendFeeds();
     };
     if ('IntersectionObserver' in window) {
       const observer = new IntersectionObserver((entries) => {
         if (!entries.some((entry) => entry.isIntersecting)) return;
         observer.disconnect();
-        loadFriends();
+        void loadFriends();
       }, { rootMargin: '200px' });
       observer.observe(friendSection);
-    } else loadFriends();
+    } else void loadFriends();
   }
 
 </script>
