@@ -7,6 +7,7 @@ import FriendApplication from './FriendApplication.astro';
 import MessageBody from './MessageBody.astro';
 import MessageReplies from './MessageReplies.astro';
 import MessageSignature from './MessageSignature.astro';
+import GuestbookPaper from './GuestbookPaper.astro';
 import '../styles/guestbook.css';
 
 const messages = listPublishedMessages();
@@ -24,6 +25,7 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
 
     <div class="guestbook-layout">
       <form method="post" class="message-form" data-message-form data-reader-authenticated={String(Boolean(reader))} autocomplete="off" novalidate>
+        <GuestbookPaper folded />
         <span class="message-form__decor" aria-hidden="true"><i>✿</i><i>✧</i><i>✦</i></span>
         <div class="message-form__title">
           <span aria-hidden="true">
@@ -81,6 +83,7 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
             {messages.map((message) => (
               <li class="message-item" data-reveal>
                 <div class="message-item__note">
+                  <GuestbookPaper />
                   <header><b>{message.nickname}</b><time datetime={message.createdAt}>{dateFormatter.format(new Date(message.createdAt))}</time></header>
                   <MessageBody content={message.content} />
                   <MessageReplies replies={message.replies} parentId={message.id} />
@@ -146,7 +149,7 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
       const animation = animateMotion(element, frames.map((frame) => ({ ...frame, easing })), { duration: duration * length, delay: duration * start, fill: 'both' });
       if (animation) receiptAnimations.push(animation);
     };
-    [...form.children].filter((element) => element !== receipt && element !== status).forEach((element) => play(element,
+    [...form.children].filter((element) => element !== receipt && element !== status && !element.classList.contains('guestbook-paper')).forEach((element) => play(element,
       [{ opacity: 1 }, { opacity: 0, offset: .14 }, { opacity: 0, offset: .8 }, { opacity: 1 }]));
     play(receipt.querySelector('[data-receipt-paper]')!, [
       { opacity: 0, transform: 'translateY(12px) scale(.92)' },

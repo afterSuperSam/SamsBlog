@@ -1,0 +1,23 @@
+---
+import { createReaderSurfacePath } from '../lib/reader-surface-geometry';
+
+interface Props { folded?: boolean }
+const { folded = false } = Astro.props;
+const paperPath = createReaderSurfacePath(2, 2, 1);
+const corners = [
+  { position: 'top-left', viewBox: '0 0 1 1' },
+  { position: 'top-right', viewBox: '1 0 1 1' },
+  { position: 'bottom-left', viewBox: '0 1 1 1' },
+  { position: 'bottom-right', viewBox: '1 1 1 1' },
+];
+---
+
+<span class="guestbook-paper" aria-hidden="true">
+  {corners.map((corner) => <svg class="guestbook-paper__corner" data-paper-corner={corner.position} viewBox={corner.viewBox} focusable="false">
+    <path d={paperPath} />
+    {folded && corner.position === 'bottom-right' && <>
+      <defs><clipPath id="guestbook-paper-fold"><path d={paperPath} /></clipPath></defs>
+      <path class="guestbook-paper__fold" d="M 2 1.3 L 1.3 2 L 2 2 Z" clip-path="url(#guestbook-paper-fold)" />
+    </>}
+  </svg>)}
+</span>

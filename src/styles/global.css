@@ -119,6 +119,9 @@
   --project-ink-duration: 900ms;
   --message-wall-height: 34rem;
   --paper-extra-height: 30px;
+  --guestbook-form-corner-size: 40px;
+  --guestbook-note-corner-size: 32px;
+  --guestbook-paper-shadow: 0 14px 15px rgba(7, 4, 3, .16);
   --message-wall-fade: 120px;
   --message-wall-blur: 6px;
   --message-signature-offset: 7px;
@@ -356,6 +359,7 @@
   --article-search-cancel-color: #b94454;
   --surface-paper-tape: rgba(235, 213, 178, 0.3);
   --shadow-paper: 0 14px 30px rgba(119, 166, 186, 0.08), inset 0 1px rgba(255, 255, 255, 0.65);
+  --guestbook-paper-shadow: 0 14px 15px rgba(119, 166, 186, .08);
   --bg: #f8fcff;
   --bg-deep: #edf8fd;
   --surface: #ffffff;
