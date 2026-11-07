@@ -59,6 +59,8 @@ export const serverConfig = {
   notificationVerificationDailyLimit: positiveInteger('NOTIFICATION_VERIFICATION_DAILY_LIMIT', 5, 50),
   notificationWebhookToleranceSeconds: positiveInteger('NOTIFICATION_WEBHOOK_TOLERANCE_SECONDS', 300, 600),
   notificationWebhookMaximumBytes: positiveInteger('NOTIFICATION_WEBHOOK_MAXIMUM_BYTES', 65536, 1048576),
+  notificationWebhookPendingSeconds: positiveInteger('NOTIFICATION_WEBHOOK_PENDING_SECONDS', 72 * 3600, 7 * 86400),
+  notificationWebhookPendingLimit: positiveInteger('NOTIFICATION_WEBHOOK_PENDING_LIMIT', 1000, 10000),
   notificationWebhookSecret: process.env.RESEND_WEBHOOK_SECRET?.trim() || '',
   commentIdentitySeconds: positiveInteger('COMMENT_IDENTITY_SECONDS', 31536000, 31536000),
   notificationReplyTemplateId: process.env.RESEND_REPLY_TEMPLATE_ID?.trim() || '',
@@ -102,6 +104,9 @@ if (serverConfig.notificationMaximumAttempts > 20
   || serverConfig.githubRetrySeconds > serverConfig.githubCacheSeconds
   || serverConfig.notificationVerificationCooldownSeconds >= serverConfig.notificationVerificationSeconds) {
   throw new Error('Invalid related server time configuration');
+}
+if (serverConfig.notificationWebhookPendingSeconds <= serverConfig.notificationExpiryHours * 3600 + serverConfig.notificationWebhookToleranceSeconds) {
+  throw new Error('Invalid server configuration: NOTIFICATION_WEBHOOK_PENDING_SECONDS must cover the delivery retry window');
 }
 if (serverConfig.notificationWebhookSecret) {
   const encoded = serverConfig.notificationWebhookSecret.slice(6);

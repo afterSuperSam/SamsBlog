@@ -11,6 +11,7 @@ export const siteConfig = {
   siteUrl: publicSiteUrl.origin,
   locale: 'zh-CN',
   rss: { description: '只是一只大黄狗', siteUrl: publicSiteUrl.href },
+  blogsClubBadgeUrl: 'https://www.blogsclub.org/badge/blog.moesam.com',
   nav: [
     { href: '/', label: '首页' },
     { href: '/content', label: '内容' },
@@ -86,6 +87,9 @@ export const siteConfig = {
 } as const;
 
 const rssUrl = new URL(siteConfig.rss.siteUrl);
+if (!/^https:\/\/www\.blogsclub\.org\/badge\/[a-z0-9]+(?:[.-][a-z0-9]+)*$/.test(siteConfig.blogsClubBadgeUrl)) {
+  throw new Error('Invalid BlogsClub badge URL');
+}
 if (!Object.values(siteConfig.readingEstimate).every((value) => Number.isSafeInteger(value) && value > 0)
   || !siteConfig.commentDrafts.storageKey || ![siteConfig.commentDrafts.maximumEntries, siteConfig.commentDrafts.maximumCharacters, siteConfig.commentDrafts.lifetimeDays].every((value) => Number.isSafeInteger(value) && value > 0)
   || siteConfig.commentDrafts.maximumEntries > 100 || siteConfig.commentDrafts.maximumCharacters > 2000 || siteConfig.commentDrafts.lifetimeDays > 30

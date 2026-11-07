@@ -2,7 +2,7 @@ import { randomInt, timingSafeEqual } from 'node:crypto';
 import { readerConfig } from '../config/readers';
 import { getDatabase } from './db';
 import { HttpError } from './http';
-import { isNotificationAddressSuppressed, parseNotificationEmail } from './reply-notifications';
+import { beginMailDelivery, confirmMailDelivery, isNotificationAddressSuppressed, mailDeliveryTags, parseNotificationEmail } from './reply-notifications';
 import { readerUpstreamRequest } from './reader-transport';
 import { getReaderAuthOptions, linkReaderIdentity, readReaderBindingToken, readerPrivateHash, readerToken, readerTokenHash, requireReaderIdentityLink,
   requireReaderReauthenticationIdentity, resolveReaderIdentity, startReaderSession, takeReaderAllowance, type ReaderCookies } from './readers';
@@ -59,12 +59,14 @@ export async function sendReaderEmailCode(email: string, sourceHash: string, bin
       ON CONFLICT(email_hash) DO UPDATE SET code_hash=excluded.code_hash,attempts=0,created_at=excluded.created_at,expires_at=excluded.expires_at`)
       .run(challengeAddress, codeHash, now, now + readerConfig.codeSeconds * 1000);
   }).immediate();
+  const delivery = beginMailDelivery(email, binding ? 'reader_binding' : 'reader_login');
   try {
     const result = await readerUpstreamRequest('email', { method: 'POST', headers: {
       Authorization: `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json',
       'Idempotency-Key': `reader-code-${codeHash}-${now}`,
-    }, body: JSON.stringify({ from: sender, to: [email], ...createReaderCodeEmail(code) }) });
+    }, body: JSON.stringify({ from: sender, to: [email], tags: mailDeliveryTags(delivery), ...createReaderCodeEmail(code) }) });
     if (typeof result.id !== 'string' || !result.id) throw new HttpError(502, '验证码暂时无法发送');
+    confirmMailDelivery(delivery.id, result.id);
   } catch {
     database.prepare('DELETE FROM reader_email_codes WHERE email_hash=? AND code_hash=?').run(challengeAddress, codeHash);
     console.warn('Reader email delivery unavailable');

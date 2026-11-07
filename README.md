@@ -105,7 +105,7 @@ OAuth 在点击时打开独立授权窗口，保留原页面的位置和输入�
 
 申请友链弹窗与后台抽屉共用 CSS 时长换算，兼容秒和毫秒；生产样式压缩不会改变进退动画时长。
 
-首页留言、文章评论及后台站长回复保存本机正文草稿，按匿名／读者／管理员身份及留言、文章、回复目标隔离；公开区与后台各最多40条、每条1000字符、保留7天，由 `siteConfig.commentDrafts` 校验。公开提交另保存操作编号、完整请求摘要及通知勾选／引用等最小重试状态，刷新或失败后沿用同一请求；字段明确改变才生成新编号，不保存邮箱、验证码或昵称。成功只清理相同提交快照，等待期间的新输入、中文组词和其他目标草稿保留。
+首页留言、文章评论及后台站长回复保存本机正文草稿，按匿名／读者／管理员身份及留言、文章、回复目标隔离；公开区与后台各最多40条、每条1000字符、保留7天，由 `siteConfig.commentDrafts` 校验。可变草稿使用 localStorage，公开提交的待确认操作独立使用 sessionStorage，按身份、目标与完整请求摘要保留编号；跨标签草稿变化不替换本标签的待确认编号。两类存储读写失败时各自降级内存，保留已选编号，同页重试稳定；正常 sessionStorage 支持同标签刷新，关闭标签或无法持久化后的刷新不保证恢复。重试状态不存邮箱、验证码或昵称，字段明确改变才使用新编号；成功只清理相同提交快照，保留新输入、中文组词和其他目标草稿。
 
 匿名文章评论与首页留言先审核，已登录读者使用服务端身份提交；后台可隐藏和软删除。每篇文章隔离根评论与一级回复，隐藏父评论后回复也不公开。“喜欢／有帮助／有启发”位于 COMMENTS 标题区右上角，窄屏自然换行并保持右对齐；每个匿名浏览器对同一文章保留一项，可切换或取消。邮箱和匿名指纹不出现在公开接口。 回复仍按根帖与一级回复展示，真实 `replyTargetId` 决定通知对象；公开列表不新增“回复xxx”标签。提交使用身份作用域内的 UUIDv4 `operationId`，完整请求摘要、留言、队列和原响应在同一事务保存；相同操作和摘要返回原201，不重复创建或扣成功额度，异摘要或身份变化返回409并保留输入。匿名作用域由 HttpOnly Cookie 维持，服务端只存摘要；登录后使用读者编号隔离。
 
@@ -135,13 +135,13 @@ OAuth 在点击时打开独立授权窗口，保留原页面的位置和输入�
 4. 在服务器环境文件设置 `RESEND_API_KEY`、`MAIL_FROM=blog@moesam.com`、`MAIL_REPLY_TO=blog@moesam.com` 和已有的至少32字符 `BLOG_SECRET`。需要站长提醒时增加 `MAIL_ADMIN_TO=实际收件邮箱`，留空则关闭。密钥只存服务端，不填到文章或前端。
 5. 在 [Resend Templates](https://resend.com/templates) 创建并发布模板，分别将 ID 或别名写入 `RESEND_REPLY_TEMPLATE_ID`、`RESEND_ADMIN_TEMPLATE_ID`。当前模板别名为 `samsblog-reply-v1`、`samsblog-admin-v1`；可直接在 Resend 修改文案和排版后 Publish，保留现有变量名。模板 ID 留空时使用代码内同款信纸；单个变量超出服务商2000字符限制时也使用完整 HTML，不截断留言。模板定义由 `src/lib/reply-email.ts` 的 `createResendTemplate` 生成，云端后续修改不会自动覆盖本地后备模板。
 6. 部署代码及 `public/media/branding/mail-*` 图片并重启博客；邮件与图片链接使用 `siteConfig.rss.siteUrl`，应可从公网访问。先用 Resend 官方 `delivered@resend.dev` 测试地址验证模板，再用自己授权的测试邮箱验证实际收件。服务商接受请求只记为“已提交”，不等同于已经到达收件箱。免费转发没有个人邮箱收件箱或 SMTP，本方案只承担博客通知与收取回复。
-7. 在 Resend 配置 `PUBLIC_SITE_URL` 下的 `/api/notifications/resend.json`，订阅 `email.delivered`、`email.bounced`、`email.complained`，将控制台签名密钥写入服务端 `RESEND_WEBHOOK_SECRET`。未完成真实控制台配置与收件验证前，不把本地模拟通过视为投递成功。
+7. 确认已部署 v1.37.0 或后续兼容接口，再在 Resend 添加 `https://blog.moesam.com/api/notifications/resend.json`，订阅 `email.delivered`、`email.bounced`、`email.complained`。将该 Webhook 的 Signing Secret（`whsec_` 开头，不是 `RESEND_API_KEY`）写入生产进程环境的 `RESEND_WEBHOOK_SECRET`，按发布流程计划重启生效；新地址部署时按 `PUBLIC_SITE_URL` 替换域名。邮件 tags 由后端自动添加，无需控制台配置，回传规则见 [Resend Tags](https://resend.com/docs/dashboard/emails/tags)。本地模拟不代替真实控制台与收件验证。
 
 通知邮箱独立于登录身份验证。匿名留言勾选通知后仅排队发送受限验证邀请，GET `/notifications/verify?token=...` 只展示确认页；本人显式同源 POST 后才激活该条留言。账号新地址也需确认后生效；令牌默认1小时、单次使用，数据库只存摘要。历史留言和账号地址迁移为未验证，不自动发信。
 
 通知共用持久队列，超时／429／5xx 退避重试，默认最多5次、退避上限1小时，累计间隔与请求超时必须小于所配有效期（默认23小时）。首次投递前保存请求正文，重试复用正文和幂等键。服务重启后首次请求恢复队列。访客回信按真实回复目标排队，投递前复核目标、根帖、文章公开状态、邮箱验证、订阅及地址抑制；先回复再审核公开的留言会补排通知。退订清除该评论邮箱与订阅；完成、取消或永久失败清除请求正文，已提交的邮件不能撤回。API 密钥未配置时不实际发信。官方设置说明：[Resend 验证域名](https://resend.com/docs/dashboard/domains/introduction)、[发布模板](https://resend.com/docs/api-reference/templates/publish-template)。
 
-Resend webhook 使用原始请求体签名校验与事件编号持久去重，仅接受本站已记录的服务商邮件编号及匹配收件地址摘要。永久退信或投诉建立地址抑制，晚到的 delivered 事件不解除抑制。“已提交”仅表示服务商接受请求，“收件服务器已接收”仍不代表进入收件箱。
+队列邮件及直接发送的登录／绑定验证码在发送前登记投递关联；关联记录只含随机标记、用途、收件摘要等元数据，不含验证码、正文或原地址。Resend webhook 验签并按事件编号去重，再核对标记、用途、收件摘要及服务商编号；带标记的回执可在发送响应之前或响应丢失后关联。旧无标记回执仅在近期本地同摘要投递待确认时，暂存有限期元数据，待本地响应确认同一服务商编号后处理；旧队列幂等正文不变。未知、错标记或异收件回执不触发抑制；永久退信或投诉形成抑制，晚到 delivered 不解除。“已提交”仅表示服务商接受请求，“收件服务器已接收”仍不代表进入收件箱。
 
 两套邮件采用米白星空信纸，左上角为 SamsBlog 字标，右侧链接 moesam.com，边缘使用稀疏星点与粉蓝光晕。访客回信同时显示原留言和回复；站长回复使用页脚 SuperSam 手写笔迹的静态图片，访客回复保留实际昵称。正文是可复制的 HTML，并同时提供纯文本；屏蔽图片时仍可阅读、查看回复和退订。颜色取自 `global.css` 的 `--mail-*`，静态装饰位于 `public/media/branding/mail-*`；邮箱客户端可能替换字体、颜色或忽略背景图。
 
@@ -229,6 +229,7 @@ Astro 构建配置按 `.env` → `.env.local` → `.env.<mode>` → `.env.<mode>
 | 邮件 | `NOTIFICATION_TIMEOUT_MILLISECONDS=7000`、`NOTIFICATION_RETRY_SECONDS=60`、`NOTIFICATION_RETRY_MAXIMUM_SECONDS=3600`、`NOTIFICATION_MAXIMUM_ATTEMPTS=5`、`NOTIFICATION_BATCH_SIZE=5`（最多20）、`NOTIFICATION_EXPIRY_HOURS=23`（最多23） |
 | 通知邮箱验证 | `NOTIFICATION_VERIFICATION_SECONDS=3600`、`NOTIFICATION_VERIFICATION_COOLDOWN_SECONDS=60`、`NOTIFICATION_VERIFICATION_DAILY_LIMIT=5`（每地址） |
 | Resend webhook | `RESEND_WEBHOOK_SECRET`（签名密钥）、`NOTIFICATION_WEBHOOK_TOLERANCE_SECONDS=300`、`NOTIFICATION_WEBHOOK_MAXIMUM_BYTES=65536` |
+| 待匹配回执 | `NOTIFICATION_WEBHOOK_PENDING_SECONDS=259200`（72小时，最多7天，须大于队列有效期加签名容差）、`NOTIFICATION_WEBHOOK_PENDING_LIMIT=1000`（最多10000）；满额返回503让服务商重试 |
 | 匿名提交身份 | `COMMENT_IDENTITY_SECONDS=31536000`，仅用于身份作用域内的持久防重 |
 | 维护只读 | `BLOG_MAINTENANCE_MODE=false`、`MAINTENANCE_RETRY_SECONDS=300`，修改后重启生效 |
 | 媒体 | `MEDIA_MAX_BYTES=10485760`（单张图片上限，可调低，最大10MiB） |
@@ -263,6 +264,8 @@ Astro 构建配置按 `.env` → `.env.local` → `.env.<mode>` → `.env.<mode>
 管理写操作和公开写请求的次数上限最多10000、窗口最多86400秒，公开来源跟踪最多100000。默认公开来源表满1000项时拒绝新来源，等待过期释放，不逐出仍有效的额度。管理登录、管理写操作与公开请求的基础限速仅保存在单进程内存，重启会重置；留言／评论每来源2次／分钟、友链申请每来源2次／小时的成功提交配额由数据库记录计算，重启不会清空。
 
 公开配置不存秘密。`siteConfig.sponsors` 仅用于首次迁移原有赞助名单，后续从 SQLite 读取并在后台管理，不会因重启恢复已删除记录。`sponsorPresentation` 管理双列人数、头像尺寸、来源、预载距离和加载超时，`sponsorFields` 管理名称与金额上限；页脚延迟采样次数和超时由 `siteConfig.network` 管理。具体视觉参数只在设计变量与现有配置中维护。
+
+`siteConfig.blogsClubBadgeUrl` 是 BlogsClub 收录标识地址。首页、内容、关于及有效公开文章在 `<head>` 输出隐藏的图片预取链接；后台、读者账号、通知和错误页不加载，不显示徽章或引入第三方脚本。浏览器自行决定是否预取，现有生产 CSP 保持不变。
 
 ## 接口契约
 
@@ -332,7 +335,7 @@ pnpm audit
 
 反代入口对两条提交路径的 POST 另设按 IP 和全站突发限流，具体参数见 `deploy/nginx.conf`；GET、缓存资源和管理路由不计入。使用 Cloudflare 时，可另设按 IP 的短窗口限流，仅匹配博客这两条 API（套餐不支持 Method 时按路径匹配）；边缘层不是精确小时／分钟配额。Tunnel 回源时，Nginx 仅从本机可信连接读取 `CF-Connecting-IP`，并重写传给应用的地址头；不得信任客户端自带的转发头。
 
-数据库为 `$BLOG_DATA_DIR/blog.sqlite`，使用 WAL、外键和 CHECK 约束；迁移在正常启动时按记录增量应用。当前 schema 标记为1，版本0的已知结构可升级；已知历史迁移须通过结构核验，未来版本或未知迁移在写入前拒绝。新文章使用 `blog_articles`，不读取或自动发布退役历史内容，也不把旧迁移标记写入新库。保留账号、会话、通行密钥及既有业务数据。
+数据库为 `$BLOG_DATA_DIR/blog.sqlite`，使用 WAL、外键和 CHECK 约束；迁移在正常启动时按记录增量应用。当前 schema 标记仍为1，投递关联是必需迁移；兼容性同时检查迁移清单，不能只看版本号。版本0的已知结构可升级；已知历史迁移须通过结构核验，未来版本或未知迁移在写入前拒绝。新文章使用 `blog_articles`，不读取或自动发布退役历史内容，也不把旧迁移标记写入新库。保留账号、会话、通行密钥及既有业务数据。
 
 `BLOG_MAINTENANCE_MODE=true` 在启动时启用数据库只读：公开页面及现有缓存仍可读，写请求与 OAuth 返回503和 `Retry-After`，邮件、GitHub 与友链刷新暂停。维护模式要求已完成当前全部迁移，不负责升级旧库；修改环境配置需按既有进程流程重启。
 

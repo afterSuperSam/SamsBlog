@@ -3,6 +3,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createHmac } from 'node:crypto';
 import { afterAll, beforeAll, expect, it, vi } from 'vitest';
+import type { APIContext } from 'astro';
+import type { ReaderCookies } from '../src/lib/readers';
 
 let database: typeof import('../src/lib/db');
 let notifications: typeof import('../src/lib/reply-notifications');
@@ -16,6 +18,13 @@ beforeAll(async () => {
   database = await import('../src/lib/db'); notifications = await import('../src/lib/reply-notifications');
 });
 afterAll(() => { vi.clearAllTimers(); vi.useRealTimers(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
+
+function signedReceipt(providerId: string, email: string, eventId: string, tags?: Record<string, string>, type = 'email.bounced') {
+  const timestamp = String(Math.floor(Date.now() / 1000));
+  const payload = Buffer.from(JSON.stringify({ type, created_at: new Date().toISOString(), data: { email_id: providerId, to: [email], ...(tags ? { tags } : {}) } }));
+  const signature = createHmac('sha256', 'test-webhook-secret-at-least-32-characters').update(`${eventId}.${timestamp}.`).update(payload).digest('base64');
+  return { payload, headers: new Headers({ 'svix-id': eventId, 'svix-timestamp': timestamp, 'svix-signature': `v1,${signature}` }) };
+}
 
 it('queues consented replies once, retries with the same key, cancels hidden replies and supports signed opt-out', async () => {
   const send = vi.fn().mockResolvedValue(new Response(JSON.stringify({ id: 'provider-fixture' }), { status: 200 }));
@@ -313,6 +322,118 @@ it('cancels receipts for deleted applications and hidden or replaced friends usi
   expect(send).not.toHaveBeenCalled();
 });
 
+it.each(['login', 'binding'])('correlates directly sent %s codes before suppressing a signed permanent receipt', async (intent) => {
+  const readers = await import('../src/lib/readers'); const emailCodes = await import('../src/lib/reader-email');
+  const email = `direct-${intent}@example.com`; const providerId = `direct-${intent}-provider`;
+  const send = vi.fn().mockResolvedValue(Response.json({ id: providerId })); vi.stubGlobal('fetch', send);
+  let binding: Parameters<typeof emailCodes.sendReaderEmailCode>[2];
+  if (intent === 'binding') {
+    const values = new Map<string, string>();
+    const cookies = { get: (name: string) => values.has(name) ? { value: values.get(name)! } : undefined,
+      set: (name: string, value: string) => { values.set(name, value); }, delete: (name: string) => { values.delete(name); } } as ReaderCookies;
+    const reader = readers.resolveReaderIdentity('email', 'mail-binding-fixture', '测试读者', null); readers.startReaderSession(cookies, reader, 'email');
+    binding = { cookies, token: readers.createReaderIdentityLink(cookies, 'email', 'mail-binding-source') };
+  }
+  await emailCodes.sendReaderEmailCode(email, `direct-${intent}-source`, binding);
+  expect(send).toHaveBeenCalledTimes(1);
+  const event = signedReceipt(providerId, email, `direct-${intent}-event`, undefined, intent === 'binding' ? 'email.complained' : 'email.bounced');
+  notifications.processResendWebhook(event.payload, event.headers);
+  expect(notifications.isNotificationAddressSuppressed(email)).toBe(true);
+  const { readerConfig } = await import('../src/config/readers'); vi.advanceTimersByTime(readerConfig.emailCooldownSeconds * 1000 + 1);
+  await emailCodes.sendReaderEmailCode(email, `direct-${intent}-source`, binding);
+  expect(send).toHaveBeenCalledTimes(1);
+});
+
+it('uses registered random tags when a direct code response is lost, without storing its address or code body', async () => {
+  const emailCodes = await import('../src/lib/reader-email'); const email = 'direct-response-lost@example.com';
+  let tags: Record<string, string> = {};
+  const send = vi.fn(async (_url: unknown, options: RequestInit) => {
+    const payload = JSON.parse(String(options.body)); tags = Object.fromEntries(payload.tags.map((tag: { name: string; value: string }) => [tag.name, tag.value]));
+    throw new TypeError('fixture response lost after acceptance');
+  });
+  vi.stubGlobal('fetch', send); const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  try { await emailCodes.sendReaderEmailCode(email, 'direct-response-lost-source'); } finally { warning.mockRestore(); }
+  expect(tags.samsblog_delivery).toMatch(/^[a-f0-9]{64}$/); expect(tags.samsblog_purpose).toBe('reader_login');
+  const event = signedReceipt('direct-response-lost-provider', email, 'direct-response-lost-event', tags, 'email.complained');
+  notifications.processResendWebhook(event.payload, event.headers);
+  expect(notifications.isNotificationAddressSuppressed(email)).toBe(true);
+  const stored = database.getDatabase().prepare('SELECT * FROM mail_deliveries WHERE id=?').get(tags.samsblog_delivery) as Record<string, unknown>;
+  expect(stored.provider_id).toBe('direct-response-lost-provider'); expect(JSON.stringify(stored)).not.toContain(email);
+  for (const field of ['code', 'body', 'html', 'text', 'email', 'ip', 'ua']) expect(stored).not.toHaveProperty(field);
+});
+
+it.each([false, true])('preserves receipts received while the send response is still in flight (tags=%s)', async (tagged) => {
+  const email = `early-${tagged}@example.com`; const parent = database.createMessage({ nickname: '提前回执', content: '测试正文', fingerprintHash: `early-${tagged}`, email, notifyReply: true, emailVerified: true });
+  database.updateMessageStatus(parent, 'published'); notifications.queueReplyNotification(parent, database.createAdminReply(parent, '提前回执回复'));
+  const send = vi.fn(async (_url: unknown, options: RequestInit) => {
+    const payload = JSON.parse(String(options.body));
+    const tags = tagged ? Object.fromEntries(payload.tags.map((tag: { name: string; value: string }) => [tag.name, tag.value])) : undefined;
+    const event = signedReceipt(`early-${tagged}-provider`, email, `early-${tagged}-event`, tags);
+    notifications.processResendWebhook(event.payload, event.headers); return Response.json({ id: `early-${tagged}-provider` });
+  }); vi.stubGlobal('fetch', send);
+  await notifications.deliverReplyNotifications();
+  expect(database.getDatabase().prepare('SELECT status,provider_id FROM mail_notifications WHERE message_id=?').get(parent)).toEqual({ status: 'sent', provider_id: `early-${tagged}-provider` });
+  expect(notifications.isNotificationAddressSuppressed(email)).toBe(true);
+});
+
+it('reconciles untagged permanent receipts after a lost response is recovered through the real webhook route', async () => {
+  const send = vi.fn().mockRejectedValueOnce(new TypeError('fixture response lost')).mockResolvedValueOnce(Response.json({ id: 'recovered-response-provider' }))
+    .mockResolvedValue(Response.json({ id: 'unexpected-followup-provider' })); vi.stubGlobal('fetch', send);
+  const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  const email = 'recovered-response@example.com'; const parent = database.createMessage({ nickname: '丢失响应', content: '测试正文', fingerprintHash: 'recovered-response', email, notifyReply: true, emailVerified: true });
+  database.updateMessageStatus(parent, 'published'); notifications.queueReplyNotification(parent, database.createAdminReply(parent, '首条回复'));
+  const { id: notificationId } = database.getDatabase().prepare('SELECT id FROM mail_notifications WHERE message_id=?').get(parent) as { id: number };
+  const legacyPayload = `{ "from":"blog@example.com", "to":["${email}"], "subject":"旧队列", "text":"必须逐字保留的请求" }`;
+  database.getDatabase().prepare('UPDATE mail_notifications SET request_payload=? WHERE id=?').run(legacyPayload, notificationId);
+  const legacyDelivery = notifications.beginMailDelivery(email, 'reply', notificationId);
+  database.getDatabase().prepare('UPDATE mail_deliveries SET tagged=0 WHERE id=?').run(legacyDelivery.id);
+  try { await notifications.deliverReplyNotifications(); } finally { warning.mockRestore(); }
+  const event = signedReceipt('recovered-response-provider', email, 'recovered-response-event');
+  const { POST } = await import('../src/pages/api/notifications/resend.json');
+  const response = await POST({ request: new Request('https://blog.example.com/api/notifications/resend.json', { method: 'POST', headers: event.headers, body: new Uint8Array(event.payload) }) } as unknown as APIContext);
+  expect(response.status).toBe(200); expect(notifications.isNotificationAddressSuppressed(email)).toBe(false);
+  database.getDatabase().prepare("UPDATE mail_notifications SET retry_at='' WHERE message_id=?").run(parent);
+  await notifications.deliverReplyNotifications();
+  notifications.queueReplyNotification(parent, database.createAdminReply(parent, '退信后回复')); await notifications.deliverReplyNotifications();
+  expect(send).toHaveBeenCalledTimes(2); expect(send.mock.calls[0][1].body).toBe(legacyPayload); expect(send.mock.calls[1][1].body).toBe(legacyPayload);
+  expect(send.mock.calls[1][1].headers['Idempotency-Key']).toBe(send.mock.calls[0][1].headers['Idempotency-Key']);
+  expect(notifications.isNotificationAddressSuppressed(email)).toBe(true);
+});
+
+it('ignores mismatched tags, purposes and recipients, and never suppresses from an unmatched signed address alone', () => {
+  const email = 'isolated-tags@example.com'; const delivery = notifications.beginMailDelivery(email, 'reader_login');
+  for (const [suffix, recipient, tags] of [
+    ['unknown', email, { samsblog_delivery: '0'.repeat(64), samsblog_purpose: 'reader_login' }],
+    ['purpose', email, { samsblog_delivery: delivery.id, samsblog_purpose: 'reader_binding' }],
+    ['recipient', 'another-mailbox@example.com', { samsblog_delivery: delivery.id, samsblog_purpose: 'reader_login' }],
+  ] as const) {
+    const event = signedReceipt(`isolated-${suffix}-provider`, recipient, `isolated-${suffix}-event`, tags); notifications.processResendWebhook(event.payload, event.headers);
+    expect(notifications.isNotificationAddressSuppressed(recipient)).toBe(false);
+  }
+  const event = signedReceipt('other-application-provider', email, 'other-application-event'); notifications.processResendWebhook(event.payload, event.headers);
+  notifications.confirmMailDelivery(delivery.id, 'actual-application-provider');
+  expect(notifications.isNotificationAddressSuppressed(email)).toBe(false);
+  expect(database.getDatabase().prepare('SELECT provider_id FROM mail_deliveries WHERE id=?').get(delivery.id)).toEqual({ provider_id: 'actual-application-provider' });
+});
+
+it('bounds unmatched receipts and expires only their temporary metadata before accepting another one', async () => {
+  const { serverConfig } = await import('../src/config/server'); const connection = database.getDatabase();
+  const email = 'pending-capacity@example.com'; notifications.beginMailDelivery(email, 'reader_login');
+  const first = signedReceipt('pending-capacity-provider', email, 'pending-capacity-event'); notifications.processResendWebhook(first.payload, first.headers);
+  notifications.processResendWebhook(first.payload, first.headers);
+  expect(connection.prepare('SELECT COUNT(*) AS count FROM mail_pending_webhook_events WHERE event_id=?').get('pending-capacity-event')).toEqual({ count: 1 });
+  connection.transaction(() => {
+    const current = (connection.prepare('SELECT COUNT(*) AS count FROM mail_pending_webhook_events').get() as { count: number }).count;
+    for (let index = current; index < serverConfig.notificationWebhookPendingLimit; index++) connection.prepare('INSERT INTO mail_pending_webhook_events VALUES(?,?,?,?,?,?)')
+      .run(`capacity-fixture-${index}`, 'capacity-provider', 'a'.repeat(64), 'email.bounced', new Date().toISOString(), new Date().toISOString());
+  })();
+  const full = signedReceipt('pending-full-provider', email, 'pending-full-event'); expect(() => notifications.processResendWebhook(full.payload, full.headers)).toThrow('邮件回执处理中');
+  connection.prepare("UPDATE mail_pending_webhook_events SET received_at='2000-01-01T00:00:00.000Z'").run();
+  notifications.processResendWebhook(full.payload, full.headers);
+  expect(connection.prepare('SELECT COUNT(*) AS count FROM mail_pending_webhook_events').get()).toEqual({ count: 1 });
+  expect(notifications.isNotificationAddressSuppressed(email)).toBe(false);
+});
+
 it('sends acceptance receipts without an admin address and retries the exact snapshot without reverting approval', async () => {
   vi.stubEnv('MAIL_ADMIN_TO', '');
   vi.resetModules();
@@ -445,11 +566,11 @@ it('migrates the previous reply queue without changing delivery identity or retr
     created_at: '2026-10-25T00:00:00.000Z', updated_at: '2026-10-25T00:05:00.000Z',
     retry_at: '2026-10-25T00:10:00.000Z', provider_id: 'migration-fixture', request_payload: '{"subject":"旧的请求正文"}' };
   connection.prepare('INSERT INTO reply_notifications VALUES (@id,@message_id,@reply_id,@status,@attempts,@created_at,@updated_at,@retry_at,@provider_id,@request_payload)').run(legacy);
-  connection.exec(`DROP TABLE mail_notifications;
+  connection.exec(`DROP TABLE mail_deliveries; DROP TABLE mail_pending_webhook_events; DROP TABLE mail_notifications;
     DROP TABLE notification_email_verifications; DROP TABLE message_submissions; DROP TABLE mail_webhook_events; DROP TABLE mail_suppressions;
     ALTER TABLE messages DROP COLUMN reply_target_id; ALTER TABLE messages DROP COLUMN email_verified_at;
     ALTER TABLE readers DROP COLUMN notification_email_verified_at; ALTER TABLE readers DROP COLUMN notification_email_pending;
-    DELETE FROM schema_migrations WHERE id IN ('20261025-mail-notification-outbox','20261107-friend-application-receipt','20261107-v136-02-comment-mail')`);
+    DELETE FROM schema_migrations WHERE id IN ('20261025-mail-notification-outbox','20261107-friend-application-receipt','20261107-v136-02-comment-mail','20261107-v136-04-mail-delivery-correlation')`);
   connection.close();
   vi.resetModules();
   const migrated = (await import('../src/lib/db')).getDatabase();

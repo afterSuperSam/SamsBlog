@@ -1,6 +1,7 @@
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import Database from 'better-sqlite3';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { APIContext } from 'astro';
@@ -49,6 +50,35 @@ describe('schema and maintenance safety', () => {
     const inspection = new Database(filename, { readonly: true }); connections.push(inspection);
     expect(inspection.prepare("SELECT name FROM sqlite_master WHERE type='table'").all()).toEqual([{ name: 'admin_audit' }]);
     expect(inspection.pragma('user_version', { simple: true })).toBe(0);
+  });
+
+  it.each(['known-address', 'missing-address', 'changed-address'])('retries migrated legacy snapshots without rewriting them or rebinding recipients: %s', async (variant) => {
+    vi.stubEnv('RESEND_API_KEY', 'isolated-legacy-key'); vi.stubEnv('MAIL_FROM', 'sender@example.com');
+    vi.stubEnv('BLOG_SECRET', 'isolated-legacy-secret-at-least-32-characters');
+    vi.stubEnv('MAIL_ADMIN_TO', variant === 'changed-address' ? 'new-owner@example.com' : 'legacy@example.com');
+    fixture(); const module = await import('../src/lib/db'); const first = module.getDatabase(); connections.push(first);
+    const message = module.createMessage({ nickname: '旧队列', content: '迁移测试正文', fingerprintHash: 'legacy-delivery' });
+    const originalPayload = '{ "from":"sender@example.com", "to":["legacy@example.com"], "text":"旧格式正文" }';
+    const recipientHash = createHash('sha256').update('legacy@example.com').digest('hex');
+    const notificationId = Number(first.prepare("INSERT INTO mail_notifications(kind,message_id,attempts,created_at,updated_at,request_payload,recipient_hash) VALUES('message',?,1,?,?,?,?)")
+      .run(message, new Date().toISOString(), new Date().toISOString(), originalPayload, variant === 'known-address' ? recipientHash : '').lastInsertRowid);
+    first.exec("DROP TABLE mail_deliveries; DROP TABLE mail_pending_webhook_events; DELETE FROM schema_migrations WHERE id='20261107-v136-04-mail-delivery-correlation'");
+    first.close(); vi.resetModules();
+    const migrated = (await import('../src/lib/db')).getDatabase(); connections.push(migrated);
+    expect(migrated.prepare('SELECT request_payload FROM mail_notifications WHERE id=?').get(notificationId)).toEqual({ request_payload: originalPayload });
+    const association = () => migrated.prepare('SELECT notification_id,purpose,recipient_hash,tagged FROM mail_deliveries WHERE notification_id=?').get(notificationId);
+    if (variant !== 'known-address') expect(association()).toBeUndefined();
+    const send = vi.fn().mockResolvedValue(Response.json({ id: `legacy-${variant}-provider` })); vi.stubGlobal('fetch', send);
+    await (await import('../src/lib/reply-notifications')).deliverReplyNotifications();
+    if (variant === 'changed-address') {
+      expect(send).not.toHaveBeenCalled(); expect(association()).toBeUndefined();
+      expect(migrated.prepare('SELECT status FROM mail_notifications WHERE id=?').get(notificationId)).toEqual({ status: 'cancelled' });
+    } else {
+      expect(send).toHaveBeenCalledTimes(1); expect(send.mock.calls[0][1].body).toBe(originalPayload);
+      expect(send.mock.calls[0][1].headers['Idempotency-Key']).toBe(`samsblog-message-${notificationId}`);
+      expect(association()).toEqual({ notification_id: notificationId, purpose: 'message', recipient_hash: recipientHash, tagged: 0 });
+    }
+    expect(migrated.pragma('foreign_key_check')).toEqual([]);
   });
 
   it('accepts only the explicit historical markers with compatible metadata, including in maintenance', async () => {
@@ -121,6 +151,8 @@ describe('bounded server time configuration', () => {
     ['ADMIN_SESSION_SECONDS', '9007199254740991'], ['GITHUB_TIMEOUT_MILLISECONDS', '2147483648'],
     ['NOTIFICATION_MAXIMUM_ATTEMPTS', '21'], ['NOTIFICATION_RETRY_MAXIMUM_SECONDS', '82800'],
     ['NOTIFICATION_VERIFICATION_COOLDOWN_SECONDS', '3600'], ['GITHUB_RETRY_SECONDS', '30000'],
+    ['NOTIFICATION_WEBHOOK_PENDING_SECONDS', '600'], ['NOTIFICATION_WEBHOOK_PENDING_SECONDS', '604801'],
+    ['NOTIFICATION_WEBHOOK_PENDING_LIMIT', '0'], ['NOTIFICATION_WEBHOOK_PENDING_LIMIT', '10001'],
     ['BLOG_MAINTENANCE_MODE', '1'],
   ])('rejects unsafe %s', async (name, value) => {
     vi.stubEnv(name, value); await expect(import('../src/config/server')).rejects.toThrow('Invalid');

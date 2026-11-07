@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { APIContext, APIRoute } from 'astro';
 import { getDatabase, createMessage as createStoredMessage, createAdminReply, deleteMessage, listPublishedMessages, listAllMessages, updateMessageStatus } from '../src/lib/db';
 import { saveArticle, withdrawArticle } from '../src/lib/articles';
@@ -16,6 +16,7 @@ import { PATCH as review } from '../src/pages/api/admin/applications.json';
 import { parseVisitorProfile } from '../src/lib/visitor-profile';
 import { siteConfig } from '../src/config/site';
 import { serverConfig } from '../src/config/server';
+import { initializeCommentDraft } from '../src/lib/comment-drafts';
 
 vi.mock('../src/lib/reply-notifications', async (original) => ({ ...await original<object>(), replyNotificationsConfigured: false, queueReplyNotification: vi.fn() }));
 const readerSession = vi.hoisted(() => ({ value: null as { id: number; displayName: string; avatarUrl: null } | null }));
@@ -24,6 +25,7 @@ function createPublishedMessage(input: Parameters<typeof createStoredMessage>[0]
   const id = createStoredMessage(input); updateMessageStatus(id, 'published'); return id;
 }
 beforeAll(async () => { vi.stubEnv('BLOG_DATA_DIR', await mkdtemp(path.join(tmpdir(), 'samsblog-publishing-'))); });
+afterEach(() => { vi.unstubAllGlobals(); });
 const content = { title: '互动验证', content: '正文', source: 'original', category: 'journal' };
 let sequence = 0;
 async function call(handler: APIRoute, route: string, body?: unknown, token = '11111111-1111-4111-8111-111111111111', method = 'POST', origin = 'https://blog.example.com', clientAddress = `203.0.113.${++sequence}`) {
@@ -37,6 +39,67 @@ async function call(handler: APIRoute, route: string, body?: unknown, token = '1
 describe('public submission quotas', () => {
   const submit = (handler: APIRoute, route: string, body: unknown, clientAddress = '198.51.100.1') =>
     call(handler, route, body, undefined, 'POST', undefined, clientAddress);
+
+  it('replays a lost-response submission after another tab edits the draft and the original tab refreshes', async () => {
+    const createStorage = () => {
+      const values = new Map<string, string>();
+      return { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => { values.set(key, value); } };
+    };
+    const firstSession = createStorage(); const secondSession = createStorage();
+    vi.stubGlobal('localStorage', createStorage()); vi.stubGlobal('sessionStorage', firstSession);
+    vi.stubGlobal('window', new EventTarget());
+    vi.stubGlobal('document', Object.assign(new EventTarget(), { hidden: false, createElement: () => ({ className: '', textContent: '', setAttribute() {}, remove() {} }) }));
+    const field = () => Object.assign(new EventTarget(), { value: '', closest: () => ({ after() {} }) }) as unknown as HTMLTextAreaElement;
+    const firstField = field(); let firstTab = initializeCommentDraft(firstField, 'guestbook', null);
+    const body = { nickname: '跨标签访客', content: '同一份丢失响应的提交', notifyReply: false };
+    firstField.value = body.content; firstField.dispatchEvent(new Event('input'));
+    const original = await firstTab.captureSubmission(body);
+    const first = await submit(postComment, '/api/guestbook/messages.json', { ...body, operationId: original.operationId, submissionIdentity: 'anonymous' }, '198.51.100.245');
+    expect(first.status).toBe(201); const accepted = await first.json();
+    vi.stubGlobal('sessionStorage', secondSession);
+    const secondField = field(); const secondTab = initializeCommentDraft(secondField, 'guestbook', null);
+    secondField.value = '另一个标签正在写的新正文'; secondField.dispatchEvent(new Event('input')); secondTab.destroy();
+    vi.stubGlobal('sessionStorage', firstSession);
+    firstTab.destroy(); firstTab = initializeCommentDraft(firstField, 'guestbook', null);
+    const retry = await firstTab.captureSubmission(body);
+    const replayed = await submit(postComment, '/api/guestbook/messages.json', { ...body, operationId: retry.operationId, submissionIdentity: 'anonymous' }, '198.51.100.245');
+    expect(replayed.status).toBe(201); expect(await replayed.json()).toEqual(accepted);
+    expect(getDatabase().prepare('SELECT COUNT(*) AS count FROM messages WHERE content=?').get(body.content)).toEqual({ count: 1 });
+    expect(retry.operationId).toBe(original.operationId);
+    firstTab.destroy();
+  });
+
+  it.each(['draft', 'pending'])('keeps the selected operation through partial %s storage failure and a refreshed API retry', async (failure) => {
+    const local = new Map<string, string>(); const session = new Map<string, string>(); let draftWrites = 0;
+    vi.stubGlobal('localStorage', { getItem: (key: string) => local.get(key) ?? null, setItem: (key: string, value: string) => {
+      if (failure === 'draft' && ++draftWrites >= 3) throw new DOMException('Full', 'QuotaExceededError');
+      local.set(key, value);
+    } });
+    vi.stubGlobal('sessionStorage', { getItem: (key: string) => session.get(key) ?? null, setItem: (key: string, value: string) => {
+      if (failure === 'pending' && key.endsWith(':pending')) throw new DOMException('Full', 'QuotaExceededError');
+      session.set(key, value);
+    } });
+    vi.stubGlobal('console', { ...console, warn: vi.fn() }); vi.stubGlobal('window', new EventTarget());
+    vi.stubGlobal('document', Object.assign(new EventTarget(), { hidden: false, createElement: () => ({ className: '', textContent: '', setAttribute() {}, remove() {} }) }));
+    const field = Object.assign(new EventTarget(), { value: '', closest: () => ({ after() {} }) }) as unknown as HTMLTextAreaElement;
+    let draft = initializeCommentDraft(field, 'guestbook', null);
+    const body = { nickname: '部分写入访客', content: `部分${failure}存储失败后重试`, notifyReply: false };
+    field.value = body.content; field.dispatchEvent(new Event('input'));
+    const original = await draft.captureSubmission(body);
+    const source = failure === 'draft' ? '198.51.100.246' : '198.51.100.247';
+    const first = await submit(postComment, '/api/guestbook/messages.json', { ...body, operationId: original.operationId, submissionIdentity: 'anonymous' }, source);
+    expect(first.status).toBe(201); const accepted = await first.json();
+    expect((await draft.captureSubmission(body)).operationId).toBe(original.operationId);
+    draft.destroy(); draft = initializeCommentDraft(field, 'guestbook', null);
+    field.value = body.content; field.dispatchEvent(new Event('input'));
+    const retry = await draft.captureSubmission(body);
+    const replayed = await submit(postComment, '/api/guestbook/messages.json', { ...body, operationId: retry.operationId, submissionIdentity: 'anonymous' }, source);
+    expect(replayed.status).toBe(201); expect(await replayed.json()).toEqual(accepted);
+    expect(getDatabase().prepare('SELECT COUNT(*) AS count FROM messages WHERE content=?').get(body.content)).toEqual({ count: 1 });
+    expect(retry.operationId).toBe(original.operationId);
+    if (failure === 'draft') expect(JSON.parse(session.get(`${siteConfig.commentDrafts.storageKey}:pending`) || '{}')[`${original.key}/${original.requestHash}`].operationId).toBe(original.operationId);
+    draft.destroy();
+  });
 
   it('replays the original response without a second message or quota charge and rejects changed reuse', async () => {
     const operationId = randomUUID();

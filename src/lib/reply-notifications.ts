@@ -26,6 +26,81 @@ export function isNotificationAddressSuppressed(email: string) {
   return Boolean(getDatabase().prepare('SELECT 1 FROM mail_suppressions WHERE email_hash=?').get(notificationAddressHash(email)));
 }
 
+type MailPurpose = 'reply' | 'message' | 'application' | 'application_accepted' | 'verification' | 'reader_login' | 'reader_binding';
+interface MailDelivery {
+  id: string; notification_id: number | null; purpose: MailPurpose; recipient_hash: string; provider_id: string;
+  tagged: number; delivery_status: string; delivery_updated_at: string;
+}
+interface MailReceipt { eventId: string; providerId: string; recipientHash: string; eventType: string; createdAt: string }
+
+// 发送前登记不可预测的关联编号；验证码仅保留用途、地址摘要和投递信息。
+export function beginMailDelivery(email: string, purpose: MailPurpose, notificationId: number | null = null, tagged = true) {
+  const database = getDatabase();
+  return database.transaction(() => {
+    const recipientHash = notificationAddressHash(email);
+    const existing = notificationId === null ? undefined : database.prepare('SELECT * FROM mail_deliveries WHERE notification_id=?').get(notificationId) as MailDelivery | undefined;
+    if (existing) {
+      if (existing.recipient_hash !== recipientHash || existing.purpose !== purpose) throw new Error('Mail delivery association mismatch');
+      return existing;
+    }
+    const id = randomBytes(32).toString('hex');
+    database.prepare('INSERT INTO mail_deliveries(id,notification_id,purpose,recipient_hash,tagged,created_at) VALUES(?,?,?,?,?,?)')
+      .run(id, notificationId, purpose, recipientHash, Number(tagged), new Date().toISOString());
+    return database.prepare('SELECT * FROM mail_deliveries WHERE id=?').get(id) as MailDelivery;
+  }).immediate();
+}
+
+export const mailDeliveryTags = (delivery: Pick<MailDelivery, 'id' | 'purpose'>) => [
+  { name: 'samsblog_delivery', value: delivery.id }, { name: 'samsblog_purpose', value: delivery.purpose },
+];
+
+function expirePendingMailReceipts(now = Date.now()) {
+  getDatabase().prepare('DELETE FROM mail_pending_webhook_events WHERE received_at<=?')
+    .run(new Date(now - serverConfig.notificationWebhookPendingSeconds * 1000).toISOString());
+}
+
+function applyMailReceipt(delivery: MailDelivery, receipt: MailReceipt) {
+  const database = getDatabase();
+  if (delivery.recipient_hash !== receipt.recipientHash || delivery.provider_id !== receipt.providerId) throw new Error('Mail receipt association mismatch');
+  const inserted = database.prepare('INSERT OR IGNORE INTO mail_webhook_events(event_id,provider_id,event_type,created_at) VALUES(?,?,?,?)')
+    .run(receipt.eventId, receipt.providerId, receipt.eventType, receipt.createdAt);
+  if (!inserted.changes) return;
+  const status = receipt.eventType.slice(6);
+  const precedence: Record<string, number> = { '': 0, delivered: 1, bounced: 2, complained: 3 };
+  if (precedence[status] > precedence[delivery.delivery_status]
+    || (status === delivery.delivery_status && receipt.createdAt > delivery.delivery_updated_at)) {
+    database.prepare('UPDATE mail_deliveries SET delivery_status=?,delivery_updated_at=? WHERE id=?').run(status, receipt.createdAt, delivery.id);
+    if (delivery.notification_id) database.prepare('UPDATE mail_notifications SET delivery_status=?,delivery_updated_at=? WHERE id=?')
+      .run(status, receipt.createdAt, delivery.notification_id);
+  }
+  // 回执本身证明服务商已接受此封邮件；当前投递不再按未确认请求重试。
+  if (delivery.notification_id) database.prepare("UPDATE mail_notifications SET status='sent',provider_id=?,request_payload='' WHERE id=? AND status='pending'")
+    .run(receipt.providerId, delivery.notification_id);
+  if (status !== 'delivered') {
+    database.prepare(`INSERT INTO mail_suppressions(email_hash,reason,created_at) VALUES(?,?,?)
+      ON CONFLICT(email_hash) DO UPDATE SET reason=CASE WHEN mail_suppressions.reason='complained' THEN 'complained' ELSE excluded.reason END,
+        created_at=MIN(mail_suppressions.created_at,excluded.created_at)`).run(receipt.recipientHash, status, receipt.createdAt);
+    database.prepare("UPDATE mail_notifications SET status='cancelled',request_payload='' WHERE recipient_hash=? AND status='pending'").run(receipt.recipientHash);
+  }
+}
+
+export function confirmMailDelivery(deliveryId: string, providerId: string) {
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(providerId)) throw new Error('Invalid mail provider response');
+  const database = getDatabase();
+  database.transaction(() => {
+    expirePendingMailReceipts();
+    const delivery = database.prepare('SELECT * FROM mail_deliveries WHERE id=?').get(deliveryId) as MailDelivery | undefined;
+    if (!delivery || (delivery.provider_id && delivery.provider_id !== providerId)) throw new Error('Mail provider association mismatch');
+    database.prepare('UPDATE mail_deliveries SET provider_id=? WHERE id=?').run(providerId, deliveryId);
+    const pending = database.prepare(`SELECT event_id AS eventId,provider_id AS providerId,recipient_hash AS recipientHash,event_type AS eventType,created_at AS createdAt
+      FROM mail_pending_webhook_events WHERE provider_id=? AND recipient_hash=? ORDER BY created_at,event_id`).all(providerId, delivery.recipient_hash) as MailReceipt[];
+    for (const receipt of pending) {
+      applyMailReceipt(database.prepare('SELECT * FROM mail_deliveries WHERE id=?').get(deliveryId) as MailDelivery, receipt);
+      database.prepare('DELETE FROM mail_pending_webhook_events WHERE event_id=?').run(receipt.eventId);
+    }
+  }).immediate();
+}
+
 // 验证资格只绑定一条留言或一个读者；地址级限额阻止借匿名留言反复发送验证信。
 function queueNotificationVerification(email: string, readerId: number | null, messageId: number | null) {
   if (!replyNotificationsConfigured || !email || isNotificationAddressSuppressed(email)) return false;
@@ -43,8 +118,11 @@ function queueNotificationVerification(email: string, readerId: number | null, m
     const address = new URL('/notifications/verify', siteConfig.rss.siteUrl); address.searchParams.set('token', token);
     const payload = JSON.stringify({ from: `SamsBlog <${sender}>`, ...(replyTo ? { reply_to: replyTo } : {}), to: [email],
       ...createNotificationVerificationEmail({ address: address.href, expiresInMinutes: Math.ceil(serverConfig.notificationVerificationSeconds / 60) }) });
-    database.prepare(`INSERT INTO mail_notifications(kind,verification_id,created_at,updated_at,request_payload,recipient_hash)
+    const queued = database.prepare(`INSERT INTO mail_notifications(kind,verification_id,created_at,updated_at,request_payload,recipient_hash)
       VALUES('verification',?,?,?,?,?)`).run(result.lastInsertRowid, now, now, payload, notificationAddressHash(email));
+    const delivery = beginMailDelivery(email, 'verification', Number(queued.lastInsertRowid));
+    database.prepare('UPDATE mail_notifications SET request_payload=? WHERE id=?')
+      .run(JSON.stringify({ ...JSON.parse(payload), tags: mailDeliveryTags(delivery) }), queued.lastInsertRowid);
     scheduleReplyNotifications();
     return true;
   })();
@@ -113,34 +191,48 @@ export function processResendWebhook(payload: Buffer, headers: Headers, now = Da
     return value.length === expected.length && timingSafeEqual(value, expected);
   });
   if (!verified) throw new HttpError(400, '邮件回执签名无效');
-  let event: { type?: unknown; created_at?: unknown; data?: { email_id?: unknown; to?: unknown } };
+  let event: { type?: unknown; created_at?: unknown; data?: { email_id?: unknown; to?: unknown; tags?: unknown } };
   try { event = JSON.parse(payload.toString('utf8')); } catch { throw new HttpError(400, '邮件回执格式无效'); }
   if (!event || typeof event !== 'object' || !['email.delivered', 'email.bounced', 'email.complained'].includes(String(event.type))) return;
   if (typeof event.created_at !== 'string' || !Number.isFinite(Date.parse(event.created_at))
     || typeof event.data?.email_id !== 'string' || !event.data.email_id || event.data.email_id.length > 128 || !Array.isArray(event.data.to)) throw new HttpError(400, '邮件回执格式无效');
   const providerId = event.data.email_id;
-  const createdAt = new Date(event.created_at).toISOString();
-  const eventType = String(event.type);
-  const status = eventType.slice(6) as 'delivered' | 'bounced' | 'complained';
-  const recipientHashes = event.data.to.filter((email): email is string => typeof email === 'string' && email.length <= 254).map(notificationAddressHash);
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(providerId) || event.data.to.length !== 1 || typeof event.data.to[0] !== 'string') throw new HttpError(400, '邮件回执格式无效');
+  const email = parseNotificationEmail(event.data.to[0]);
+  if (!email) throw new HttpError(400, '邮件回执格式无效');
+  const receipt = { eventId, providerId, recipientHash: notificationAddressHash(email), eventType: String(event.type), createdAt: new Date(event.created_at).toISOString() };
+  const tags = event.data.tags && typeof event.data.tags === 'object' && !Array.isArray(event.data.tags) ? event.data.tags as Record<string, unknown> : undefined;
   const database = getDatabase();
   database.transaction(() => {
-    const notification = database.prepare('SELECT id,recipient_hash AS recipientHash,delivery_status AS deliveryStatus,delivery_updated_at AS deliveryUpdatedAt FROM mail_notifications WHERE provider_id=? AND provider_id!=\'\'')
-      .get(providerId) as { id: number; recipientHash: string; deliveryStatus: string; deliveryUpdatedAt: string } | undefined;
-    if (!notification?.recipientHash || !recipientHashes.includes(notification.recipientHash)) return;
-    const inserted = database.prepare('INSERT OR IGNORE INTO mail_webhook_events(event_id,provider_id,event_type,created_at) VALUES(?,?,?,?)').run(eventId, providerId, eventType, createdAt);
-    if (!inserted.changes) return;
-    const precedence: Record<string, number> = { '': 0, delivered: 1, bounced: 2, complained: 3 };
-    if (precedence[status] > precedence[notification.deliveryStatus]
-      || (status === notification.deliveryStatus && createdAt > notification.deliveryUpdatedAt)) {
-      database.prepare('UPDATE mail_notifications SET delivery_status=?,delivery_updated_at=? WHERE id=?').run(status, createdAt, notification.id);
+    expirePendingMailReceipts(now);
+    if (database.prepare('SELECT 1 FROM mail_webhook_events WHERE event_id=?').get(eventId)) return;
+    let delivery: MailDelivery | undefined;
+    if (tags && ('samsblog_delivery' in tags || 'samsblog_purpose' in tags)) {
+      if (typeof tags.samsblog_delivery !== 'string' || !/^[a-f0-9]{64}$/.test(tags.samsblog_delivery) || typeof tags.samsblog_purpose !== 'string') return;
+      delivery = database.prepare('SELECT * FROM mail_deliveries WHERE id=? AND purpose=? AND recipient_hash=? AND tagged=1')
+        .get(tags.samsblog_delivery, tags.samsblog_purpose, receipt.recipientHash) as MailDelivery | undefined;
+      if (!delivery || (delivery.provider_id && delivery.provider_id !== providerId)) return;
+      confirmMailDelivery(delivery.id, providerId);
+      delivery = database.prepare('SELECT * FROM mail_deliveries WHERE id=?').get(delivery.id) as MailDelivery;
+    } else {
+      delivery = database.prepare("SELECT * FROM mail_deliveries WHERE provider_id=? AND recipient_hash=? AND provider_id!=''")
+        .get(providerId, receipt.recipientHash) as MailDelivery | undefined;
     }
-    if (status !== 'delivered') {
-      database.prepare(`INSERT INTO mail_suppressions(email_hash,reason,created_at) VALUES(?,?,?)
-        ON CONFLICT(email_hash) DO UPDATE SET reason=CASE WHEN mail_suppressions.reason='complained' THEN 'complained' ELSE excluded.reason END,
-          created_at=MIN(mail_suppressions.created_at,excluded.created_at)`).run(notification.recipientHash, status, createdAt);
-      database.prepare("UPDATE mail_notifications SET status='cancelled',request_payload='' WHERE recipient_hash=? AND status='pending'").run(notification.recipientHash);
+    if (delivery) {
+      applyMailReceipt(delivery, receipt);
+      database.prepare('DELETE FROM mail_pending_webhook_events WHERE event_id=?').run(eventId);
+      return;
     }
+    // 未带本站标签的旧回执只暂存摘要；必须等本地发送响应确认相同服务商编号后才能抑制。
+    const oldestAttempt = new Date(now - serverConfig.notificationWebhookPendingSeconds * 1000).toISOString();
+    const latestAttempt = new Date(Date.parse(receipt.createdAt) + serverConfig.notificationWebhookToleranceSeconds * 1000).toISOString();
+    if (!database.prepare("SELECT 1 FROM mail_deliveries WHERE recipient_hash=? AND provider_id='' AND created_at>? AND created_at<=? LIMIT 1")
+      .get(receipt.recipientHash, oldestAttempt, latestAttempt)) return;
+    if (database.prepare('SELECT 1 FROM mail_pending_webhook_events WHERE event_id=?').get(eventId)) return;
+    const count = database.prepare('SELECT COUNT(*) AS count FROM mail_pending_webhook_events').get() as { count: number };
+    if (count.count >= serverConfig.notificationWebhookPendingLimit) throw new HttpError(503, '邮件回执处理中，请稍后重试');
+    database.prepare('INSERT INTO mail_pending_webhook_events(event_id,provider_id,recipient_hash,event_type,created_at,received_at) VALUES(?,?,?,?,?,?)')
+      .run(eventId, providerId, receipt.recipientHash, receipt.eventType, receipt.createdAt, new Date(now).toISOString());
   }).immediate();
 }
 
@@ -300,16 +392,25 @@ export async function deliverReplyNotifications() {
       }
       const attempts = Number(notification.attempts) + 1;
       const now = new Date().toISOString();
-      const payload = String(notification.requestPayload || JSON.stringify({ from: `SamsBlog <${sender}>`,
+      const frozenSnapshot = Boolean(notification.requestPayload);
+      let payload = String(notification.requestPayload || JSON.stringify({ from: `SamsBlog <${sender}>`,
         ...(replyTo ? { reply_to: replyTo } : {}),
         ...prepared }));
-      const recipientHash = notificationAddressHash(prepared.to[0]);
-      const storedRecipient = JSON.parse(payload) as { to?: unknown };
-      if (!Array.isArray(storedRecipient.to) || storedRecipient.to.length !== 1 || notificationAddressHash(String(storedRecipient.to[0])) !== recipientHash) {
+      let snapshotRecipient = '';
+      try {
+        const snapshot: unknown = JSON.parse(payload);
+        if (snapshot && typeof snapshot === 'object' && 'to' in snapshot && Array.isArray(snapshot.to)
+          && snapshot.to.length === 1 && typeof snapshot.to[0] === 'string') snapshotRecipient = parseNotificationEmail(snapshot.to[0]);
+      } catch (error) { if (!(error instanceof SyntaxError || error instanceof HttpError)) throw error; }
+      if (!snapshotRecipient || notificationAddressHash(snapshotRecipient) !== notificationAddressHash(prepared.to[0])) {
         database.prepare("UPDATE mail_notifications SET status='cancelled',request_payload='' WHERE id=? AND status='pending'").run(notification.id);
         continue;
       }
-      database.prepare("UPDATE mail_notifications SET request_payload=?,recipient_hash=? WHERE id=? AND status='pending'").run(payload, recipientHash, notification.id);
+      const recipientHash = notificationAddressHash(snapshotRecipient);
+      // 已有快照可能来自尚未保存地址摘要的旧版本，不重写其字节或给同一幂等键补标签。
+      const delivery = beginMailDelivery(snapshotRecipient, notification.kind as MailPurpose, Number(notification.id), !frozenSnapshot);
+      if (!frozenSnapshot && delivery.tagged) payload = JSON.stringify({ ...JSON.parse(payload), tags: mailDeliveryTags(delivery) });
+      database.prepare("UPDATE mail_notifications SET request_payload=?,recipient_hash=?,attempts=? WHERE id=? AND status='pending'").run(payload, recipientHash, attempts, notification.id);
       try {
         const response = await fetch('https://api.resend.com/emails', {
           method: 'POST', redirect: 'error', signal: AbortSignal.timeout(serverConfig.notificationTimeoutMilliseconds),
@@ -326,7 +427,8 @@ export async function deliverReplyNotifications() {
         }
         const result = await response.json() as { id?: unknown };
         if (typeof result.id !== 'string') throw new Error('Invalid provider response');
-        database.prepare("UPDATE mail_notifications SET status='sent',attempts=?,updated_at=?,provider_id=?,request_payload='' WHERE id=? AND status='pending'").run(attempts, now, result.id, notification.id);
+        confirmMailDelivery(delivery.id, result.id);
+        database.prepare("UPDATE mail_notifications SET status='sent',attempts=?,updated_at=?,provider_id=?,request_payload='' WHERE id=? AND status IN ('pending','sent')").run(attempts, now, result.id, notification.id);
       } catch (error) {
         const status = attempts < serverConfig.notificationMaximumAttempts ? 'pending' : 'failed';
         database.prepare("UPDATE mail_notifications SET status=?,attempts=?,updated_at=?,retry_at=?,request_payload=? WHERE id=? AND status='pending'")

@@ -65,6 +65,7 @@ const knownMigrations = new Set([
   '20261107-v136-01-content-safety',
   '20261107-v136-02-comment-mail',
   '20261107-v136-03-identity-flows',
+  '20261107-v136-04-mail-delivery-correlation',
 ]);
 // 旧版本已停用的迁移仅用于识别历史库，不在新库重放。
 const retiredMigrations = new Set(['retire-media-v1', '20261022-featured-friends', '20261106-friend-presentation',
@@ -719,6 +720,29 @@ export function getDatabase() {
           ALTER TABLE reader_oauth_states ADD COLUMN link_hash TEXT;
           ALTER TABLE reader_oauth_states ADD COLUMN completed_session_hash TEXT;`);
         connection.prepare('INSERT INTO schema_migrations (id,applied_at) VALUES (?,?)').run('20261107-v136-03-identity-flows', new Date().toISOString());
+      }
+      if (!appliedMigrations.has('20261107-v136-04-mail-delivery-correlation')) {
+        connection.exec(`CREATE TABLE mail_deliveries (
+            id TEXT PRIMARY KEY CHECK(length(id)=64), notification_id INTEGER UNIQUE REFERENCES mail_notifications(id),
+            purpose TEXT NOT NULL CHECK(purpose IN ('reply','message','application','application_accepted','verification','reader_login','reader_binding')),
+            recipient_hash TEXT NOT NULL CHECK(length(recipient_hash)=64), provider_id TEXT NOT NULL DEFAULT '',
+            tagged INTEGER NOT NULL DEFAULT 1 CHECK(tagged IN (0,1)), created_at TEXT NOT NULL,
+            delivery_status TEXT NOT NULL DEFAULT '' CHECK(delivery_status IN ('','delivered','bounced','complained')),
+            delivery_updated_at TEXT NOT NULL DEFAULT ''
+          );
+          CREATE INDEX mail_delivery_provider_idx ON mail_deliveries(provider_id,recipient_hash) WHERE provider_id!='';
+          CREATE INDEX mail_delivery_unconfirmed_idx ON mail_deliveries(recipient_hash,created_at) WHERE provider_id='';
+          INSERT INTO mail_deliveries(id,notification_id,purpose,recipient_hash,provider_id,tagged,created_at,delivery_status,delivery_updated_at)
+            SELECT lower(hex(randomblob(32))),id,kind,recipient_hash,provider_id,0,created_at,delivery_status,delivery_updated_at
+              FROM mail_notifications WHERE length(recipient_hash)=64;
+          CREATE TABLE mail_pending_webhook_events (
+            event_id TEXT PRIMARY KEY, provider_id TEXT NOT NULL, recipient_hash TEXT NOT NULL CHECK(length(recipient_hash)=64),
+            event_type TEXT NOT NULL CHECK(event_type IN ('email.delivered','email.bounced','email.complained')),
+            created_at TEXT NOT NULL, received_at TEXT NOT NULL
+          );
+          CREATE INDEX mail_pending_webhook_provider_idx ON mail_pending_webhook_events(provider_id,recipient_hash);
+          CREATE INDEX mail_pending_webhook_expiry_idx ON mail_pending_webhook_events(received_at);`);
+        connection.prepare('INSERT INTO schema_migrations (id,applied_at) VALUES (?,?)').run('20261107-v136-04-mail-delivery-correlation', new Date().toISOString());
       }
       connection.pragma(`user_version = ${supportedSchema.maximum}`);
       connection.exec('CREATE UNIQUE INDEX IF NOT EXISTS friends_active_url_idx ON friends(url) WHERE deleted_at IS NULL');
