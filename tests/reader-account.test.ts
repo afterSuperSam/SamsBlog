@@ -13,6 +13,10 @@ import { GET, PATCH } from '../src/pages/api/reader/account.json';
 import { GET as comments } from '../src/pages/api/reader/comments.json';
 import { POST as uploadAvatar } from '../src/pages/api/reader/avatar.json';
 import { DELETE as deleteMedia } from '../src/pages/api/admin/media.json';
+import { POST as postComment } from '../src/pages/api/guestbook/messages.json';
+import { GET as session } from '../src/pages/api/reader/session.json';
+
+vi.mock('../src/lib/reply-notifications', async (original) => ({ ...await original<object>(), replyNotificationsConfigured: true, queueReplyNotification: vi.fn(), queueAdminNotification: vi.fn() }));
 
 beforeAll(async () => {
   vi.stubEnv('BLOG_DATA_DIR', await mkdtemp(path.join(tmpdir(), 'samsblog-account-')));
@@ -91,6 +95,61 @@ describe('reader account isolation', () => {
     expect((await PATCH(context(cookies, 'PATCH', { ...valid, padding: 'x'.repeat(readerConfig.requestMaximumBytes) }))).status).toBe(413);
     for (let index = 1; index < readerConfig.profileSourceLimit; index++) expect((await PATCH(context(cookies, 'PATCH', valid))).status).toBe(200);
     expect((await PATCH(context(cookies, 'PATCH', valid))).status).toBe(429);
+  });
+
+  it('keeps notification email private, optional and separate from login identity', async () => {
+    const { reader, cookies } = fixture(); const other = fixture().reader;
+    const profile = { displayName: reader.displayName, websiteUrl: '' };
+    expect(getReaderAccount(reader).notificationEmail).toBe('');
+    const saved = await PATCH(context(cookies, 'PATCH', { ...profile, notificationEmail: '  Private.Notify@Example.com  ', readerId: other.id }));
+    expect(saved.status).toBe(200);
+    const data = await saved.json();
+    expect(data.account.notificationEmail).toBe('private.notify@example.com');
+    expect(data.reader).not.toHaveProperty('notificationEmail');
+    expect(data.account.reader).not.toHaveProperty('notificationEmail');
+    expect(getReaderAccount(other).notificationEmail).toBe('');
+    expect((await (await GET(context(cookies))).json()).notificationEmail).toBe('private.notify@example.com');
+    expect(await (await session(context(cookies))).text()).not.toContain('private.notify@example.com');
+    expect(getDatabase().prepare('SELECT subject FROM reader_identities WHERE reader_id=?').all(reader.id)).not.toEqual(expect.arrayContaining([{ subject: 'private.notify@example.com' }]));
+    updateReaderProfile(reader, profile);
+    expect(getReaderAccount(reader).notificationEmail).toBe('private.notify@example.com');
+    for (const notificationEmail of [null, 42, [], 'invalid', 'test@example.com\r\nBcc:other@example.com', 'x'.repeat(255)]) {
+      expect(() => updateReaderProfile(reader, { ...profile, notificationEmail })).toThrow();
+    }
+    expect(getReaderAccount(reader).notificationEmail).toBe('private.notify@example.com');
+    updateReaderProfile(reader, { ...profile, notificationEmail: '' });
+    expect(getReaderAccount(reader).notificationEmail).toBe('');
+    expect(getDatabase().prepare('SELECT notification_email AS email FROM readers WHERE id=?').get(reader.id)).toEqual({ email: null });
+  });
+
+  it('uses the current account notification address only for future consented submissions', async () => {
+    const { reader, cookies } = fixture();
+    const profile = { displayName: reader.displayName, websiteUrl: '' };
+    const articleId = saveArticle({ title: '通知邮箱验证', content: '正文', source: 'original', category: 'journal' });
+    let submission = 0;
+    const postWith = async (extra = {}, caller = cookies) => {
+      const response = await postComment({ ...context(caller, 'POST', { content: '通知地址隔离验证', nickname: '匿名访客', notifyReply: true, email: { forged: 'attacker@example.com' }, ...extra }, '/api/guestbook/messages.json'), clientAddress: `198.51.100.${++submission}` });
+      expect(response.status).toBe(201);
+      const { id } = await response.json();
+      return getDatabase().prepare('SELECT id,email,notify_reply AS notifyReply FROM messages WHERE id=?').get(id) as { id: number; email: string; notifyReply: number };
+    };
+    const unset = await postWith();
+    expect(unset).toMatchObject({ email: '', notifyReply: 0 });
+    updateReaderProfile(reader, { ...profile, notificationEmail: 'first@example.com' });
+    const root = await postWith({ articleId });
+    expect(root).toMatchObject({ email: 'first@example.com', notifyReply: 1 });
+    expect(await postWith({ articleId, parentId: root.id })).toMatchObject({ email: 'first@example.com', notifyReply: 1 });
+    expect(await postWith({ notifyReply: false })).toMatchObject({ email: '', notifyReply: 0 });
+    updateReaderProfile(reader, { ...profile, notificationEmail: 'second@example.com' });
+    expect(await postWith()).toMatchObject({ email: 'second@example.com', notifyReply: 1 });
+    updateReaderProfile(reader, { ...profile, notificationEmail: '' });
+    expect(await postWith()).toMatchObject({ email: '', notifyReply: 0 });
+    expect(getDatabase().prepare('SELECT email FROM messages WHERE id=?').get(root.id)).toEqual({ email: 'first@example.com' });
+    expect(JSON.stringify(listPublishedMessages(60, articleId))).not.toMatch(/first@example.com|notificationEmail|notify_reply|email/);
+    const anonymous = { ...cookies, get: () => undefined } as ReaderCookies;
+    expect(await postWith({ email: 'anonymous@example.com' }, anonymous)).toMatchObject({ email: 'anonymous@example.com', notifyReply: 1 });
+    expect((await postComment(context(anonymous, 'POST', { content: '匿名校验', nickname: '匿名访客', email: { invalid: true } }, '/api/guestbook/messages.json'))).status).toBe(400);
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it('preserves historical long names until an explicit valid profile edit', () => {

@@ -29,7 +29,7 @@ export function initializeReaderSurfaces(root: HTMLElement) {
   const update = (target: HTMLElement, width: number, height: number) => {
     if (!width || !height) return;
     const configured = Number.parseFloat(getComputedStyle(target).getPropertyValue('--reader-corner-size'));
-    const corner = target.matches('button,a,.reader-card-count,.reader-method-badge,[data-account-website]') ? Math.min(width, height) / 2 : configured;
+    const corner = target.matches('button,a,.reader-card-count,.reader-method-badge') ? Math.min(width, height) / 2 : configured;
     if (!Number.isFinite(corner) || corner <= 0) return;
     target.style.setProperty('--reader-surface-fallback-radius', '0px');
     target.style.setProperty('--reader-surface-path', `path("${createReaderSurfacePath(width, height, corner)}")`);
@@ -41,7 +41,7 @@ export function initializeReaderSurfaces(root: HTMLElement) {
     }
   });
   const refresh = () => {
-    const elements = [...root.querySelectorAll<HTMLElement>('.reader-paper,button:not([data-avatar-select]),.reader-card-count,.reader-method-badge,[data-account-website]')];
+    const elements = [...root.querySelectorAll<HTMLElement>('.reader-paper,button:not([data-avatar-select]),.reader-card-count,.reader-method-badge')];
     elements.forEach((element) => {
       if (observed.has(element)) return;
       observed.add(element); element.classList.add('reader-curved-surface');

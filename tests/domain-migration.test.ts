@@ -39,6 +39,20 @@ afterEach(() => {
 });
 
 describe('domain migration transaction', () => {
+  it.each([false, true])('adds notification email idempotently and preserves existing reader data: column present %s', async (columnPresent) => {
+    const legacy = new Database(path.join(directory, 'blog.sqlite'));
+    legacy.prepare('DELETE FROM schema_migrations WHERE id=?').run('20261107-reader-notification-email');
+    legacy.prepare("INSERT INTO readers(id,display_name,created_at,updated_at,notification_email) VALUES (95,'历史读者','2026-01-01','2026-01-02','saved@example.com')").run();
+    if (!columnPresent) legacy.exec('ALTER TABLE readers DROP COLUMN notification_email');
+    legacy.close();
+    connection = openDatabase();
+    expect(connection.prepare('SELECT display_name,notification_email FROM readers WHERE id=95').get()).toEqual({ display_name: '历史读者', notification_email: columnPresent ? 'saved@example.com' : null });
+    expect(connection.prepare('SELECT id FROM schema_migrations WHERE id=?').get('20261107-reader-notification-email')).toBeTruthy();
+    connection.close(); connection = undefined; vi.resetModules();
+    connection = (await import('../src/lib/db')).getDatabase();
+    expect(connection.prepare('SELECT notification_email FROM readers WHERE id=95').get()).toEqual({ notification_email: columnPresent ? 'saved@example.com' : null });
+  });
+
   it.each(['original', 'oauth-provider', 'legacy-verifier', 'all-fields'])('upgrades reader draft schemas without losing identities or readding columns: %s', async (variant) => {
     const legacy = new Database(path.join(directory, 'blog.sqlite'));
     legacy.prepare('DELETE FROM schema_migrations WHERE id=?').run('20261107-reader-account-passkeys');

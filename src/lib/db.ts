@@ -514,6 +514,11 @@ export function getDatabase() {
         for (const row of connection.prepare('SELECT id FROM readers WHERE webauthn_user_id IS NULL').all() as Array<{ id: number }>) updateHandle.run(randomBytes(32).toString('base64url'), row.id);
         connection.prepare('INSERT INTO schema_migrations (id,applied_at) VALUES (?,?)').run('20261107-reader-account-passkeys', new Date().toISOString());
       }
+      if (!connection.prepare('SELECT id FROM schema_migrations WHERE id=?').get('20261107-reader-notification-email')) {
+        const readerColumns = new Set((connection.pragma('table_info(readers)') as Array<{ name: string }>).map((column) => column.name));
+        if (!readerColumns.has('notification_email')) connection.exec('ALTER TABLE readers ADD COLUMN notification_email TEXT CHECK(notification_email IS NULL OR length(notification_email)<=254)');
+        connection.prepare('INSERT INTO schema_migrations (id,applied_at) VALUES (?,?)').run('20261107-reader-notification-email', new Date().toISOString());
+      }
       connection.exec('CREATE UNIQUE INDEX IF NOT EXISTS friends_active_url_idx ON friends(url) WHERE deleted_at IS NULL');
       connection.exec('CREATE INDEX IF NOT EXISTS blog_articles_type_created_idx ON blog_articles(content_type, created_at DESC, id DESC) WHERE deleted_at IS NULL');
       connection.exec('CREATE INDEX IF NOT EXISTS friends_public_idx ON friends(visible, created_at ASC)');

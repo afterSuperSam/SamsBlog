@@ -4,6 +4,7 @@ import { HttpError, json, readJsonObject, readPositiveId, requirePublicActivityA
 import { getArticle } from '../../../lib/articles';
 import { parseNotificationEmail, queueAdminNotification, queueReplyNotification, replyNotificationsConfigured } from '../../../lib/reply-notifications';
 import { readReaderSession } from '../../../lib/readers';
+import { getReaderNotificationEmail } from '../../../lib/reader-account';
 
 export const GET = route(({ url }) => {
   const articleId = url.searchParams.has('articleId') ? readPositiveId(Number(url.searchParams.get('articleId'))) : null;
@@ -25,7 +26,7 @@ export const POST = route(async ({ request, clientAddress, cookies }) => {
   const quoteMessageId = body.quoteMessageId == null ? null : readPositiveId(body.quoteMessageId);
   if (body.quoteContent !== undefined && typeof body.quoteContent !== 'string') throw new HttpError(400, '引用内容格式不正确');
   const quoteContent = typeof body.quoteContent === 'string' ? body.quoteContent : '';
-  const email = parseNotificationEmail(body.email);
+  const email = reader ? getReaderNotificationEmail(reader.id) : parseNotificationEmail(body.email);
   if (body.notifyReply !== undefined && typeof body.notifyReply !== 'boolean') throw new HttpError(400, '通知选项不正确');
   // 与 SQLite 的 length 约束统一按 Unicode 码点计数。
   const nicknameLength = Array.from(nickname).length;
@@ -34,7 +35,7 @@ export const POST = route(async ({ request, clientAddress, cookies }) => {
   if (contentLength < 2 || contentLength > 500) throw new HttpError(400, '留言需要 2–500 个字符');
   if (nickname.includes('\u0000')) throw new HttpError(400, '昵称包含不支持的字符');
   if (content.includes('\u0000')) throw new HttpError(400, '留言包含不支持的字符');
-  const wantsNotification = body.notifyReply === true && replyNotificationsConfigured;
+  const wantsNotification = body.notifyReply === true && replyNotificationsConfigured && (!reader || Boolean(email));
   if (wantsNotification && !email) throw new HttpError(400, '接收回复通知需要填写邮箱');
   const id = getDatabase().transaction(() => {
     if (hasReachedMessageSubmissionLimit(fingerprintHash)) throw new HttpError(429, '留言和评论已达提交上限，请稍后再试');

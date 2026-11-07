@@ -47,7 +47,7 @@ const isCurrentPage = (href: string) => currentPath === href
   </div>
   <nav class="desktop-nav" aria-label="主要导航">
     {siteConfig.nav.map((item) => (
-      item.href === '/reader' ? <a class="reader-navigation" href="/reader" aria-current={isCurrentPage(item.href) ? 'page' : undefined}><span class="reader-navigation__avatar" data-reader-navigation-identity hidden={!reader?.avatarUrl} aria-hidden="true"><img data-reader-navigation-avatar src={reader?.avatarUrl || undefined} hidden={!reader?.avatarUrl} alt="" width="26" height="26" referrerpolicy="no-referrer" /></span>{item.label}</a> : <a href={item.href} aria-current={isCurrentPage(item.href) ? 'page' : undefined}>
+      item.href === '/reader' ? <a class="reader-navigation" href="/reader" aria-current={isCurrentPage(item.href) ? 'page' : undefined}><span>{item.label}</span><span class="reader-navigation__avatar" data-reader-navigation-identity hidden={!reader?.avatarUrl} aria-hidden="true"><img data-reader-navigation-avatar src={reader?.avatarUrl || undefined} hidden={!reader?.avatarUrl} alt="" width="26" height="26" referrerpolicy="no-referrer" /></span></a> : <a href={item.href} aria-current={isCurrentPage(item.href) ? 'page' : undefined}>
         {item.label}
       </a>
     ))}
@@ -64,7 +64,7 @@ const isCurrentPage = (href: string) => currentPath === href
   <div class="mobile-menu" id="mobile-navigation" hidden data-mobile-menu>
     <nav aria-label="移动端导航">
       {siteConfig.nav.map((item) => (
-        item.href === '/reader' ? <a class="reader-navigation reader-navigation--mobile" href="/reader" aria-current={isCurrentPage(item.href) ? 'page' : undefined}><span class="reader-navigation__avatar" data-reader-navigation-identity hidden={!reader?.avatarUrl} aria-hidden="true"><img data-reader-navigation-avatar src={reader?.avatarUrl || undefined} hidden={!reader?.avatarUrl} alt="" width="26" height="26" referrerpolicy="no-referrer" /></span><span>{item.label}</span></a> : <a href={item.href} aria-current={isCurrentPage(item.href) ? 'page' : undefined}>
+        item.href === '/reader' ? <a class="reader-navigation reader-navigation--mobile" href="/reader" aria-current={isCurrentPage(item.href) ? 'page' : undefined}><span>{item.label}</span><span class="reader-navigation__avatar" data-reader-navigation-identity hidden={!reader?.avatarUrl} aria-hidden="true"><img data-reader-navigation-avatar src={reader?.avatarUrl || undefined} hidden={!reader?.avatarUrl} alt="" width="26" height="26" referrerpolicy="no-referrer" /></span></a> : <a href={item.href} aria-current={isCurrentPage(item.href) ? 'page' : undefined}>
           <span>{item.label}</span>
           <svg aria-hidden="true" viewBox="0 0 24 24" fill="none"><path d="M5 12h14m-6-6 6 6-6 6" /></svg>
         </a>

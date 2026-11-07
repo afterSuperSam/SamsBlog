@@ -40,17 +40,19 @@
 
 ### 读者身份
 
-顶部“关于”右侧的“读者”为普通链接，进入 `/reader`：未登录显示页内登录卡片，已登录显示账号页。导航身份由服务端输出，有头像地址时显示图片，无地址不占位，当前页面保留高亮。登录支持邮箱三位数字验证码（允许前导零）、BlogsClub、GitHub、Google 和 Passkey；未配置的提供方禁用。邮箱验证后自动注册，无需密码。验证码邮件包含 SamsBlog 品牌 HTML 与纯文本回退，突出验证码、配置有效期及简短忽略提示。读者会话独立于站长管理权限，不同方式不按相同邮箱自动合并账户。
+顶部“关于”右侧的“读者”为普通链接，进入 `/reader`：未登录显示页内登录卡片，已登录显示账号页。导航身份由服务端输出，有头像地址时在文字右侧显示图片，无地址不占位，当前页面保留高亮。登录支持邮箱三位数字验证码（允许前导零）、BlogsClub、GitHub、Google 和 Passkey；未配置的提供方禁用。邮箱验证后自动注册，无需密码。验证码邮件包含 SamsBlog 品牌 HTML 与纯文本回退，突出验证码、配置有效期及简短忽略提示。读者会话独立于站长管理权限，不同方式不按相同邮箱自动合并账户。
 
 登录卡片直接呈现邮箱与验证码，复用透明下划线和手绘竖光标，聚焦无矩形外框。邮箱关闭自动补全、自动大写与拼写检查；验证码保留系统自动填充。Google／BlogsClub／GitHub／Passkey 以两列等宽连续曲率胶囊排列，图标与文字各占固定列，整组居中、列内左对齐；BlogsClub 使用原创实心 B 单色 SVG（无外框或描线），文字沿用站内艺术字体。胶囊轻影贴合曲率，悬停字色平滑过渡，点击呈现 Material 式涟漪；暂停或减少动效时使用短暂静态反馈。登录成功后显示服务端账号页，退出后显示登录页。
 
 OAuth 在点击时打开独立浏览器授权窗口，授权期间 `/reader` 保留当前位置和输入。完成页只提示原页面重新查询服务端会话，不传递身份、授权码或令牌；会话创建时间变化后才确认登录或同账号重验。窗口通信受限时继续查询，关窗不当作成功；支持取消与超时，失败后恢复控件和焦点。窗口尺寸、查询间隔及等待上限由 `siteConfig.readerPopup` 配置，默认520×720、3秒、10分钟。
 
-账号页直接展示无外框、连续曲率轮廓与纯色层次的卡片，桌面加宽、小字放大、纵向留白收紧。登录方式图标徽标位于注册时间左侧，保留名称的 `aria-label` 与 `title`；统计行最右侧为“退出登录”胶囊。可修改昵称与个人网站，点击头像更换图片；头像悬停或聚焦时显示铅笔图标并虚化底图。编辑昵称需2–12个 Unicode 码点，修改同步既有署名，旧长昵称保留可读。头像仅接受 JPEG／PNG／WebP／GIF，文件不超过2MiB；更换后保留旧图，共用或仍被读者引用的头像禁止后台删除。可管理 Passkey，查看注册时间、累计留言与评论次数及本人留言分页；隐藏文章不返回标题或跳转地址。Passkey 添加和移除需15分钟内重新验证，移除需二次点击；过期时在同页切换到身份验证区域，也可返回账号，验证后自行重新选择操作。身份切换先清空旧资料。
+账号页直接展示无外框、连续曲率轮廓与低对比半透明纯色层次的卡片，桌面加宽、小字放大、纵向留白收紧。登录方式图标徽标位于注册时间左侧，保留名称的 `aria-label` 与 `title`；统计行最右侧为“退出登录”胶囊。可修改昵称、个人网站及回复通知邮箱，点击头像更换图片；头像悬停或聚焦时显示铅笔图标并虚化底图。编辑昵称需2–12个 Unicode 码点，修改同步既有署名，旧长昵称保留可读。头像仅接受 JPEG／PNG／WebP／GIF，文件不超过2MiB；更换后保留旧图，共用或仍被读者引用的头像禁止后台删除。可管理 Passkey，查看注册时间、累计留言与评论次数及本人留言分页；隐藏文章不返回标题或跳转地址。Passkey 添加和移除需15分钟内重新验证，移除需二次点击；过期时在同页切换到身份验证区域，也可返回账号，验证后自行重新选择操作。身份切换先清空旧资料。
+
+回复通知邮箱默认空、可选，仅在自己的账号页和私有账号响应中显示；只校验地址格式，不用于登录或身份合并。登录留言与文章评论隐藏邮箱输入，勾选通知且发信已配置时由服务端读取账户邮箱，忽略客户端提交的邮箱；未设置时照常发表且不订阅。修改或清空仅影响之后新帖，既有订阅、已入队邮件与逐帖退订规则保持原样。
 
 完整账号资料、Passkey 和首批本人留言均由服务端直接输出，客户端接管已有状态。保存资料原位反馈并保留等待期间的新编辑，不重复读取列表。
 
-登录读者的称呼由服务端身份决定，提交后直接公开；首页留言隐藏整行称呼输入，显示放大的身份提示，匿名访客保留称呼输入；登录或退出即时切换，并保留匿名草稿。匿名留言、评论和回复先审核，待审内容不会插入公开列表。两者都只能回复已公开父帖。登录邮箱不自动填入回复通知邮箱，已有本机称呼和通知邮箱继续保留。验证码和登录邮箱不存入 localStorage；所有 HTML 响应使用 `private, no-store` 与 `Vary: Cookie`，静态资源和 RSS 沿用各自缓存规则。
+登录读者的称呼由服务端身份决定，提交后直接公开；首页留言与文章评论隐藏整行称呼输入，显示放大的身份提示，匿名访客保留称呼输入；登录或退出即时切换，并保留匿名草稿。匿名留言、评论和回复先审核，待审内容不会插入公开列表。两者都只能回复已公开父帖。登录邮箱不自动作为回复通知邮箱；匿名称呼和邮箱草稿继续保留。验证码、登录邮箱及账户回复通知邮箱不写入 localStorage；所有 HTML 响应使用 `private, no-store` 与 `Vary: Cookie`，静态资源和 RSS 沿用各自缓存规则。
 
 ### 文章与阅读
 
@@ -228,7 +230,7 @@ Astro 构建配置按 `.env` → `.env.local` → `.env.<mode>` → `.env.<mode>
 | OAuth 登录额度 | `READER_OAUTH_SOURCE_LIMIT=30`、`READER_OAUTH_GLOBAL_LIMIT=1000` |
 | 请求边界 | `READER_REQUEST_MAXIMUM_BYTES=4096`、`READER_UPSTREAM_TIMEOUT_MILLISECONDS=8000`、`READER_UPSTREAM_MAXIMUM_BYTES=65536` |
 
-读者会话默认30天，验证码固定为三位数字、默认有效10分钟；验证尝试默认3次、上限3次，旧六位验证码需重新获取。读者认证额度持久化到 SQLite，重启不清零。读者身份不保存原始登录邮箱或提供方令牌；邮箱身份使用规范化邮箱的稳定摘要，验证码和邮箱额度使用带密钥摘要。回复通知邮箱是用户另外自愿填写的资料，仍按原通知规则保存。
+读者会话默认30天，验证码固定为三位数字、默认有效10分钟；验证尝试默认3次、上限3次，旧六位验证码需重新获取。读者认证额度持久化到 SQLite，重启不清零。读者身份不保存原始登录邮箱或提供方令牌；邮箱身份使用规范化邮箱的稳定摘要，验证码和邮箱额度使用带密钥摘要。回复通知邮箱是独立可选的私有账号资料，留言订阅仍保存提交时的邮箱快照。
 
 数值参数须为正整数。探测超时最多15000ms，慢阈值须小于超时，并发最多6、跳转最多5。订阅缓存最多86400秒、响应最多4MiB、条目最多500、深度最多64；复用探测的超时与并发限制。文章字符数和请求字节数独立校验；修改请求上限时同步调整 Node adapter 与代理。
 
@@ -249,7 +251,7 @@ Astro 构建配置按 `.env` → `.env.local` → `.env.<mode>` → `.env.<mode>
 | `/api/reader/email-login.json` | POST／同源限速 | `{email,code}`；成功返回 `{reader}` 并设置独立读者会话 |
 | `/api/reader/oauth/blogsclub.json` | POST／同源限速 | 返回 `{url}`，独立窗口授权；已登记根路径回调后303转入 `/reader/oauth-complete`，仅带 `result=success` 或 `result=error` |
 | `/api/reader/oauth/github.json`、`/api/reader/oauth/google.json` | POST／同源限速 | 返回 `{url}`，独立窗口授权；固定提供方回调后进入同一完成页 |
-| `/api/reader/account.json` | GET/PATCH／当前读者 | 私有资料、注册时间、累计评论数和 Passkey；PATCH `{displayName,websiteUrl}`，昵称2–12个 Unicode 码点 |
+| `/api/reader/account.json` | GET/PATCH／当前读者 | 私有资料、顶层 `notificationEmail`、注册时间、累计评论数和 Passkey；PATCH `{displayName,websiteUrl,notificationEmail?}`，邮箱省略保留、空串清除；昵称2–12个 Unicode 码点 |
 | `/api/reader/avatar.json` | POST／当前读者、同源限速 | multipart 单一 `file`，JPEG／PNG／WebP／GIF且不超过2MiB；返回 `{reader,account}` |
 | `/api/reader/comments.json?page=1` | GET／当前读者 | 本人未删除评论分页，包含审核状态；非公开文章不返回标题或链接 |
 | `/api/reader/passkeys/{register,login}-{options,verify}.json` | POST／同源限速 | options 返回挑战；verify 验证浏览器凭据。注册需已登录且近期验证 |
@@ -259,7 +261,7 @@ Astro 构建配置按 `.env` → `.env.local` → `.env.<mode>` → `.env.<mode>
 | `/api/admin/messages.json` | GET/PATCH/POST/DELETE／管理员 | 全部未删除线程；`{id,status}` 审核；`{parentId,content}` 回复；`{id}` 删除 |
 | `/api/admin/friends.json` | GET/POST/PATCH/DELETE／管理员 | `name,url,description,iconUrl,backgroundUrl?,rssUrl?,visible`；更新带 `id`，删除 `{id}` |
 | `/api/admin/projects.json` | GET/PUT／管理员 | `{currentWork,projects:[{id?,repository,name,url,description,keyword,status,visible}]}`；顺序即展示顺序，新项无ID，已有项目须全部保留，整组原子保存 |
-| `/api/guestbook/messages.json` | GET/POST／公开 | 最新公开线程；提交 `{nickname,content,articleId?,parentId?,quoteMessageId?,quoteContent?,website?}`；匿名全部待审核，登录读者使用服务端称呼并直接公开，响应含 `status: pending/published`；只能回复公开父帖，引用只接受同文章的公开原话，`website` 为反垃圾字段 |
+| `/api/guestbook/messages.json` | GET/POST／公开 | 最新公开线程；提交 `{nickname,content,articleId?,parentId?,quoteMessageId?,quoteContent?,email?,notifyReply?,website?}`；匿名全部待审核，登录读者使用服务端称呼和账户通知邮箱、忽略客户端邮箱并直接公开，响应含 `status: pending/published`；只能回复公开父帖，引用只接受同文章的公开原话，`website` 为反垃圾字段 |
 | `/api/friends/status.json` | GET／公开 | `{statuses:[{id,status,latencyMilliseconds,checkedAt}],friends}`，仅探测公开友链；附当前分组排序结果 |
 | `/api/friends/feeds.json` | GET／公开 | `{feeds:[{id,title,url,publishedAt,checkedAt,sourceName,sourceUrl}]}`，仅已配置的公开订阅，不接受查询参数 |
 | `/api/public/project-commits.json` | GET／公开 | 当前公开项目仓库的提交日期，不接受任意探测地址 |

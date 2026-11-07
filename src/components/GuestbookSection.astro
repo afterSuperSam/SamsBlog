@@ -44,7 +44,7 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
           <span>网站</span><input name="website" tabindex="-1" autocomplete="off" />
         </label>
         <div class="message-contact">
-          <label class="paper-input-label"><span>邮箱 · 可选，不公开</span><input name="email" type="text" inputmode="email" maxlength="254" autocomplete="off" /></label>
+          <label class="paper-input-label" data-guestbook-email hidden={Boolean(reader)}><span>邮箱 · 可选，不公开</span><input name="email" type="text" inputmode="email" maxlength="254" autocomplete="off" /></label>
           <div class="visitor-preferences">
             {replyNotificationsConfigured && <PaperCheckbox name="notifyReply">收到回复邮件通知</PaperCheckbox>}
             <PaperCheckbox remember>记住称呼和邮箱</PaperCheckbox>
@@ -116,6 +116,7 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
     nickname.readOnly = Boolean(reader);
     form.dataset.readerAuthenticated = String(Boolean(reader));
     form.querySelector<HTMLElement>('[data-guestbook-nickname]')!.hidden = Boolean(reader);
+    form.querySelector<HTMLElement>('[data-guestbook-email]')!.hidden = Boolean(reader);
     form.querySelector<HTMLElement>('[data-guestbook-reader]')!.hidden = !reader;
     form.querySelector<HTMLElement>('[data-guestbook-anonymous]')!.hidden = Boolean(reader);
     const name = form.querySelector<HTMLElement>('[data-guestbook-reader] b');
@@ -244,8 +245,9 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
     submitting = true;
     const submit = form.querySelector<HTMLButtonElement>('button[type="submit"]');
     const data = new FormData(form);
-    const email = String(data.get('email') || '').trim();
-    const notifyReply = data.has('notifyReply') && email.length > 0;
+    const authenticated = form.dataset.readerAuthenticated === 'true';
+    const email = authenticated ? '' : String(data.get('email') || '').trim();
+    const notifyReply = data.has('notifyReply') && (authenticated || email.length > 0);
     submit?.setAttribute('disabled', 'true');
     showStatus('正在送出…', 'loading');
     try {

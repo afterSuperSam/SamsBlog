@@ -21,13 +21,13 @@ const dateLabel = (date: string) => new Date(date).toLocaleString('zh-CN', { tim
       <p class="form-status" data-reaction-feedback role="status"></p>
     </div>
   </header>
-  <form method="post" class="article-comment-form" data-article-comment novalidate>
+  <form method="post" class="article-comment-form" data-article-comment data-reader-authenticated={String(Boolean(reader))} novalidate>
     <div class="article-comment-form__heading"><span data-comment-target>写给这篇文章</span><button type="button" data-cancel-comment-reply hidden>取消回复</button></div>
     <blockquote class="comment-quote" data-comment-quote hidden><b data-comment-quote-name></b><p data-comment-quote-content></p></blockquote>
-    <p class="reader-comment-identity">{reader ? <>以读者 <b>{reader.displayName}</b> 的身份留言 · <a href="/reader">查看身份</a></> : <>匿名评论审核后公开，也可以先 <a href="/reader">登录读者身份</a>。</>}</p>
-    <label><span>怎么称呼</span><input name="nickname" minlength="2" maxlength="48" required autocomplete="off" value={reader?.displayName || ''} readonly={Boolean(reader)} /></label>
+    <p class="reader-comment-identity"><span data-comment-reader hidden={!reader}>以读者 <b>{reader?.displayName}</b> 的身份留言</span><span data-comment-anonymous hidden={Boolean(reader)}>匿名评论审核后公开，也可以先 <a href="/reader">登录读者身份</a>。</span></p>
+    <label data-comment-nickname hidden={Boolean(reader)}><span>怎么称呼</span><input name="nickname" minlength="2" maxlength="48" required autocomplete="off" value={reader?.displayName || ''} readonly={Boolean(reader)} /></label>
     <label class="article-comment-form__body"><span>想说的话</span><textarea name="content" rows="3" minlength="2" maxlength="1000" data-character-maximum="500" required></textarea></label>
-    <label><span>邮箱 · 可选，不公开</span><input name="email" type="text" inputmode="email" maxlength="254" autocomplete="off" /></label>
+    <label data-comment-email hidden={Boolean(reader)}><span>邮箱 · 可选，不公开</span><input name="email" type="text" inputmode="email" maxlength="254" autocomplete="off" /></label>
     <div class="visitor-preferences">
       {replyNotificationsConfigured && <PaperCheckbox name="notifyReply">收到回复邮件通知</PaperCheckbox>}
       <PaperCheckbox remember>记住称呼和邮箱</PaperCheckbox>
@@ -68,7 +68,24 @@ const dateLabel = (date: string) => new Date(date).toLocaleString('zh-CN', { tim
     let parentId: number | null = null;
     let composing = false;
     const refreshCaret = attachPaperCaret(content);
-    attachPaperCaret(field('nickname') as HTMLInputElement);
+    const nickname = field('nickname') as HTMLInputElement;
+    attachPaperCaret(nickname);
+    let anonymousNickname = nickname.readOnly ? '' : nickname.value;
+    document.addEventListener('reader:session', (event) => {
+      const reader = (event as CustomEvent<{ displayName: string } | null>).detail;
+      if (reader) {
+        if (!nickname.readOnly) anonymousNickname = nickname.value;
+        nickname.value = reader.displayName;
+      } else if (nickname.readOnly) nickname.value = anonymousNickname;
+      nickname.readOnly = Boolean(reader);
+      form.dataset.readerAuthenticated = String(Boolean(reader));
+      form.querySelector<HTMLElement>('[data-comment-nickname]')!.hidden = Boolean(reader);
+      form.querySelector<HTMLElement>('[data-comment-email]')!.hidden = Boolean(reader);
+      form.querySelector<HTMLElement>('[data-comment-reader]')!.hidden = !reader;
+      form.querySelector<HTMLElement>('[data-comment-anonymous]')!.hidden = Boolean(reader);
+      form.querySelector<HTMLElement>('[data-comment-reader] b')!.textContent = reader?.displayName || '';
+      nickname.dispatchEvent(new Event('input'));
+    });
     attachPaperCaret(field('email') as HTMLInputElement);
     content.addEventListener('compositionstart', () => { composing = true; });
     content.addEventListener('compositionend', () => { composing = false; });
@@ -101,8 +118,9 @@ const dateLabel = (date: string) => new Date(date).toLocaleString('zh-CN', { tim
     const submit = form.querySelector<HTMLButtonElement>('button[type="submit"]')!;
     form.addEventListener('submit', async (event) => {
       event.preventDefault(); if (submit.disabled || composing) return;
-      const email = field('email')!.value.trim();
-      const notifyReply = Boolean((field('notifyReply') as HTMLInputElement)?.checked && email);
+      const authenticated = form.dataset.readerAuthenticated === 'true';
+      const email = authenticated ? '' : field('email')!.value.trim();
+      const notifyReply = Boolean((field('notifyReply') as HTMLInputElement)?.checked && (authenticated || email));
       const body = { articleId, parentId, quoteMessageId, quoteContent, nickname: field('nickname')!.value.trim(), content: content.value.trim(), email: notifyReply ? email : '', notifyReply, website: field('website')!.value };
       const invalidName = !(field('nickname') as HTMLInputElement).readOnly && ([...body.nickname].length < 2 || [...body.nickname].length > 24);
       if (invalidName || [...body.content].length < 2 || [...body.content].length > 500) { setFeedbackText(feedback, invalidName ? '称呼需要 2–24 个字符。' : '评论需要 2–500 个字符。'); (invalidName ? field('nickname')! : content).focus(); return; }

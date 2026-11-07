@@ -4,7 +4,7 @@ import { attachPaperCaret } from './paper-caret';
 import { renderReaderMethodBadge, type ReaderIdentity } from './reader-menu';
 
 interface ReaderPasskey { id: number; label: string; createdAt: string; lastUsedAt: string | null }
-interface ReaderAccount { error?: string; reader: ReaderIdentity & { websiteUrl: string; createdAt: string }; commentCount: number; passkeys: ReaderPasskey[] }
+interface ReaderAccount { error?: string; reader: ReaderIdentity & { websiteUrl: string; createdAt: string }; notificationEmail: string; commentCount: number; passkeys: ReaderPasskey[] }
 interface ReaderCommentPage { error?: string; comments: Array<{ id: number; content: string; createdAt: string; status: string; articleId: number | null; articleTitle: string | null; parentId: number | null; url: string | null }>; page: number; pageSize: number; total: number }
 
 // 仅规范化仍与提交内容一致的输入，后续编辑和当前选区不被响应覆盖。
@@ -25,7 +25,8 @@ export function initializeReaderAccount() {
   const profileForm = query<HTMLFormElement>('[data-account-profile]');
   const name = profileForm.elements.namedItem('displayName') as HTMLInputElement;
   const website = profileForm.elements.namedItem('websiteUrl') as HTMLInputElement;
-  [name, website].forEach(attachPaperCaret);
+  const notificationEmail = profileForm.elements.namedItem('notificationEmail') as HTMLInputElement;
+  [name, website, notificationEmail].forEach(attachPaperCaret);
   const passkeyForm = query<HTMLFormElement>('[data-passkey-add]');
   const label = passkeyForm.elements.namedItem('label') as HTMLInputElement;
   attachPaperCaret(label);
@@ -64,7 +65,7 @@ export function initializeReaderAccount() {
   const clearIdentity = (readerId: number | null) => {
     identityId = readerId; account = undefined; accountGeneration++; commentsGeneration++; loadingComments = false;
     query('[data-account-passkeys]').replaceChildren(); query('[data-account-comments]').replaceChildren();
-    profileForm.reset(); name.value = ''; website.value = ''; label.value = '';
+    profileForm.reset(); name.value = ''; website.value = ''; notificationEmail.value = ''; label.value = '';
     [profileFeedback, passkeyFeedback, commentFeedback, avatarFeedback].forEach((target) => setReaderFeedback(target, ''));
     avatarFile.value = '';
     query('[data-passkey-count]').textContent = query('[data-comment-count]').textContent = '—';
@@ -74,7 +75,7 @@ export function initializeReaderAccount() {
     const avatar = query<HTMLImageElement>('[data-account-avatar]'); avatar.hidden = true; avatar.removeAttribute('src');
     query('[data-account-content]').hidden = !readerId; query('[data-account-signed-out]').hidden = Boolean(readerId);
     query('[data-passkeys-empty]').textContent = query('[data-comments-empty]').textContent = '正在读取…';
-    query('[data-account-website]').hidden = true; confirmedRemoval = null; controls();
+    confirmedRemoval = null; controls();
   };
   const handleError = (error: unknown, target: HTMLElement) => {
     setReaderFeedback(target, error instanceof Error ? error.message : '操作未能完成，请重试。');
@@ -133,9 +134,7 @@ export function initializeReaderAccount() {
     query('[data-account-comment-count]').textContent = `${value.commentCount} 次`;
     const avatar = query<HTMLImageElement>('[data-account-avatar]'); avatar.hidden = !value.reader.avatarUrl;
     if (value.reader.avatarUrl) avatar.src = value.reader.avatarUrl; else avatar.removeAttribute('src');
-    if (replaceInputs) { name.value = value.reader.displayName; website.value = value.reader.websiteUrl; }
-    const websiteLink = query<HTMLAnchorElement>('[data-account-website]'); websiteLink.hidden = !value.reader.websiteUrl;
-    if (value.reader.websiteUrl) websiteLink.href = value.reader.websiteUrl; else websiteLink.removeAttribute('href');
+    if (replaceInputs) { name.value = value.reader.displayName; website.value = value.reader.websiteUrl; notificationEmail.value = value.notificationEmail; }
     if (replaceLists) { confirmedRemoval = null; renderPasskeys(value.passkeys); }
     controls();
   };
@@ -178,7 +177,7 @@ export function initializeReaderAccount() {
   profileForm.addEventListener('submit', (event) => {
     event.preventDefault();
     if (mutation || !account) return;
-    const submittedName = name.value; const submittedWebsite = website.value;
+    const submittedName = name.value; const submittedWebsite = website.value; const submittedNotificationEmail = notificationEmail.value;
     const displayName = submittedName.trim(); const websiteUrl = submittedWebsite.trim();
     if (Array.from(displayName).length < 2 || Array.from(displayName).length > nameMaximum) { setReaderFeedback(profileFeedback, `昵称需要 2–${nameMaximum} 个字符。`); name.focus(); return; }
     if (websiteUrl) {
@@ -187,13 +186,19 @@ export function initializeReaderAccount() {
         if (!['http:', 'https:'].includes(address.protocol) || !/^https?:\/\//i.test(websiteUrl) || address.username || address.password || /[\s\u0000-\u001f\u007f\\]/u.test(websiteUrl)) throw new Error('Invalid profile website');
       } catch { setReaderFeedback(profileFeedback, '请填写完整的 HTTP(S) 网站地址。'); website.focus(); return; }
     }
+    const email = submittedNotificationEmail.trim();
+    if (email) {
+      const validator = document.createElement('input'); validator.type = 'email'; validator.value = email;
+      if (!validator.validity.valid) { setReaderFeedback(profileFeedback, '请填写有效的回复通知邮箱。'); notificationEmail.focus(); return; }
+    }
     const expectedIdentity = identityId;
     void perform(profileFeedback, async () => {
-      const result = await requestJson<{ error?: string; reader: ReaderIdentity; account: ReaderAccount }>('/api/reader/account.json', 'PATCH', { displayName, websiteUrl }, '资料未能保存，输入已保留。');
+      const result = await requestJson<{ error?: string; reader: ReaderIdentity; account: ReaderAccount }>('/api/reader/account.json', 'PATCH', { displayName, websiteUrl, notificationEmail: email }, '资料未能保存，输入已保留。');
       if (identityId !== expectedIdentity) return;
       renderAccount(result.account, false, false);
       applySubmittedReaderInput(name, submittedName, result.account.reader.displayName);
       applySubmittedReaderInput(website, submittedWebsite, result.account.reader.websiteUrl);
+      applySubmittedReaderInput(notificationEmail, submittedNotificationEmail, result.account.notificationEmail);
       setReaderFeedback(profileFeedback, '已保存');
       document.dispatchEvent(new Event('reader:refresh'));
     });
