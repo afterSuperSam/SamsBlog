@@ -31,7 +31,7 @@ const friendStatusTimeout = Math.ceil(allFriends.length / serverConfig.friendSta
       <p class="sr-only" data-friend-deck-status aria-live="polite"></p>
     </>}
     <div class="friend-groups">
-    {groups.map((group) => <section class="friend-group" data-friend-group={group.key} aria-labelledby={featured ? undefined : `friend-group-${group.key}`} hidden={featured && !group.friends.length}>
+    {groups.map((group) => <section class="friend-group" data-friend-group={group.key} aria-labelledby={featured ? undefined : `friend-group-${group.key}`} hidden={(featured || group.key === 'lost') && !group.friends.length}>
     {!featured && <h3 class="friend-group__title" id={`friend-group-${group.key}`}>{group.title}</h3>}
     <div class:list={['friend-grid', { 'friend-deck__stage': featured }]} data-friend-deck-stage={featured ? '' : undefined}>
       {group.friends.map((friend) => (
@@ -101,7 +101,7 @@ const friendStatusTimeout = Math.ceil(allFriends.length / serverConfig.friendSta
     friendCards.forEach((card, id) => { if (!visibleIds.has(id)) card.hidden = true; });
     groupSections.forEach((group) => {
       const hasCards = Boolean(group.querySelector('.friend-card:not([hidden])'));
-      group.hidden = Boolean(deck && !hasCards);
+      group.hidden = Boolean((deck || group.dataset.friendGroup === 'lost') && !hasCards);
       const empty = group.querySelector<HTMLElement>('[data-friend-group-empty]');
       if (empty) empty.hidden = hasCards;
     });

@@ -1,10 +1,13 @@
 <div class="ambient-scene" aria-hidden="true" data-ambient-scene>
+  <canvas class="ambient-silk" data-ambient-silk></canvas>
   <div class="ambient-atmosphere ambient-atmosphere--blue"><div class="ambient-halo ambient-halo--blue"></div></div><div class="ambient-atmosphere ambient-atmosphere--pink"><div class="ambient-halo ambient-halo--pink"></div></div>
 
 </div>
 
 <style>
-  .ambient-scene{position:fixed;inset:0;overflow:hidden;z-index:2;pointer-events:none;contain:strict}
+  .ambient-scene{position:fixed;inset:0;overflow:hidden;z-index:0;pointer-events:none;contain:strict}
+  .ambient-silk{position:absolute;inset:0;width:100%;height:100%;opacity:0;pointer-events:none}
+  .ambient-silk[data-silk-ready]{opacity:var(--ambient-silk-opacity)}
   .ambient-atmosphere{position:absolute;inset:0;opacity:var(--ambient-rest-strength);transition:opacity var(--ambient-shift-duration) var(--ease-out)}
   :global(.home-page[data-home-atmosphere="blue"]) .ambient-atmosphere--blue,:global(.home-page[data-home-atmosphere="pink"]) .ambient-atmosphere--pink{opacity:1}
   :global(.home-page[data-home-atmosphere="blue"]) .ambient-atmosphere--pink,:global(.home-page[data-home-atmosphere="pink"]) .ambient-atmosphere--blue{opacity:var(--ambient-quiet-strength)}
@@ -55,4 +58,10 @@
     syncVisibility();
     syncMotion();
   });
+</script>
+
+<script>
+  import { initializeAmbientSilk } from '../lib/ambient-silk';
+  const silkCanvas = document.querySelector<HTMLCanvasElement>('[data-ambient-silk]');
+  if (silkCanvas) initializeAmbientSilk(silkCanvas);
 </script>

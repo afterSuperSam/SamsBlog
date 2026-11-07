@@ -366,7 +366,7 @@ body::before {
 @media (max-width: 1080px) {
   .site-header {
     display: grid;
-    grid-template-columns: var(--header-mobile-brand-width) minmax(0, 1fr) 132px;
+    grid-template-columns: var(--header-mobile-brand-width) minmax(0, 1fr) auto;
     gap: 4px;
   }
 

@@ -46,8 +46,8 @@ const isCurrentPage = (href: string) => currentPath === href
     </nav>
   </div>
   <nav class="desktop-nav" aria-label="主要导航">
-    {siteConfig.nav.map((item) => (
-      item.href === '/reader' ? <a class="reader-navigation" href="/reader" aria-current={isCurrentPage(item.href) ? 'page' : undefined}><span>{item.label}</span><span class="reader-navigation__avatar" data-reader-navigation-identity hidden={!reader?.avatarUrl} aria-hidden="true"><img data-reader-navigation-avatar src={reader?.avatarUrl || undefined} hidden={!reader?.avatarUrl} alt="" width="26" height="26" referrerpolicy="no-referrer" /></span></a> : <a href={item.href} aria-current={isCurrentPage(item.href) ? 'page' : undefined}>
+    {siteConfig.nav.filter((item) => item.href !== '/reader').map((item) => (
+      <a href={item.href} aria-current={isCurrentPage(item.href) ? 'page' : undefined}>
         {item.label}
       </a>
     ))}
@@ -60,11 +60,12 @@ const isCurrentPage = (href: string) => currentPath === href
       </svg>
     </button>
     <ThemeToggle />
+    <a class="reader-navigation" href="/reader" aria-current={isCurrentPage('/reader') ? 'page' : undefined}><span class="reader-navigation__avatar" data-reader-navigation-identity hidden={!reader?.avatarUrl} aria-hidden="true"><img data-reader-navigation-avatar src={reader?.avatarUrl || undefined} hidden={!reader?.avatarUrl} alt="" width="32" height="32" referrerpolicy="no-referrer" /></span><span>读者</span></a>
   </div>
   <div class="mobile-menu" id="mobile-navigation" hidden data-mobile-menu>
     <nav aria-label="移动端导航">
-      {siteConfig.nav.map((item) => (
-        item.href === '/reader' ? <a class="reader-navigation reader-navigation--mobile" href="/reader" aria-current={isCurrentPage(item.href) ? 'page' : undefined}><span>{item.label}</span><span class="reader-navigation__avatar" data-reader-navigation-identity hidden={!reader?.avatarUrl} aria-hidden="true"><img data-reader-navigation-avatar src={reader?.avatarUrl || undefined} hidden={!reader?.avatarUrl} alt="" width="26" height="26" referrerpolicy="no-referrer" /></span></a> : <a href={item.href} aria-current={isCurrentPage(item.href) ? 'page' : undefined}>
+      {siteConfig.nav.filter((item) => item.href !== '/reader').map((item) => (
+        <a href={item.href} aria-current={isCurrentPage(item.href) ? 'page' : undefined}>
           <span>{item.label}</span>
           <svg aria-hidden="true" viewBox="0 0 24 24" fill="none"><path d="M5 12h14m-6-6 6 6-6 6" /></svg>
         </a>

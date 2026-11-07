@@ -30,7 +30,7 @@ const initialSession = { reader, options: getReaderAuthOptions() };
         <span class="reader-code-failure" aria-hidden="true"><svg data-reader-code-cross viewBox="0 0 24 24" fill="none"><path d="m6 6 12 12M18 6 6 18" /></svg></span>
         <span id="reader-code-status" class="sr-only" data-reader-code-status role="status" aria-live="polite" aria-atomic="true">请输入三位数字验证码。</span>
       </div>
-      <div class="reader-login__code-actions"><button type="button" data-reader-login-back disabled>回退</button><button type="submit" data-reader-login-confirm disabled>确定</button></div>
+      <div class="reader-login__code-actions"><button type="button" data-reader-login-back data-reader-text-action disabled>回退</button><button type="submit" data-reader-login-confirm data-reader-text-action disabled>确定</button></div>
     </div>
   </form>
   <p class="reader-feedback" data-reader-login-feedback role="status" aria-live="polite" aria-atomic="true"></p>

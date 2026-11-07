@@ -437,20 +437,19 @@ describe('project settings and automatically refreshed feeds', () => {
     const before = getProjectSettings();
     expect(before.projects.map((project) => project.status)).toEqual(['active', 'maintenance', 'active', 'archived']);
     const projects = before.projects.map((project) => ({ ...project }));
-    const payload = { currentWork: '最近在做：测试项目', projects };
+    const payload = { projects };
     payload.projects[0].name = '项目的新名字';
     payload.projects[0].url = 'https://example.com/project';
     payload.projects[0].description = '新的项目简介';
     payload.projects[0].keyword = '';
     expect((await call(saveProjects, 'PUT', payload, false)).status).toBe(401);
     expect((await call(saveProjects, 'PUT', payload)).status).toBe(200);
-    expect(getProjectSettings().currentWork).toBe(payload.currentWork);
+    expect(getProjectSettings()).not.toHaveProperty('currentWork');
     expect(getProjectSettings().projects[0]).toMatchObject(payload.projects[0]);
     expect(() => saveProjectSettings({ ...payload, projects: [...projects, projects[0]] })).toThrow();
     expect(() => saveProjectSettings({ ...payload, projects: projects.map((project) => ({ ...project, status: 'unknown' })) })).toThrow();
     expect(() => saveProjectSettings({ ...payload, projects: projects.map((project) => ({ ...project, url: 'javascript:alert(1)' })) })).toThrow();
-    expect(() => saveProjectSettings({ ...payload, currentWork: ' ' })).toThrow();
-    expect(getProjectSettings().currentWork).toBe(payload.currentWork);
+    expect(getProjectSettings().projects[0]).toMatchObject(payload.projects[0]);
   });
 
   it('coalesces commit requests and keeps valid dates when GitHub later fails', async () => {

@@ -11,6 +11,7 @@ export const siteConfig = {
     { href: '/reader', label: '读者' },
   ],
   effects: { pointerTiltDegrees: 2.5 },
+  ambientSilk: { framesPerSecond: 12, resolutionScale: .45, pixelRatioLimit: 1, maximumPixels: 280000, maximumFrameMilliseconds: 200, speed: .65, scale: .55, rotation: .28, depth: .14, sheen: .12, wave: .35, breathingSeconds: 24, breathingStrength: .08, edgeFade: .4 },
   navigation: { sectionActivationRatio: 0.35 },
   analytics: { visibleMilliseconds: 10000 },
   network: { sampleCount: 3, timeoutMilliseconds: 5000 },
@@ -60,7 +61,6 @@ export const siteConfig = {
     { repository: 'afterSuperSam/SamsBlog', name: 'SamsBlog', description: '夏日插画风的个人项目与日常站点', keyword: '站点', status: 'active' },
     { repository: 'afterSuperSam/ItemsaddderConfigGenerator', name: 'ItemsAdder 配置生成器', description: '批量生成普通 2D 材质的配置文件', keyword: '材质', status: 'archived' },
   ],
-  currentWork: { defaultText: '最近在做：YetAnotherTown', maximumLength: 80 },
   projectFields: { nameMaximumLength: 60, descriptionMaximumLength: 240, urlMaximumLength: 2048, keywordMaximumLength: 60, repositoryMaximumLength: 200 },
   statistics: { countDurationMilliseconds: 1400, countStaggerMilliseconds: 90, easingPower: 3, visibilityThreshold: 0.35 },
   reveal: { durationMilliseconds: 620, distancePixels: 24, itemStaggerMilliseconds: 75, maximumStaggerMilliseconds: 225, characterDurationMilliseconds: 580, characterStaggerMilliseconds: 48, visibilityThreshold: 0.08, bottomInsetPercent: 6 },
@@ -122,6 +122,16 @@ if (![reading.fontSizeMinimum, reading.fontSizeMaximum, reading.fontSizeDefault,
   || !reading.typographyStorageKey) throw new Error('Invalid reading typography configuration');
 
 const friendDeck = siteConfig.friendDeck;
+const ambientSilk = siteConfig.ambientSilk;
+if (!Object.values(ambientSilk).every((value) => Number.isFinite(value) && value > 0)
+  || ![ambientSilk.framesPerSecond, ambientSilk.maximumPixels, ambientSilk.maximumFrameMilliseconds].every(Number.isSafeInteger)
+  || ambientSilk.framesPerSecond > 20 || ambientSilk.maximumPixels > 500000 || ambientSilk.maximumFrameMilliseconds > 250
+  || ambientSilk.resolutionScale > .75 || ambientSilk.pixelRatioLimit > 1.5 || ambientSilk.speed > 2
+  || ambientSilk.scale > 1 || ambientSilk.rotation > Math.PI || ambientSilk.depth > .3 || ambientSilk.sheen > .3
+  || ambientSilk.wave > 1 || ambientSilk.breathingSeconds < 10 || ambientSilk.breathingStrength > .2 || ambientSilk.edgeFade > 1) {
+  throw new Error('Invalid ambient silk configuration');
+}
+
 if (!Object.values(friendDeck).every((value) => Number.isFinite(value) && value > 0)
   || friendDeck.cardStepRatio > 1 || friendDeck.viewportStepRatio > 1
   || friendDeck.maximumFrameMilliseconds < 16 || friendDeck.maximumFrameMilliseconds > 100
@@ -171,9 +181,7 @@ if (!Object.values(siteConfig.articles).every((value) => Number.isSafeInteger(va
   throw new Error('Invalid article display configuration');
 }
 
-if (!Number.isSafeInteger(siteConfig.currentWork.maximumLength) || siteConfig.currentWork.maximumLength < 1
-  || !Object.values(siteConfig.projectFields).every((value) => Number.isSafeInteger(value) && value > 0)
-  || siteConfig.currentWork.defaultText.length > siteConfig.currentWork.maximumLength
+if (!Object.values(siteConfig.projectFields).every((value) => Number.isSafeInteger(value) && value > 0)
   || new Set(siteConfig.projects.map((project) => project.repository)).size !== siteConfig.projects.length
   || siteConfig.projects.some((project) => !/^[\w.-]+\/[\w.-]+$/.test(project.repository)
     || !project.keyword || !project.description.includes(project.keyword)

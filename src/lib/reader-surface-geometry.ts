@@ -25,7 +25,7 @@ export function createReaderSurfacePath(width: number, height: number, cornerSiz
 
 // 刚展开的表面在当前任务内补齐轮廓，避免首帧回退为普通圆角。
 export function refreshReaderSurface(target: HTMLElement, width = target.offsetWidth, height = target.offsetHeight) {
-  if (!width || !height) return;
+  if (!width || !height || target.matches('[data-reader-text-action]')) return;
   const configured = Number.parseFloat(getComputedStyle(target).getPropertyValue('--reader-corner-size'));
   const corner = target.matches('[data-reader-code-surface]') ? Number.parseFloat(getComputedStyle(target).getPropertyValue('--reader-code-corner-size')) : target.matches('button,a,.reader-card-count,.reader-method-badge') ? Math.min(width, height) / 2 : configured;
   if (!Number.isFinite(corner) || corner <= 0) return;
@@ -44,7 +44,7 @@ export function initializeReaderSurfaces(root: HTMLElement) {
     }
   });
   const refresh = () => {
-    const elements = [...root.querySelectorAll<HTMLElement>('.reader-paper,button:not([data-avatar-select]),.reader-card-count,.reader-method-badge,[data-reader-code-surface]')];
+    const elements = [...root.querySelectorAll<HTMLElement>('.reader-paper,button:not([data-avatar-select],[data-reader-text-action]),.reader-card-count,.reader-method-badge,[data-reader-code-surface]')];
     elements.forEach((element) => {
       if (observed.has(element)) return;
       observed.add(element); element.classList.add('reader-curved-surface');

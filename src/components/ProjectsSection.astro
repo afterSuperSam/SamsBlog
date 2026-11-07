@@ -11,7 +11,7 @@ const commitFormatter = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shang
 <section class="home-projects" id="projects" data-project-section data-project-reveal={JSON.stringify(siteConfig.reveal)}>
   <div class="project-terrain" data-project-terrain aria-hidden="true"><canvas></canvas></div>
   <div class="shell" data-reveal>
-    <header><span class="section-kicker">PROJECTS</span><h2 class="section-title">我的项目</h2><span class="project-tape" data-pointer-tilt={siteConfig.effects.pointerTiltDegrees}>{settings.currentWork}</span></header>
+    <header><span class="section-kicker">PROJECTS</span><h2 class="section-title">我的项目</h2></header>
     <div class="project-list" id="home-project-list">
       {projects.map((project, index) => {
         const keywordIndex = project.keyword ? project.description.indexOf(project.keyword) : -1;

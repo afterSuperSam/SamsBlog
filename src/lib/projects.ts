@@ -15,15 +15,11 @@ export function getProjectSettings() {
   const projects = (database.prepare(`SELECT id,repository,name,description,url,keyword,status,visible,position
     FROM blog_projects WHERE deleted_at IS NULL ORDER BY position,id`).all() as Array<Omit<ProjectRecord, 'visible'> & { visible: number }> )
     .map((project) => ({ ...project, visible: Boolean(project.visible) }));
-  const currentWork = database.prepare("SELECT value FROM site_settings WHERE key = 'current-work'").get() as { value: string } | undefined;
-  return { currentWork: currentWork?.value ?? siteConfig.currentWork.defaultText, projects };
+  return { projects };
 }
 
 // 后台项目输入、排序和可见性在一个事务中保存。
 export function saveProjectSettings(input: Record<string, unknown>) {
-  if (typeof input.currentWork !== 'string' || !input.currentWork.trim() || input.currentWork.trim().length > siteConfig.currentWork.maximumLength) {
-    throw new HttpError(400, `最近在做需要 1 至 ${siteConfig.currentWork.maximumLength} 个字符`);
-  }
   if (!Array.isArray(input.projects)) throw new HttpError(400, '项目设置格式不正确');
   const entries = input.projects.map((value: unknown, position) => {
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new HttpError(400, '项目设置格式不正确');
@@ -58,7 +54,6 @@ export function saveProjectSettings(input: Record<string, unknown>) {
     const currentIds = (database.prepare('SELECT id FROM blog_projects WHERE deleted_at IS NULL').all() as Array<{ id: number }>).map((project) => project.id);
     if (ids.length !== currentIds.length || ids.some((id) => !currentIds.includes(id))) throw new HttpError(409, '项目列表已变化，请刷新后重新编辑');
     const now = new Date().toISOString();
-    database.prepare("INSERT INTO site_settings (key,value) VALUES ('current-work',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run((input.currentWork as string).trim());
     const update = database.prepare(`UPDATE blog_projects SET repository=@repository,name=@name,description=@description,url=@url,
       keyword=@keyword,status=@status,visible=@visible,position=@position,updated_at=@now WHERE id=@id AND deleted_at IS NULL`);
     const create = database.prepare(`INSERT INTO blog_projects (repository,name,description,url,keyword,status,visible,position,created_at,updated_at)

@@ -14,7 +14,7 @@ export function initializeReaderEffects(root: HTMLElement) {
   root.addEventListener('click', (event) => {
     if (!(event.target instanceof Element)) return;
     const control = event.target.closest<HTMLElement>('button.reader-curved-surface,a.reader-curved-surface');
-    if (!control || !root.contains(control) || control.matches(':disabled,[aria-disabled="true"],[data-avatar-select]')) return;
+    if (!control || !root.contains(control) || control.matches(':disabled,[aria-disabled="true"],[data-avatar-select],[data-reader-text-action]')) return;
     cleanupByControl.get(control)?.();
     const bounds = control.getBoundingClientRect();
     const geometry = readerRippleBounds(bounds.width, bounds.height, event.detail ? event.clientX - bounds.left : undefined, event.detail ? event.clientY - bounds.top : undefined);

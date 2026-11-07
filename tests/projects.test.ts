@@ -25,7 +25,8 @@ beforeAll(async () => {
 describe('dynamic project management', () => {
   it('migrates the original projects and preserves admin edits and dates', () => {
     const settings = getProjectSettings();
-    expect(settings.currentWork).toBe('保留最近工作');
+    expect(settings).not.toHaveProperty('currentWork');
+    expect(getDatabase().prepare("SELECT value FROM site_settings WHERE key='current-work'").get()).toEqual({ value: '保留最近工作' });
     expect(settings.projects).toHaveLength(4);
     expect(settings.projects[0]).toMatchObject({ name: '旧后台名称', description: '保留后台简介', url: 'https://custom.example.com/', status: 'maintenance', keyword: '', visible: true });
     expect(settings.projects.every((project) => Number.isSafeInteger(project.id))).toBe(true);
@@ -37,7 +38,7 @@ describe('dynamic project management', () => {
     const original = before.projects[0];
     const added = { repository: '', name: '小工具', description: '日常小工具', keyword: '工具', url: 'https://tools.example.com', status: 'active', visible: true };
     const projects = [added, ...before.projects.slice(1), { ...original, visible: false }];
-    const saved = saveProjectSettings({ currentWork: before.currentWork, projects });
+    const saved = saveProjectSettings({ projects });
     expect(saved.projects).toHaveLength(5);
     expect(saved.projects[0]).toMatchObject({ ...added, url: 'https://tools.example.com/', position: 0, id: expect.any(Number) });
     expect(saved.projects.at(-1)).toMatchObject({ id: original.id, visible: false, position: 4 });

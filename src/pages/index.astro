@@ -43,18 +43,3 @@ const hasArticles = latestArticles.length > 0;
 
   <FriendsSection featured />
 </BaseLayout>
-
-<script>
-  const pointerMotion = matchMedia('(hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference)');
-  document.querySelectorAll<HTMLElement>('[data-pointer-tilt]').forEach((surface) => {
-    surface.addEventListener('pointermove', (event) => {
-      if (!pointerMotion.matches || event.pointerType !== 'mouse' || document.documentElement.classList.contains('motion-paused')) return;
-      const bounds = surface.getBoundingClientRect();
-      const degrees = Number(surface.dataset.pointerTilt);
-      surface.style.setProperty('--pointer-tilt', `${(2 * (event.clientX - bounds.left) / bounds.width - 1) * degrees}deg`);
-    });
-    const resetTilt = () => surface.style.removeProperty('--pointer-tilt');
-    surface.addEventListener('pointerleave', resetTilt);
-    pointerMotion.addEventListener('change', resetTilt);
-  });
-</script>

@@ -25,6 +25,8 @@
   --guestbook-reader-identity-font-size: 1.25rem;
   --reader-card-padding-block: clamp(18px,2vw,22px);
   --reader-card-gap: 16px;
+  --reader-account-block-gap: 26px;
+  --reader-navigation-avatar-size: 32px;
   --reader-corner-size: 52px;
   --reader-account-surface: color-mix(in srgb,var(--reader-paper) 42%,transparent);
   --reader-summary-surface: color-mix(in srgb,var(--reader-paper) 48%,transparent);
@@ -47,11 +49,11 @@
   --reader-login-font-size: 1.25rem;
   --reader-provider-label-width: 110px;
   --reader-provider-compact-font-size: 1rem;
-  --reader-code-slot-size: clamp(64px,7vw,76px);
-  --reader-code-slot-height: 88px;
+  --reader-code-slot-size: clamp(72px,8vw,96px);
+  --reader-code-slot-height: clamp(100px,9vw,108px);
   --reader-code-slot-gap: 12px;
-  --reader-code-corner-size: 28px;
-  --reader-code-digit-size: 2.25rem;
+  --reader-code-corner-size: 32px;
+  --reader-code-digit-size: 2.5rem;
   --reader-code-digit-rise: 6px;
   --reader-code-slot-surface: color-mix(in srgb,var(--reader-accent) 10%,var(--reader-paper));
   --reader-code-filled-surface: color-mix(in srgb,var(--reader-accent) 26%,var(--reader-paper));
@@ -288,6 +290,9 @@
   --ease: var(--ease-out);
   --motion-drift: 18s;
   --ambient-halo-size: min(48vw,620px);
+  --ambient-silk-color: #61757f;
+  --ambient-silk-sheen: #b6aaa0;
+  --ambient-silk-opacity: .13;
   --ambient-rest-strength: .6;
   --ambient-quiet-strength: .16;
   --ambient-shift-duration: 1100ms;
@@ -317,6 +322,9 @@
 }
 
 :root[data-theme="light"] {
+  --ambient-silk-color: #bacdd3;
+  --ambient-silk-sheen: #edf3f4;
+  --ambient-silk-opacity: .1;
   --reader-control-shadow: #294b5d08;
   --reader-ripple-color: #447d90;
   --reader-paper: #fffaf2;
