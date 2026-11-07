@@ -79,10 +79,10 @@
 .sponsor-toggle:focus-visible{outline:2px solid var(--summer-blue);outline-offset:8px}
 .sponsor-display{position:relative;isolation:isolate;display:flex;flex-direction:column;gap:18px;min-width:0}
 .sponsor-display::before{position:absolute;inset:-12px 0;z-index:-1;content:"";border-radius:50%;background:radial-gradient(ellipse,color-mix(in srgb,var(--glow-blue) 18%,transparent),transparent 72%);filter:blur(12px);opacity:0;pointer-events:none;transition:opacity var(--motion-decoration-duration) var(--ease-out)}
-.sponsor-layout:has(.sponsor-toggle:focus-visible) :is(.sponsor-copy h2,.sponsor-smile){color:var(--summer-blue)}
+.sponsor-layout:has(.sponsor-toggle:focus-visible) .sponsor-copy h2{color:var(--summer-blue)}
 .sponsor-layout:has(.sponsor-toggle:focus-visible) .sponsor-copy h2{text-shadow:0 0 18px color-mix(in srgb,var(--glow-blue) 42%,transparent),0 0 38px color-mix(in srgb,var(--glow-blue) 22%,transparent)}
 .sponsor-layout:has(.sponsor-toggle:focus-visible) .sponsor-display::before{opacity:1}
-@media(hover:hover) and (pointer:fine){.sponsor-layout:hover :is(.sponsor-copy h2,.sponsor-smile){color:var(--summer-blue)}.sponsor-layout:hover .sponsor-copy h2{text-shadow:0 0 18px color-mix(in srgb,var(--glow-blue) 42%,transparent),0 0 38px color-mix(in srgb,var(--glow-blue) 22%,transparent)}.sponsor-layout:hover .sponsor-display::before{opacity:1}}
+@media(hover:hover) and (pointer:fine){.sponsor-layout:hover .sponsor-copy h2{color:var(--summer-blue)}.sponsor-layout:hover .sponsor-copy h2{text-shadow:0 0 18px color-mix(in srgb,var(--glow-blue) 42%,transparent),0 0 38px color-mix(in srgb,var(--glow-blue) 22%,transparent)}.sponsor-layout:hover .sponsor-display::before{opacity:1}}
 .sponsor-display [hidden]{display:none}
 .sponsor-list{font:400 var(--font-size-body)/1.8 var(--playful)}
 .sponsor-list h3{margin:0 0 18px;color:var(--text-soft);font:700 var(--font-size-body)/1.7 var(--playful)}
@@ -98,7 +98,7 @@
 @media(max-width:820px){.sponsor-layout:has(.sponsor-list--columns:not([hidden])){grid-template-columns:minmax(0,1fr)}}
 @media(max-width:580px){.sponsor-list--columns ol{grid-template-columns:minmax(0,1fr)}}
 
-.sponsor-smile { min-width:0; text-align:center; color:var(--summer-pink); font:700 clamp(40px,5.5vw,76px)/1.5 var(--playful); white-space:nowrap; animation:sponsor-wave 4s ease-in-out infinite alternate; transition:color var(--motion-reorder-duration) var(--ease-out); }
+.sponsor-smile { min-width:0; text-align:center; color:var(--sponsor-smile-color); font:700 clamp(40px,5.5vw,76px)/1.5 var(--playful); white-space:nowrap; animation:sponsor-wave 4s ease-in-out infinite alternate; transition:color var(--motion-reorder-duration) var(--ease-out); }
 @keyframes sponsor-wave { from{transform:translate(-4px,6px) rotate(-2deg)} to{transform:translate(4px,-12px) rotate(3deg)} }
 
 @keyframes sponsor-aura { to{opacity:.82;transform:translate(-50%,-50%) scale(1.12)} }
