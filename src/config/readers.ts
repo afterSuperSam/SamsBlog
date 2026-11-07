@@ -35,6 +35,8 @@ export const readerConfig = {
   emailGlobalLimit: boundedInteger('READER_EMAIL_GLOBAL_LIMIT', 100, 1000),
   verifySourceLimit: boundedInteger('READER_VERIFY_SOURCE_LIMIT', 30, 100),
   verifyGlobalLimit: boundedInteger('READER_VERIFY_GLOBAL_LIMIT', 1000, 10000),
+  verifyMinuteLimit: boundedInteger('READER_VERIFY_MINUTE_LIMIT', 5, 5),
+  verifyMinuteSeconds: 60,
   oauthSourceLimit: boundedInteger('READER_OAUTH_SOURCE_LIMIT', 30, 100),
   oauthGlobalLimit: boundedInteger('READER_OAUTH_GLOBAL_LIMIT', 1000, 10000),
   requestMaximumBytes: boundedInteger('READER_REQUEST_MAXIMUM_BYTES', 4096, 16384),

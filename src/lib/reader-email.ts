@@ -68,12 +68,14 @@ export async function sendReaderEmailCode(email: string, sourceHash: string) {
 
 export function verifyReaderEmailCode(email: string, code: unknown, sourceHash: string, cookies: ReaderCookies) {
   if (!getReaderAuthOptions().email) throw new HttpError(503, '邮箱登录尚未配置');
+  const address = emailIdentity(email);
   if (!takeReaderAllowance([
+    { key: `verify-minute-source:${sourceHash}`, maximum: readerConfig.verifyMinuteLimit, seconds: readerConfig.verifyMinuteSeconds, rolling: true },
+    { key: `verify-minute-email:${address}`, maximum: readerConfig.verifyMinuteLimit, seconds: readerConfig.verifyMinuteSeconds, rolling: true },
     { key: `verify-source:${sourceHash}`, maximum: readerConfig.verifySourceLimit, seconds: readerConfig.quotaWindowSeconds },
     { key: 'verify-global', maximum: readerConfig.verifyGlobalLimit, seconds: readerConfig.quotaWindowSeconds },
-  ])) throw new HttpError(429, '登录尝试过于频繁，请稍后重试');
+  ])) throw new HttpError(429, `验证码验证过于频繁，每分钟最多 ${readerConfig.verifyMinuteLimit} 次，请稍后再试`);
   if (typeof code !== 'string' || !new RegExp(`^\\d{${readerConfig.codeLength}}$`).test(code)) throw new HttpError(400, '请输入三位验证码，旧验证码请重新获取');
-  const address = emailIdentity(email);
   const submitted = readerPrivateHash('email-code', `${address}:${code}`);
   const database = getDatabase();
   const verified = database.transaction(() => {

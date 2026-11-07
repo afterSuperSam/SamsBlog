@@ -137,17 +137,19 @@ export function resolveReaderIdentity(provider: ReaderProvider | 'email', subjec
   }).immediate();
 }
 
-// 持久额度在一个立即事务内预占，异步发信和令牌交换不能穿过并发窗口。
-export function takeReaderAllowance(limits: Array<{ key: string; maximum: number; seconds: number }>, now = Date.now()) {
+// 持久额度在一个立即事务内预占；滚动配额按逐次过期记录计数，重发挑战不清零。
+export function takeReaderAllowance(limits: Array<{ key: string; maximum: number; seconds: number; rolling?: boolean }>, now = Date.now()) {
   const database = getDatabase();
   return database.transaction(() => {
     database.prepare('DELETE FROM reader_auth_limits WHERE expires_at<=?').run(now);
     for (const limit of limits) {
-      const current = database.prepare('SELECT count FROM reader_auth_limits WHERE key=?').get(limit.key) as { count: number } | undefined;
+      const current = (limit.rolling
+        ? database.prepare('SELECT count(*) AS count FROM reader_auth_limits WHERE key>=? AND key<?').get(`${limit.key}:`, `${limit.key};`)
+        : database.prepare('SELECT count FROM reader_auth_limits WHERE key=?').get(limit.key)) as { count: number } | undefined;
       if (current && current.count >= limit.maximum) return false;
     }
     for (const limit of limits) database.prepare(`INSERT INTO reader_auth_limits(key,count,expires_at) VALUES (?,1,?)
-      ON CONFLICT(key) DO UPDATE SET count=count+1`).run(limit.key, now + limit.seconds * 1000);
+      ON CONFLICT(key) DO UPDATE SET count=count+1`).run(limit.rolling ? `${limit.key}:${readerToken()}` : limit.key, now + limit.seconds * 1000);
     return true;
   }).immediate();
 }

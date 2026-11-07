@@ -23,30 +23,33 @@ export function createReaderSurfacePath(width: number, height: number, cornerSiz
     + ` L ${point(0, radius)} ${corner(([horizontal, vertical]) => [vertical, radius - horizontal])} Z`;
 }
 
+// 刚展开的表面在当前任务内补齐轮廓，避免首帧回退为普通圆角。
+export function refreshReaderSurface(target: HTMLElement, width = target.offsetWidth, height = target.offsetHeight) {
+  if (!width || !height) return;
+  const configured = Number.parseFloat(getComputedStyle(target).getPropertyValue('--reader-corner-size'));
+  const corner = target.matches('[data-reader-code-surface]') ? Number.parseFloat(getComputedStyle(target).getPropertyValue('--reader-code-corner-size')) : target.matches('button,a,.reader-card-count,.reader-method-badge') ? Math.min(width, height) / 2 : configured;
+  if (!Number.isFinite(corner) || corner <= 0) return;
+  target.classList.add('reader-curved-surface');
+  target.style.setProperty('--reader-surface-fallback-radius', '0px');
+  target.style.setProperty('--reader-surface-path', `path("${createReaderSurfacePath(width, height, corner)}")`);
+}
+
 // 仅裁剪背景伪元素；内容、焦点轮廓和头像均保持原有边界。
 export function initializeReaderSurfaces(root: HTMLElement) {
   const observed = new WeakSet<HTMLElement>();
-  const update = (target: HTMLElement, width: number, height: number) => {
-    if (!width || !height) return;
-    const configured = Number.parseFloat(getComputedStyle(target).getPropertyValue('--reader-corner-size'));
-    const corner = target.matches('button,a,.reader-card-count,.reader-method-badge') ? Math.min(width, height) / 2 : configured;
-    if (!Number.isFinite(corner) || corner <= 0) return;
-    target.style.setProperty('--reader-surface-fallback-radius', '0px');
-    target.style.setProperty('--reader-surface-path', `path("${createReaderSurfacePath(width, height, corner)}")`);
-  };
   const resize = new ResizeObserver((entries) => {
     for (const entry of entries) {
       const target = entry.target as HTMLElement;
-      update(target, entry.borderBoxSize[0]?.inlineSize || target.offsetWidth, entry.borderBoxSize[0]?.blockSize || target.offsetHeight);
+      refreshReaderSurface(target, entry.borderBoxSize[0]?.inlineSize || target.offsetWidth, entry.borderBoxSize[0]?.blockSize || target.offsetHeight);
     }
   });
   const refresh = () => {
-    const elements = [...root.querySelectorAll<HTMLElement>('.reader-paper,button:not([data-avatar-select]),.reader-card-count,.reader-method-badge')];
+    const elements = [...root.querySelectorAll<HTMLElement>('.reader-paper,button:not([data-avatar-select]),.reader-card-count,.reader-method-badge,[data-reader-code-surface]')];
     elements.forEach((element) => {
       if (observed.has(element)) return;
       observed.add(element); element.classList.add('reader-curved-surface');
       const bounds = element.getBoundingClientRect();
-      update(element, bounds.width, bounds.height);
+      refreshReaderSurface(element, bounds.width, bounds.height);
       resize.observe(element);
     });
   };

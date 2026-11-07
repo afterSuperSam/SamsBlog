@@ -10,7 +10,7 @@ export const siteConfig = {
     { href: '/about', label: '关于' },
     { href: '/reader', label: '读者' },
   ],
-  effects: { particleCount: 40, mobileParticleCount: 12, pointerTiltDegrees: 2.5, constellation: { desktopLineCount: 6, mobileLineCount: 3, desktopPointCount: 10, mobilePointCount: 6, connectionProbability: 0.5, refreshMilliseconds: 4200, fadeMilliseconds: 1100, maximumDistanceRatio: 0.26, maximumDegree: 2, scrollPeriodScreens: 2 } },
+  effects: { pointerTiltDegrees: 2.5 },
   navigation: { sectionActivationRatio: 0.35 },
   analytics: { visibleMilliseconds: 10000 },
   network: { sampleCount: 3, timeoutMilliseconds: 5000 },
@@ -33,6 +33,7 @@ export const siteConfig = {
   readingExtras: { historyVisibleCount: 2, quoteMaximumCharacters: 450, quoteWidth: 1080, quoteWordmarkWidth: 210, quoteFontSize: 42, quoteLineHeight: 72, quotePadding: 88, quoteMinimumHeight: 720 },
   readerPresentation: { readyTimeoutMilliseconds: 2000 },
   readerEffects: { rippleMilliseconds: 420, stillFeedbackMilliseconds: 100, rippleOpacity: .13 },
+  readerCodeSlots: { entryMilliseconds: 180, cascadeMilliseconds: 30, mergeMilliseconds: 360, checkMilliseconds: 240, successHoldMilliseconds: 180, stillSuccessMilliseconds: 300, errorRevealMilliseconds: 160, errorHoldMilliseconds: 480, stillErrorMilliseconds: 480, deadlineMilliseconds: 1600 },
   readerPopup: { widthPixels: 520, heightPixels: 720, pollMilliseconds: 3000, timeoutMilliseconds: 600000 },
   interactions: { feedbackResizeMilliseconds: 260, themeRevealMilliseconds: 760, keyboardInsetPixels: 18, requestTimeoutMilliseconds: 15000, tooltipDismissMilliseconds: 160, tooltipRevealMilliseconds: 180, receiptDurationMilliseconds: 1440 },
   projectPresentation: { initialVisibleCount: 4 },
@@ -194,25 +195,8 @@ if (!Number.isFinite(siteConfig.navigation.sectionActivationRatio) || siteConfig
   throw new Error('Invalid section navigation configuration');
 }
 
-const { particleCount, mobileParticleCount } = siteConfig.effects;
-const constellation = siteConfig.effects.constellation;
-if (![constellation.desktopLineCount, constellation.mobileLineCount, constellation.desktopPointCount, constellation.mobilePointCount, constellation.maximumDegree].every((value) => Number.isSafeInteger(value) && value > 0)
-  || constellation.desktopPointCount > particleCount || constellation.mobilePointCount > mobileParticleCount
-  || constellation.mobileLineCount > constellation.desktopLineCount || constellation.maximumDegree > 3
-  || constellation.desktopLineCount > constellation.desktopPointCount * constellation.maximumDegree / 2
-  || constellation.mobileLineCount > constellation.mobilePointCount * constellation.maximumDegree / 2
-  || ![constellation.refreshMilliseconds, constellation.fadeMilliseconds].every((value) => Number.isSafeInteger(value) && value > 0)
-  || constellation.refreshMilliseconds <= constellation.fadeMilliseconds * 2
-  || !Number.isFinite(constellation.maximumDistanceRatio) || constellation.maximumDistanceRatio <= 0 || constellation.maximumDistanceRatio > 1
-  || !Number.isFinite(constellation.connectionProbability) || constellation.connectionProbability < 0 || constellation.connectionProbability > 1
-  || !Number.isFinite(constellation.scrollPeriodScreens) || constellation.scrollPeriodScreens <= 0) {
-  throw new Error('Invalid constellation configuration');
-}
 if (!Number.isFinite(siteConfig.effects.pointerTiltDegrees) || siteConfig.effects.pointerTiltDegrees < 0 || siteConfig.effects.pointerTiltDegrees > 3) {
   throw new Error('Invalid pointer tilt configuration');
-}
-if (![particleCount, mobileParticleCount].every((value) => Number.isInteger(value) && value >= 0 && value <= 60) || mobileParticleCount > particleCount) {
-  throw new Error('Invalid visual effects configuration');
 }
 
 if (!Object.values(siteConfig.readerPopup).every((value) => Number.isSafeInteger(value) && value > 0) || siteConfig.readerPopup.pollMilliseconds >= siteConfig.readerPopup.timeoutMilliseconds) {
@@ -222,3 +206,5 @@ if (!Object.values(siteConfig.readerPopup).every((value) => Number.isSafeInteger
 if (!Number.isSafeInteger(siteConfig.readerPresentation.readyTimeoutMilliseconds) || siteConfig.readerPresentation.readyTimeoutMilliseconds <= 0 || siteConfig.readerPresentation.readyTimeoutMilliseconds > 5000) throw new Error('Invalid reader presentation deadline');
 
 if (![siteConfig.readerEffects.rippleMilliseconds, siteConfig.readerEffects.stillFeedbackMilliseconds].every((value) => Number.isSafeInteger(value) && value > 0 && value <= 1000) || siteConfig.readerEffects.rippleOpacity <= 0 || siteConfig.readerEffects.rippleOpacity > .3) throw new Error('Invalid reader effects configuration');
+
+if (!Object.values(siteConfig.readerCodeSlots).every((value) => Number.isSafeInteger(value) && value > 0 && value <= 5000) || siteConfig.readerCodeSlots.deadlineMilliseconds <= siteConfig.readerCodeSlots.mergeMilliseconds + siteConfig.readerCodeSlots.checkMilliseconds + siteConfig.readerCodeSlots.successHoldMilliseconds) throw new Error('Invalid reader code slots timing');

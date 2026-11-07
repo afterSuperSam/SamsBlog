@@ -7,21 +7,32 @@ interface Props { reader?: ReaderPublic | null }
 const { reader = null } = Astro.props;
 const initialSession = { reader, options: getReaderAuthOptions() };
 ---
-<section class="reader-login reader-paper" data-reader-login data-reader-session={JSON.stringify(initialSession)} aria-labelledby="reader-login-title">
-  <h2 id="reader-login-title" data-reader-login-title>登录 / 注册</h2>
-  <section>
-    <form method="post" action="/api/reader/email-login.json" data-reader-login-form autocomplete="off" autocapitalize="none" spellcheck="false" novalidate>
+<section class="reader-login reader-paper" data-reader-login data-step="email" data-reader-session={JSON.stringify(initialSession)} aria-labelledby="reader-login-title">
+  <form method="post" action="/api/reader/email-login.json" data-reader-login-form autocomplete="off" autocapitalize="none" spellcheck="false" novalidate>
+    <div class="reader-login__email-step" data-reader-email-step>
+      <h2 id="reader-login-title" data-reader-login-title>登录 / 注册</h2>
       <label class="reader-field paper-input-label" for="reader-login-email"><span>邮箱</span><input id="reader-login-email" name="email" type="text" inputmode="email" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="254" placeholder="you@example.com" required disabled /></label>
-      <div class="reader-code-row"><label class="reader-field paper-input-label" for="reader-login-code"><span>验证码</span><input id="reader-login-code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" pattern={`[0-9]{${readerConfig.codeLength}}`} maxlength={readerConfig.codeLength} placeholder="三位数字" required disabled /></label><button type="button" data-reader-login-send disabled>发送验证码</button></div>
-      <button class="reader-submit" type="submit" disabled>登录 / 注册</button>
-    </form>
-    <div class="reader-login__providers" role="group" aria-label="其他登录方式">
-      <button type="button" data-reader-provider="google" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" stroke="none" d="M21.6 12.2c0-.7-.1-1.4-.2-2.1H12v4h5.4a4.6 4.6 0 0 1-2 3 6.2 6.2 0 1 1 .1-10.3l3-3A10.3 10.3 0 1 0 12 22.3c5.9 0 9.6-4.1 9.6-10.1Z" /></svg>Google</button>
-      <button type="button" data-reader-provider="blogsclub" aria-label="BlogsClub" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><use href="/media/branding/blogsclub-symbol.svg#blogsclub-mark" /></svg>BlogsClub</button>
-      <button type="button" data-reader-provider="github" disabled><SocialIcon name="github" />GitHub</button>
-      <button type="button" data-reader-passkey-login disabled><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="5" /><path d="m11.5 11.5 8 8 2-2m-6-2 2-2M7 7h.01" /></svg>Passkey</button>
+      <button class="reader-submit" type="button" data-reader-login-send disabled>获取验证码</button>
+      <div class="reader-login__providers" role="group" aria-label="其他登录方式">
+        <button type="button" data-reader-provider="google" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" stroke="none" d="M21.6 12.2c0-.7-.1-1.4-.2-2.1H12v4h5.4a4.6 4.6 0 0 1-2 3 6.2 6.2 0 1 1 .1-10.3l3-3A10.3 10.3 0 1 0 12 22.3c5.9 0 9.6-4.1 9.6-10.1Z" /></svg>Google</button>
+        <button type="button" data-reader-provider="blogsclub" aria-label="BlogsClub" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><use href="/media/branding/blogsclub-symbol.svg#blogsclub-mark" /></svg>BlogsClub</button>
+        <button type="button" data-reader-provider="github" disabled><SocialIcon name="github" />GitHub</button>
+        <button type="button" data-reader-passkey-login disabled><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="5" /><path d="m11.5 11.5 8 8 2-2m-6-2 2-2M7 7h.01" /></svg>Passkey</button>
+      </div>
+      <p class="reader-login__notice">登录即表示您默认同意为安全验证目的处理您的邮箱、登录设备及粗略 IP 信息。</p>
     </div>
-  </section>
+    <div class="reader-login__code-step" data-reader-code-step hidden>
+      <label class="sr-only" for="reader-login-code">三位数字验证码</label>
+      <div class="reader-code-slots" data-reader-code-slots data-status="idle">
+        <input class="reader-code-input" id="reader-login-code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" pattern={`[0-9]{${readerConfig.codeLength}}`} maxlength={readerConfig.codeLength} aria-describedby="reader-code-status" required disabled />
+        {Array.from({ length: readerConfig.codeLength }, () => <span class="reader-code-slot" data-reader-code-slot data-reader-code-surface aria-hidden="true"><span data-reader-code-digit></span></span>)}
+        <span class="reader-code-wash" data-reader-code-wash data-reader-code-surface aria-hidden="true"><svg data-reader-code-check viewBox="0 0 24 24" fill="none"><path d="m5 12 4 4L19 6" /></svg></span>
+        <span class="reader-code-failure" aria-hidden="true"><svg data-reader-code-cross viewBox="0 0 24 24" fill="none"><path d="m6 6 12 12M18 6 6 18" /></svg></span>
+        <span id="reader-code-status" class="sr-only" data-reader-code-status role="status" aria-live="polite" aria-atomic="true">请输入三位数字验证码。</span>
+      </div>
+      <div class="reader-login__code-actions"><button type="button" data-reader-login-back disabled>回退</button><button type="submit" data-reader-login-confirm disabled>确定</button></div>
+    </div>
+  </form>
   <p class="reader-feedback" data-reader-login-feedback role="status" aria-live="polite" aria-atomic="true"></p>
   <div class="reader-login__secondary"><button type="button" data-reader-oauth-cancel hidden>取消本次授权</button><button type="button" data-reader-return-account hidden>返回账号</button></div>
   <noscript><p>登录需要启用 JavaScript。</p></noscript>

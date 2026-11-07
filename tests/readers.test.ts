@@ -393,10 +393,54 @@ describe('email login codes', () => {
     for (let index = 0; index < readerConfig.codeAttempts; index++) {
       expect(() => verifyReaderEmailCode('reader@example.com', wrong, 'email-source', cookies)).toThrow('验证码无效');
     }
-    expect(() => verifyReaderEmailCode('reader@example.com', mailbox.code(), 'email-source', cookies)).toThrow('验证码无效');
+    expect(() => verifyReaderEmailCode('reader@example.com', mailbox.code(), 'expiry-source', cookies)).toThrow('验证码无效');
     expect(getDatabase().prepare('SELECT attempts FROM reader_email_codes').get()).toEqual({ attempts: readerConfig.codeAttempts });
     getDatabase().prepare('UPDATE reader_email_codes SET attempts=0,expires_at=?').run(Date.now());
     expect(() => verifyReaderEmailCode('reader@example.com', mailbox.code(), 'email-source', cookies)).toThrow('验证码无效');
+  });
+
+  it('enforces five rolling source attempts across email and cookie changes, with exact per-attempt expiry', () => {
+    const now = vi.spyOn(Date, 'now'); const start = 200000;
+    for (let index = 0; index < 5; index++) {
+      now.mockReturnValue(start + index * 10000);
+      expect(() => verifyReaderEmailCode(`reader${index}@example.com`, '003', 'rolling-source', cookieJar().cookies)).toThrow('验证码无效');
+    }
+    now.mockReturnValue(start + 59999);
+    expect(() => verifyReaderEmailCode('new@example.com', '003', 'rolling-source', cookieJar().cookies)).toThrow('每分钟最多 5 次');
+    expect(getDatabase().prepare("SELECT count(*) AS count FROM reader_auth_limits WHERE key LIKE 'verify-minute-source:rolling-source:%'").get()).toEqual({ count: 5 });
+    now.mockReturnValue(start + 60000);
+    expect(() => verifyReaderEmailCode('new@example.com', '003', 'rolling-source', cookieJar().cookies)).toThrow('验证码无效');
+    expect(() => verifyReaderEmailCode('next@example.com', '003', 'rolling-source', cookieJar().cookies)).toThrow('每分钟最多 5 次');
+    now.mockReturnValue(start + 70000);
+    expect(() => verifyReaderEmailCode('next@example.com', '003', 'rolling-source', cookieJar().cookies)).toThrow('验证码无效');
+  });
+
+  it('retains the email minute quota across sources and a newly sent challenge without weakening its three-attempt limit', async () => {
+    const now = vi.spyOn(Date, 'now').mockReturnValue(100000); const mailbox = captureEmail();
+    const email = 'rolling@example.com'; const { cookies } = cookieJar();
+    await sendReaderEmailCode(email, 'send-source');
+    const wrong = String((Number(mailbox.code()) + 1) % 1000).padStart(3, '0');
+    now.mockReturnValue(160000);
+    for (let index = 0; index < 5; index++) {
+      expect(() => verifyReaderEmailCode(email, wrong, `source-${index}`, cookieJar().cookies)).toThrow('验证码无效');
+    }
+    expect(getDatabase().prepare('SELECT attempts FROM reader_email_codes').get()).toEqual({ attempts: 3 });
+    await sendReaderEmailCode(email, 'send-source');
+    expect(mailbox.fetchRequest).toHaveBeenCalledTimes(2);
+    expect(getDatabase().prepare('SELECT attempts FROM reader_email_codes').get()).toEqual({ attempts: 0 });
+    expect(() => verifyReaderEmailCode(email, mailbox.code(), 'fresh-source', cookies)).toThrow('每分钟最多 5 次');
+    expect(cookies.set).not.toHaveBeenCalled();
+    now.mockReturnValue(220000);
+    expect(verifyReaderEmailCode(email, mailbox.code(), 'fresh-source', cookies).loginMethod).toBe('email');
+    expect(readerConfig.verifyMinuteLimit).toBe(5); expect(readerConfig.verifyMinuteSeconds).toBe(60);
+  });
+
+  it('returns HTTP 429 for the sixth verification request even across refreshed cookie jars', async () => {
+    const responses = await Promise.all(Array.from({ length: 6 }, () => emailLogin(context('/api/reader/email-login.json', { email: 'reader@example.com', code: '003' }, cookieJar().cookies))));
+    expect(responses.map((response) => response.status).sort()).toEqual([400, 400, 400, 400, 400, 429]);
+    const denied = responses.find((response) => response.status === 429)!;
+    expect((await denied.json()).error).toContain('每分钟最多 5 次');
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it('shares persistent source/global send quotas and suppresses concurrent same-email requests', async () => {

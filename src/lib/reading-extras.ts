@@ -99,7 +99,7 @@ function wrapCanvasText(context: CanvasRenderingContext2D, text: string, width: 
   return lines;
 }
 
-// 摘录背景复用页面星点与主题色，只绘制一帧，正文下方减淡装饰。
+// 摘录背景复用页面光晕与主题色，只绘制一帧。
 function drawQuoteBackground(context: CanvasRenderingContext2D, width: number, height: number, styles: CSSStyleDeclaration) {
   context.save();
   context.fillStyle = styles.getPropertyValue('--quote-background').trim();
@@ -116,42 +116,7 @@ function drawQuoteBackground(context: CanvasRenderingContext2D, width: number, h
     context.globalAlpha = Number(styles.getPropertyValue('--quote-halo-opacity'));
     context.fillStyle = gradient; context.fillRect(0, 0, width, height);
   }
-  const padding = siteConfig.readingExtras.quotePadding;
-  const stars = [...document.querySelectorAll<HTMLElement>('.ambient-mote')].map((particle, index) => {
-    const appearance = getComputedStyle(particle);
-    const x = Number(particle.dataset.moteLeft) * width / 100;
-    const y = Number(particle.dataset.moteTop) * height / 100;
-    return { x, y, index: index + 1, color: appearance.backgroundColor, radius: Number.parseFloat(appearance.width) / 2,
-      behindText: x > padding && x < width - padding && y > padding && y < height - padding };
-  });
-  let connections = 0;
-  const constellation = siteConfig.effects.constellation;
-  const maximumDistance = Math.hypot(width, height) * constellation.maximumDistanceRatio;
-  context.strokeStyle = styles.getPropertyValue('--summer-blue').trim();
-  context.lineWidth = 1;
-  context.globalAlpha = Number(styles.getPropertyValue('--constellation-line-opacity')) * .65;
-  stars.forEach((star, index) => {
-    if (star.behindText || connections >= constellation.desktopLineCount) return;
-    const next = stars.slice(index + 1).find((other) => !other.behindText && Math.hypot(star.x - other.x, star.y - other.y) < maximumDistance);
-    if (!next) return;
-    context.beginPath(); context.moveTo(star.x, star.y); context.lineTo(next.x, next.y); context.stroke(); connections++;
-  });
-  for (const star of stars) {
-    context.save(); context.translate(star.x, star.y); context.fillStyle = star.color;
-    context.globalAlpha = Number(styles.getPropertyValue('--quote-star-opacity')) * (star.behindText ? .2 : 1);
-    const radius = star.radius;
-    if (star.index % 5 === 0) {
-      context.beginPath(); context.moveTo(0, -radius);
-      context.lineTo(radius * .2, -radius * .24); context.lineTo(radius, 0); context.lineTo(radius * .2, radius * .24);
-      context.lineTo(0, radius); context.lineTo(-radius * .2, radius * .24); context.lineTo(-radius, 0); context.lineTo(-radius * .2, -radius * .24);
-      context.closePath(); context.fill();
-    } else if (star.index % 3 === 0) {
-      context.rotate(Math.PI / 4); context.fillRect(-radius, -radius, radius * 2, radius * 2);
-    } else {
-      context.beginPath(); context.arc(0, 0, radius, 0, Math.PI * 2); context.fill();
-    }
-    context.restore();
-  }
+
   context.restore();
 }
 
