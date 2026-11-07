@@ -456,20 +456,35 @@ export function getDatabase() {
         connection.prepare('INSERT INTO schema_migrations (id,applied_at) VALUES (?,?)').run('20261107-reader-accounts', new Date().toISOString());
       }
       if (!appliedMigrations.has('20261107-reader-account-passkeys')) {
-        connection.exec(`ALTER TABLE readers ADD COLUMN website_url TEXT NOT NULL DEFAULT '';
-          ALTER TABLE readers ADD COLUMN webauthn_user_id TEXT;
-          CREATE UNIQUE INDEX readers_webauthn_user_idx ON readers(webauthn_user_id);
+        // 草稿版本可能已增加部分字段；按实际结构采用数据，再统一身份与会话约束。
+        const readerColumns = new Set((connection.pragma('table_info(readers)') as Array<{ name: string }>).map((column) => column.name));
+        const oauthColumns = new Set((connection.pragma('table_info(reader_oauth_states)') as Array<{ name: string }>).map((column) => column.name));
+        const sessionColumns = new Set((connection.pragma('table_info(reader_sessions)') as Array<{ name: string }>).map((column) => column.name));
+        if (!readerColumns.has('website_url')) connection.exec("ALTER TABLE readers ADD COLUMN website_url TEXT NOT NULL DEFAULT ''");
+        if (!readerColumns.has('webauthn_user_id')) connection.exec('ALTER TABLE readers ADD COLUMN webauthn_user_id TEXT');
+        const oauthProvider = oauthColumns.has('provider') ? 'provider' : "'blogsclub'";
+        const oauthVerifier = oauthColumns.has('pkce_verifier') ? (oauthColumns.has('verifier') ? 'COALESCE(pkce_verifier,verifier)' : 'pkce_verifier') : oauthColumns.has('verifier') ? 'verifier' : 'NULL';
+        const oauthNonce = oauthColumns.has('nonce') ? 'nonce' : 'NULL';
+        const sessionMethod = sessionColumns.has('login_method') ? 'login_method' : 'NULL';
+        const sessionPasskey = sessionColumns.has('passkey_id') ? 'passkey_id' : 'NULL';
+        connection.exec(`CREATE UNIQUE INDEX IF NOT EXISTS readers_webauthn_user_idx ON readers(webauthn_user_id);
           CREATE TABLE reader_identities_expanded (
             provider TEXT NOT NULL CHECK(provider IN ('blogsclub','email','github','google')), subject TEXT NOT NULL,
             reader_id INTEGER NOT NULL REFERENCES readers(id), PRIMARY KEY(provider,subject)
           );
-          INSERT INTO reader_identities_expanded SELECT * FROM reader_identities;
+          INSERT INTO reader_identities_expanded(provider,subject,reader_id) SELECT provider,subject,reader_id FROM reader_identities;
           DROP TABLE reader_identities;
           ALTER TABLE reader_identities_expanded RENAME TO reader_identities;
-          ALTER TABLE reader_oauth_states ADD COLUMN provider TEXT NOT NULL DEFAULT 'blogsclub' CHECK(provider IN ('blogsclub','github','google'));
-          ALTER TABLE reader_oauth_states ADD COLUMN pkce_verifier TEXT;
-          ALTER TABLE reader_oauth_states ADD COLUMN nonce TEXT;
-          CREATE TABLE reader_passkeys (
+          CREATE TABLE reader_oauth_states_expanded (
+            state_hash TEXT PRIMARY KEY, browser_hash TEXT NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL,
+            provider TEXT NOT NULL DEFAULT 'blogsclub' CHECK(provider IN ('blogsclub','github','google')), pkce_verifier TEXT, nonce TEXT
+          );
+          INSERT INTO reader_oauth_states_expanded(state_hash,browser_hash,created_at,expires_at,provider,pkce_verifier,nonce)
+            SELECT state_hash,browser_hash,created_at,expires_at,${oauthProvider},${oauthVerifier},${oauthNonce} FROM reader_oauth_states;
+          DROP TABLE reader_oauth_states;
+          ALTER TABLE reader_oauth_states_expanded RENAME TO reader_oauth_states;
+          CREATE INDEX reader_oauth_expiry_idx ON reader_oauth_states(expires_at);
+          CREATE TABLE IF NOT EXISTS reader_passkeys (
             id INTEGER PRIMARY KEY AUTOINCREMENT, credential_id TEXT NOT NULL UNIQUE,
             reader_id INTEGER NOT NULL REFERENCES readers(id), public_key BLOB NOT NULL,
             counter INTEGER NOT NULL CHECK(counter>=0), transports TEXT NOT NULL CHECK(json_valid(transports) AND json_type(transports)='array'),
@@ -477,19 +492,26 @@ export function getDatabase() {
             device_type TEXT NOT NULL CHECK(device_type IN ('singleDevice','multiDevice')),
             backed_up INTEGER NOT NULL CHECK(backed_up IN (0,1)), created_at TEXT NOT NULL, last_used_at TEXT, deleted_at TEXT
           );
-          CREATE INDEX reader_passkeys_reader_idx ON reader_passkeys(reader_id);
-          ALTER TABLE reader_sessions ADD COLUMN login_method TEXT CHECK(login_method IN ('email','blogsclub','github','google','passkey'));
-          ALTER TABLE reader_sessions ADD COLUMN passkey_id INTEGER REFERENCES reader_passkeys(id);
+          CREATE INDEX IF NOT EXISTS reader_passkeys_reader_idx ON reader_passkeys(reader_id);
+          CREATE TABLE reader_sessions_expanded (
+            token_hash TEXT PRIMARY KEY, reader_id INTEGER NOT NULL REFERENCES readers(id), created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL,
+            login_method TEXT CHECK(login_method IN ('email','blogsclub','github','google','passkey')), passkey_id INTEGER REFERENCES reader_passkeys(id)
+          );
+          INSERT INTO reader_sessions_expanded(token_hash,reader_id,created_at,expires_at,login_method,passkey_id)
+            SELECT token_hash,reader_id,created_at,expires_at,${sessionMethod},${sessionPasskey} FROM reader_sessions;
+          DROP TABLE reader_sessions;
+          ALTER TABLE reader_sessions_expanded RENAME TO reader_sessions;
+          CREATE INDEX reader_sessions_expiry_idx ON reader_sessions(expires_at);
           UPDATE reader_sessions SET login_method=(SELECT provider FROM reader_identities WHERE reader_id=reader_sessions.reader_id)
-            WHERE (SELECT count(*) FROM reader_identities WHERE reader_id=reader_sessions.reader_id)=1;
-          CREATE TABLE reader_passkey_challenges (
+            WHERE login_method IS NULL AND (SELECT count(*) FROM reader_identities WHERE reader_id=reader_sessions.reader_id)=1;
+          CREATE TABLE IF NOT EXISTS reader_passkey_challenges (
             token_hash TEXT PRIMARY KEY, challenge TEXT NOT NULL,
             kind TEXT NOT NULL CHECK(kind IN ('register','login')), reader_id INTEGER REFERENCES readers(id), session_hash TEXT,
             created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL
           );
-          CREATE INDEX reader_passkey_challenge_expiry_idx ON reader_passkey_challenges(expires_at);`);
+          CREATE INDEX IF NOT EXISTS reader_passkey_challenge_expiry_idx ON reader_passkey_challenges(expires_at);`);
         const updateHandle = connection.prepare('UPDATE readers SET webauthn_user_id=? WHERE id=?');
-        for (const row of connection.prepare('SELECT id FROM readers').all() as Array<{ id: number }>) updateHandle.run(randomBytes(32).toString('base64url'), row.id);
+        for (const row of connection.prepare('SELECT id FROM readers WHERE webauthn_user_id IS NULL').all() as Array<{ id: number }>) updateHandle.run(randomBytes(32).toString('base64url'), row.id);
         connection.prepare('INSERT INTO schema_migrations (id,applied_at) VALUES (?,?)').run('20261107-reader-account-passkeys', new Date().toISOString());
       }
       connection.exec('CREATE UNIQUE INDEX IF NOT EXISTS friends_active_url_idx ON friends(url) WHERE deleted_at IS NULL');

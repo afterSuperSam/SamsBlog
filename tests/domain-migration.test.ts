@@ -39,6 +39,75 @@ afterEach(() => {
 });
 
 describe('domain migration transaction', () => {
+  it.each(['original', 'oauth-provider', 'legacy-verifier', 'all-fields'])('upgrades reader draft schemas without losing identities or readding columns: %s', async (variant) => {
+    const legacy = new Database(path.join(directory, 'blog.sqlite'));
+    legacy.prepare('DELETE FROM schema_migrations WHERE id=?').run('20261107-reader-account-passkeys');
+    legacy.prepare(`INSERT INTO readers(id,display_name,avatar_url,created_at,updated_at,website_url,webauthn_user_id)
+      VALUES (91,'历史读者',NULL,'2026-01-01','2026-02-02','https://example.com/','fixture-existing-handle')`).run();
+    legacy.prepare("INSERT INTO reader_identities(provider,subject,reader_id) VALUES ('email','existing-subject',91)").run();
+    legacy.prepare("INSERT INTO reader_sessions(token_hash,reader_id,created_at,expires_at,login_method) VALUES ('existing-session',91,1,9999999999999,'passkey')").run();
+    legacy.prepare(`INSERT INTO reader_oauth_states(state_hash,browser_hash,created_at,expires_at,provider,pkce_verifier,nonce)
+      VALUES ('existing-state','existing-browser',1,9999999999999,'github','existing-verifier','existing-nonce')`).run();
+    if (variant === 'all-fields') {
+      legacy.exec(`INSERT INTO reader_passkeys(id,credential_id,reader_id,public_key,counter,transports,label,device_type,backed_up,created_at,last_used_at)
+        VALUES (92,'existing-credential',91,X'010203',17,'["internal"]','历史设备','multiDevice',1,'2026-01-01','2026-02-02');
+        UPDATE reader_sessions SET passkey_id=92;
+        INSERT INTO reader_passkey_challenges(token_hash,challenge,kind,reader_id,session_hash,created_at,expires_at)
+          VALUES ('existing-challenge-token','existing-challenge','register',91,'existing-session',1,9999999999999);`);
+    }
+    if (variant !== 'all-fields') {
+      legacy.exec(`DROP INDEX readers_webauthn_user_idx;
+        ALTER TABLE readers DROP COLUMN website_url;
+        ALTER TABLE readers DROP COLUMN webauthn_user_id;
+        ALTER TABLE reader_sessions DROP COLUMN passkey_id;
+        ALTER TABLE reader_sessions DROP COLUMN login_method;
+        DROP TABLE reader_passkey_challenges;
+        DROP TABLE reader_passkeys;`);
+    }
+    const oauthSchema = legacy.prepare("SELECT sql FROM sqlite_master WHERE name='reader_oauth_states'").get() as { sql: string };
+    legacy.exec(`${oauthSchema.sql.replace('reader_oauth_states', 'reader_oauth_states_legacy').replaceAll(",'google'", '')};
+      INSERT INTO reader_oauth_states_legacy SELECT * FROM reader_oauth_states;
+      DROP TABLE reader_oauth_states;
+      ALTER TABLE reader_oauth_states_legacy RENAME TO reader_oauth_states;`);
+    if (variant === 'original') legacy.exec('ALTER TABLE reader_oauth_states DROP COLUMN provider; ALTER TABLE reader_oauth_states DROP COLUMN pkce_verifier; ALTER TABLE reader_oauth_states DROP COLUMN nonce');
+    if (variant === 'legacy-verifier') {
+      legacy.exec(`CREATE TABLE reader_oauth_states_draft (
+        state_hash TEXT PRIMARY KEY, provider TEXT NOT NULL CHECK(provider IN ('github','google','blogsclub')),
+        browser_hash TEXT NOT NULL, verifier TEXT NOT NULL, nonce TEXT NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL
+      );
+      INSERT INTO reader_oauth_states_draft(state_hash,provider,browser_hash,verifier,nonce,created_at,expires_at)
+        SELECT state_hash,provider,browser_hash,pkce_verifier,nonce,created_at,expires_at FROM reader_oauth_states;
+      DROP TABLE reader_oauth_states;
+      ALTER TABLE reader_oauth_states_draft RENAME TO reader_oauth_states;`);
+    }
+    legacy.close();
+    connection = openDatabase();
+    expect(connection.prepare('SELECT display_name,website_url,webauthn_user_id FROM readers WHERE id=91').get()).toMatchObject({
+      display_name: '历史读者', website_url: variant === 'all-fields' ? 'https://example.com/' : '',
+      webauthn_user_id: variant === 'all-fields' ? 'fixture-existing-handle' : expect.stringMatching(/^[A-Za-z0-9_-]{43}$/),
+    });
+    expect(connection.prepare('SELECT provider,subject,reader_id FROM reader_identities WHERE reader_id=91').all()).toEqual([{ provider: 'email', subject: 'existing-subject', reader_id: 91 }]);
+    expect(connection.prepare("SELECT login_method FROM reader_sessions WHERE token_hash='existing-session'").get()).toEqual({ login_method: variant === 'all-fields' ? 'passkey' : 'email' });
+    expect(connection.prepare("SELECT provider,pkce_verifier,nonce FROM reader_oauth_states WHERE state_hash='existing-state'").get())
+      .toEqual(variant === 'original' ? { provider: 'blogsclub', pkce_verifier: null, nonce: null }
+        : { provider: 'github', pkce_verifier: 'existing-verifier', nonce: 'existing-nonce' });
+    expect(() => connection!.prepare("INSERT INTO reader_oauth_states(state_hash,browser_hash,created_at,expires_at,provider) VALUES ('new-state','new-browser',1,2,'blogsclub')").run()).not.toThrow();
+    expect(() => connection!.prepare("UPDATE reader_oauth_states SET provider='google'").run()).not.toThrow();
+    expect(() => connection!.prepare("UPDATE reader_oauth_states SET provider='invalid'").run()).toThrow(/CHECK/);
+    expect(connection.pragma('foreign_key_check')).toEqual([]);
+    if (variant === 'all-fields') {
+      expect(connection.prepare('SELECT id,credential_id,hex(public_key) AS publicKey,counter,label,last_used_at FROM reader_passkeys WHERE id=92').get())
+        .toEqual({ id: 92, credential_id: 'existing-credential', publicKey: '010203', counter: 17, label: '历史设备', last_used_at: '2026-02-02' });
+      expect(connection.prepare("SELECT passkey_id FROM reader_sessions WHERE token_hash='existing-session'").get()).toEqual({ passkey_id: 92 });
+      expect(connection.prepare("SELECT challenge FROM reader_passkey_challenges WHERE token_hash='existing-challenge-token'").get()).toEqual({ challenge: 'existing-challenge' });
+    }
+    expect(() => connection!.prepare("INSERT INTO reader_identities(provider,subject,reader_id) VALUES ('google','new-google',91)").run()).not.toThrow();
+    expect(() => connection!.prepare("UPDATE reader_sessions SET login_method='google' WHERE token_hash='existing-session'").run()).not.toThrow();
+    connection.close(); connection = undefined; vi.resetModules();
+    connection = (await import('../src/lib/db')).getDatabase();
+    expect(connection.prepare("SELECT count(*) AS count FROM schema_migrations WHERE id='20261107-reader-account-passkeys'").get()).toEqual({ count: 1 });
+  });
+
   it.each([true, false])('adds or adopts the feed summary column without losing cached entries, existing column=%s', async (existingColumn) => {
     const legacy = new Database(path.join(directory, 'blog.sqlite'));
     legacy.prepare('DELETE FROM schema_migrations WHERE id=?').run('20261107-friend-feed-summary');
