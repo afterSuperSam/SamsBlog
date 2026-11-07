@@ -5,6 +5,7 @@ import { randomBytes } from 'node:crypto';
 import { serverConfig } from '../config/server';
 import { siteConfig } from '../config/site';
 import { HttpError } from './http';
+import { normalizeArticleText, synchronizeArticleSearch } from './article-search';
 
 export type MessageStatus = 'pending' | 'published' | 'hidden';
 
@@ -33,6 +34,7 @@ export function getDatabase() {
   const connection = new Database(dbPath);
   connection.pragma('journal_mode = WAL');
   connection.pragma('foreign_keys = ON');
+  connection.function('article_normalize', { deterministic: true }, (value) => normalizeArticleText(String(value ?? '')));
   try {
     connection.transaction(() => {
       const friendsInitialized = connection.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'friends'").get();
@@ -519,6 +521,39 @@ export function getDatabase() {
         if (!readerColumns.has('notification_email')) connection.exec('ALTER TABLE readers ADD COLUMN notification_email TEXT CHECK(notification_email IS NULL OR length(notification_email)<=254)');
         connection.prepare('INSERT INTO schema_migrations (id,applied_at) VALUES (?,?)').run('20261107-reader-notification-email', new Date().toISOString());
       }
+      if (!appliedMigrations.has('20261107-media-purpose')) {
+        connection.exec("ALTER TABLE blog_media ADD COLUMN purpose TEXT NOT NULL DEFAULT 'library' CHECK(purpose IN ('library','avatar'))");
+        connection.prepare('INSERT INTO schema_migrations (id,applied_at) VALUES (?,?)').run('20261107-media-purpose', new Date().toISOString());
+      }
+      if (!appliedMigrations.has('20261107-article-search-pagination')) {
+        connection.exec(`
+          CREATE TABLE blog_article_search (
+            article_id INTEGER PRIMARY KEY REFERENCES blog_articles(id) ON DELETE CASCADE,
+            plain_text TEXT NOT NULL, normalized_text TEXT NOT NULL
+          );
+          CREATE TABLE blog_article_search_pending (article_id INTEGER PRIMARY KEY REFERENCES blog_articles(id) ON DELETE CASCADE);
+          CREATE VIRTUAL TABLE blog_article_search_fts USING fts5(tokens, tokenize='ascii', content='', contentless_delete=1, detail=none);
+          CREATE TRIGGER blog_article_search_insert AFTER INSERT ON blog_articles BEGIN
+            INSERT OR IGNORE INTO blog_article_search_pending SELECT new.id WHERE new.deleted_at IS NULL AND new.publication_status = 'published';
+          END;
+          CREATE TRIGGER blog_article_search_update AFTER UPDATE OF title, summary, content, publication_status, deleted_at ON blog_articles BEGIN
+            DELETE FROM blog_article_search_fts WHERE rowid = old.id;
+            DELETE FROM blog_article_search WHERE article_id = old.id;
+            DELETE FROM blog_article_search_pending WHERE article_id = old.id;
+            INSERT OR IGNORE INTO blog_article_search_pending SELECT new.id WHERE new.deleted_at IS NULL AND new.publication_status = 'published';
+          END;
+          CREATE TRIGGER blog_article_search_delete BEFORE DELETE ON blog_articles BEGIN
+            DELETE FROM blog_article_search_fts WHERE rowid = old.id;
+            DELETE FROM blog_article_search_pending WHERE article_id = old.id;
+          END;
+          INSERT INTO blog_article_search_pending SELECT id FROM blog_articles WHERE deleted_at IS NULL AND publication_status = 'published';
+          CREATE INDEX blog_articles_catalog_created_idx ON blog_articles(created_at DESC, id DESC) WHERE deleted_at IS NULL AND publication_status = 'published';
+          CREATE INDEX blog_articles_catalog_updated_idx ON blog_articles(updated_at DESC, id DESC) WHERE deleted_at IS NULL AND publication_status = 'published';
+          CREATE INDEX blog_articles_catalog_starred_idx ON blog_articles(starred, created_at DESC, id DESC) WHERE deleted_at IS NULL AND publication_status = 'published';
+          CREATE INDEX blog_articles_catalog_month_idx ON blog_articles(strftime('%Y-%m', created_at, '+8 hours'), created_at DESC, id DESC) WHERE deleted_at IS NULL AND publication_status = 'published';
+        `);
+        connection.prepare('INSERT INTO schema_migrations (id,applied_at) VALUES (?,?)').run('20261107-article-search-pagination', new Date().toISOString());
+      }
       connection.exec('CREATE UNIQUE INDEX IF NOT EXISTS friends_active_url_idx ON friends(url) WHERE deleted_at IS NULL');
       connection.exec('CREATE INDEX IF NOT EXISTS blog_articles_type_created_idx ON blog_articles(content_type, created_at DESC, id DESC) WHERE deleted_at IS NULL');
       connection.exec('CREATE INDEX IF NOT EXISTS friends_public_idx ON friends(visible, created_at ASC)');
@@ -542,6 +577,7 @@ export function getDatabase() {
         'https://moesam.com/images/optimized/group/1.jpg', new Date().toISOString(),
       );
     })();
+    synchronizeArticleSearch(connection);
   } catch (error) {
     connection.close();
     throw error;

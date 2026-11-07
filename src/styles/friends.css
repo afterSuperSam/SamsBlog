@@ -143,3 +143,6 @@
 .friend-application-dialog button:focus-visible{outline:2px solid var(--summer-blue);outline-offset:3px}
 .friend-application-dialog button:disabled{opacity:.5;cursor:wait}
 @media(max-width:560px){.friend-application-dialog form{grid-template-columns:minmax(0,1fr);gap:12px}.friend-application-guidelines>div{gap:10px}}
+
+/* 固定方形头像使用单张完整 C2 遮罩，避免缩放时拼接边缘出现细缝。 */
+.about-page .friend-card__icon.c2-clip{--c2-mask:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2046%2046%22%3E%3Cpath%20fill%3D%22white%22%20d%3D%22M%2018%200%20L%2028%200%20C%2034%200%2040%200%2043%203%20C%2046%206%2046%2012%2046%2018%20L%2046%2028%20C%2046%2034%2046%2040%2043%2043%20C%2040%2046%2034%2046%2028%2046%20L%2018%2046%20C%2012%2046%206%2046%203%2043%20C%200%2040%200%2034%200%2028%20L%200%2018%20C%200%2012%200%206%203%203%20C%206%200%2012%200%2018%200%20Z%22%2F%3E%3C%2Fsvg%3E");--c2-mask-size:100% 100%;--c2-mask-position:center}

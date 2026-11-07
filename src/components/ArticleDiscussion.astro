@@ -21,7 +21,7 @@ const dateLabel = (date: string) => new Date(date).toLocaleString('zh-CN', { tim
       <p class="form-status" data-reaction-feedback role="status"></p>
     </div>
   </header>
-  <form method="post" class="article-comment-form c2-surface" data-article-comment data-reader-authenticated={String(Boolean(reader))} novalidate>
+  <form method="post" class="article-comment-form c2-surface" data-article-comment data-reader-authenticated={String(Boolean(reader))} data-draft-reader={reader?.id} novalidate>
     <div class="article-comment-form__heading"><span data-comment-target>写给这篇文章</span><button type="button" data-cancel-comment-reply hidden>取消回复</button></div>
     <blockquote class="comment-quote c2-surface" data-comment-quote hidden><b data-comment-quote-name></b><p data-comment-quote-content></p></blockquote>
     <p class="reader-comment-identity"><span data-comment-reader hidden={!reader}>以读者 <b>{reader?.displayName}</b> 的身份留言</span><span data-comment-anonymous hidden={Boolean(reader)}>匿名评论审核后公开，也可以先 <a href="/reader">登录读者身份</a>。</span></p>
@@ -47,6 +47,8 @@ const dateLabel = (date: string) => new Date(date).toLocaleString('zh-CN', { tim
   import { attachPaperCaret } from '../lib/paper-caret';
   import { rememberVisitor } from '../lib/visitor-profile';
   import { initializeCommentInput } from '../lib/comment-tools';
+  import { initializeCommentDraft } from '../lib/comment-drafts';
+  import { setTaskFeedback } from '../lib/micro-feedback';
   import { renderCommentList } from '../lib/comment-rendering';
   import { siteConfig } from '../config/site';
   import type { MessageRecord } from '../lib/db';
@@ -61,6 +63,7 @@ const dateLabel = (date: string) => new Date(date).toLocaleString('zh-CN', { tim
     const cancel = root.querySelector<HTMLButtonElement>('[data-cancel-comment-reply]')!;
     const content = field('content') as HTMLTextAreaElement;
     const inputTools = initializeCommentInput(form, content);
+    const drafts = initializeCommentDraft(content, `article:${articleId}`, Number(form.dataset.draftReader) || null);
     const quoteBox = root.querySelector<HTMLElement>('[data-comment-quote]')!;
     let quoteMessageId: number | null = null;
     let quoteContent = '';
@@ -72,11 +75,12 @@ const dateLabel = (date: string) => new Date(date).toLocaleString('zh-CN', { tim
     attachPaperCaret(nickname);
     let anonymousNickname = nickname.readOnly ? '' : nickname.value;
     document.addEventListener('reader:session', (event) => {
-      const reader = (event as CustomEvent<{ displayName: string } | null>).detail;
+      const reader = (event as CustomEvent<{ id: number; displayName: string } | null>).detail;
       if (reader) {
         if (!nickname.readOnly) anonymousNickname = nickname.value;
         nickname.value = reader.displayName;
       } else if (nickname.readOnly) nickname.value = anonymousNickname;
+      drafts.switchIdentity(reader?.id ?? null); restoreDraftReply();
       nickname.readOnly = Boolean(reader);
       form.dataset.readerAuthenticated = String(Boolean(reader));
       form.querySelector<HTMLElement>('[data-comment-nickname]')!.hidden = Boolean(reader);
@@ -90,7 +94,15 @@ const dateLabel = (date: string) => new Date(date).toLocaleString('zh-CN', { tim
     content.addEventListener('compositionstart', () => { composing = true; });
     content.addEventListener('compositionend', () => { composing = false; });
     const resetReply = () => { parentId = null; quoteMessageId = null; quoteContent = ''; selectedQuote = undefined; quoteBox.hidden = true; target.textContent = '写给这篇文章'; cancel.hidden = true; };
-    cancel.addEventListener('click', resetReply);
+    const restoreDraftReply = () => {
+      const targetId = drafts.target.split(':')[4];
+      const button = targetId ? root.querySelector<HTMLButtonElement>(`[data-comment-message="${targetId}"]`) : null;
+      resetReply();
+      if (button) { parentId = Number(button.dataset.commentReply); target.textContent = `回复 ${button.dataset.commentName}`; cancel.hidden = false; }
+      else drafts.switchTarget(`article:${articleId}:root`);
+    };
+    restoreDraftReply();
+    cancel.addEventListener('click', () => { resetReply(); drafts.switchTarget(`article:${articleId}:root`); });
     document.addEventListener('selectionchange', () => {
       const selection = window.getSelection();
       const anchor = selection?.anchorNode;
@@ -108,6 +120,7 @@ const dateLabel = (date: string) => new Date(date).toLocaleString('zh-CN', { tim
     root.addEventListener('click', (event) => {
       const button = (event.target as Element).closest<HTMLButtonElement>('[data-comment-reply]');
       if (!button) return;
+      drafts.switchTarget(`article:${articleId}:reply:${button.dataset.commentReply}:${button.dataset.commentMessage}`);
       parentId = Number(button.dataset.commentReply); target.textContent = `回复 ${button.dataset.commentName}`; cancel.hidden = false;
       const quote = selectedQuote?.id === Number(button.dataset.commentMessage) ? selectedQuote : undefined;
       quoteMessageId = quote?.id ?? null; quoteContent = quote?.text || ''; quoteBox.hidden = !quote;
@@ -123,25 +136,27 @@ const dateLabel = (date: string) => new Date(date).toLocaleString('zh-CN', { tim
       const notifyReply = Boolean((field('notifyReply') as HTMLInputElement)?.checked && (authenticated || email));
       const body = { articleId, parentId, quoteMessageId, quoteContent, nickname: field('nickname')!.value.trim(), content: content.value.trim(), email: notifyReply ? email : '', notifyReply, website: field('website')!.value };
       const invalidName = !(field('nickname') as HTMLInputElement).readOnly && ([...body.nickname].length < 2 || [...body.nickname].length > 24);
-      if (invalidName || [...body.content].length < 2 || [...body.content].length > 500) { setFeedbackText(feedback, invalidName ? '称呼需要 2–24 个字符。' : '评论需要 2–500 个字符。'); (invalidName ? field('nickname')! : content).focus(); return; }
-      submit.disabled = true; setFeedbackText(feedback, '正在送出…');
+      if (invalidName || [...body.content].length < 2 || [...body.content].length > 500) { setTaskFeedback(feedback, invalidName ? '称呼需要 2–24 个字符。' : '评论需要 2–500 个字符。', 'error'); (invalidName ? field('nickname')! : content).focus(); return; }
+      const draftSnapshot = drafts.capture();
+      submit.disabled = true; setTaskFeedback(feedback, '正在送出…', 'pending');
       let posted = false;
       try {
         const published = await requestJson<{ error?: string; id?: number; status?: string; message?: string }>('/api/guestbook/messages.json', 'POST', body, '评论暂时无法送出，输入仍保留。'); posted = true;
         visitor.save();
-        if (!composing && content.value.trim() === body.content) {
-          content.value = ''; inputTools.resize(); refreshCaret();
-          if (parentId === body.parentId && quoteMessageId === body.quoteMessageId && quoteContent === body.quoteContent) resetReply();
+        if (drafts.complete(draftSnapshot)) {
+          inputTools.resize(); refreshCaret();
+          if (parentId === body.parentId && quoteMessageId === body.quoteMessageId && quoteContent === body.quoteContent) { resetReply(); drafts.switchTarget(`article:${articleId}:root`); }
         }
-        if (published.status !== 'published') { setFeedbackText(feedback, published.message || '评论已送达，审核后会公开展示。'); return; }
-        setFeedbackText(feedback, published.message || '评论已发表，谢谢你的分享。');
+        if (published.status !== 'published') { setTaskFeedback(feedback, published.message || '评论已送达，审核后会公开展示。', 'success'); return; }
+        setTaskFeedback(feedback, published.message || '评论已发表，谢谢你的分享。', 'success');
         const result = await requestJson<{ error?: string; messages: MessageRecord[] }>(`/api/guestbook/messages.json?articleId=${articleId}`, 'GET', undefined, '评论已发表，刷新后可查看。');
         renderCommentList(root.querySelector<HTMLElement>('[data-comment-list]')!, result.messages, published.id);
         root.querySelector<HTMLElement>('[data-comments-empty]')!.hidden = result.messages.length > 0;
-      } catch (error) { setFeedbackText(feedback, posted ? '评论已发表，列表暂时无法更新，刷新后可查看。' : error instanceof Error ? error.message : '评论发送失败，输入仍保留。'); }
+      } catch (error) { setTaskFeedback(feedback, posted ? '评论已发表，列表暂时无法更新，刷新后可查看。' : error instanceof Error ? error.message : '评论发送失败，输入仍保留。', posted ? 'success' : 'error'); }
       finally { submit.disabled = false; }
     });
     submit.disabled = false;
+    window.addEventListener('pagehide', (event) => { if (!event.persisted) { drafts.destroy(); inputTools.destroy(); } });
     const reactions = [...root.querySelectorAll<HTMLButtonElement>('[data-reaction]')];
     const reactionFeedback = root.querySelector<HTMLElement>('[data-reaction-feedback]')!;
     const renderReactions = (state: { counts: Record<string, number>; selected: string }) => reactions.forEach((button) => { button.setAttribute('aria-pressed', String(button.dataset.reaction === state.selected)); button.querySelector('[data-reaction-count]')!.textContent = state.counts[button.dataset.reaction!] ? String(state.counts[button.dataset.reaction!]) : ''; });

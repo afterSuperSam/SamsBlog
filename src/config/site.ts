@@ -24,7 +24,7 @@ export const siteConfig = {
   ],
   sponsorPresentation: { twoColumnMinimumCount: 6, avatarSizePixels: 64, avatarBaseUrl: 'https://minotar.net/helm/', avatarTimeoutMilliseconds: 4000, avatarPreloadMarginPixels: 240 },
   sponsorFields: { nameMaximumLength: 60, maximumAmount: 1000000 },
-  articles: { initialVisibleTagCount: 3, homepageCount: 1, homepageNoteCount: 2, homepageLinkCount: 1, feedCount: 20, cardCount: 3, reorderMilliseconds: 420, maximumTags: 8, tagMaximumLength: 24, searchMaximumLength: 120, searchDelayMilliseconds: 180, searchRevealMilliseconds: 280, searchDismissMilliseconds: 180 },
+  articles: { pageSize: 12, paginationRadius: 2, searchIndexBatchSize: 32, searchSnippetLength: 160, searchSnippetContext: 36, initialVisibleTagCount: 3, homepageCount: 1, homepageNoteCount: 2, homepageLinkCount: 1, feedCount: 20, cardCount: 3, reorderMilliseconds: 420, maximumTags: 8, tagMaximumLength: 24, searchMaximumLength: 120, searchDelayMilliseconds: 180, searchRevealMilliseconds: 280, searchDismissMilliseconds: 180 },
   articleReading: { positionStorageKey: 'sams-blog-reading-positions', fontPreferenceStorageKey: 'sams-blog-reading-font', typographyStorageKey: 'sams-blog-reading-typography', fontSizeMinimum: 18, fontSizeMaximum: 26, fontSizeDefault: 20, fontSizeStep: 2, imageLoadTimeoutMilliseconds: 15000, positionLimit: 50, positionSaveMilliseconds: 1000, positionMinimumPixels: 240, imageZoomScale: 2, copyFeedbackMilliseconds: 1800, codeCollapsedLines: 16 },
   visitorProfile: { storageKey: 'sams-blog-visitor-profile', nicknameMaximumLength: 24, emailMaximumLength: 254 },
   discussion: { textareaMaximumLines: 8, visibleReplyCount: 3, collapsedContentCharacters: 180, quoteMaximumCharacters: 180, recentEmoticonLimit: 6, recentEmoticonStorageKey: 'sams-blog-recent-emoticons', emoticons: [
@@ -32,6 +32,9 @@ export const siteConfig = {
     '٩(ˊᗜˋ*)و', '(ﾉ◕ヮ◕)ﾉ*:･ﾟ✧',
   ] },
   readingExtras: { historyVisibleCount: 2, quoteMaximumCharacters: 450, quoteWidth: 1080, quoteWordmarkWidth: 210, quoteFontSize: 42, quoteLineHeight: 72, quotePadding: 88, quoteMinimumHeight: 720 },
+  readingEstimate: { charactersPerMinute: 400, wordsPerMinute: 220 },
+  commentDrafts: { storageKey: 'sams-blog-comment-drafts', maximumEntries: 40, maximumCharacters: 1000, lifetimeDays: 7 },
+  interactionFeedback: { glideMilliseconds: 240, segmentMilliseconds: 440, segmentStretchRatio: .14, statusSpinMilliseconds: 1100 },
   readerPresentation: { readyTimeoutMilliseconds: 2000 },
   readerEffects: { rippleMilliseconds: 420, stillFeedbackMilliseconds: 100, rippleOpacity: .13 },
   readerCodeSlots: { entryMilliseconds: 180, cascadeMilliseconds: 30, mergeMilliseconds: 360, checkMilliseconds: 240, successHoldMilliseconds: 180, stillSuccessMilliseconds: 300, errorRevealMilliseconds: 160, errorHoldMilliseconds: 480, stillErrorMilliseconds: 480, deadlineMilliseconds: 1600 },
@@ -73,6 +76,11 @@ export const siteConfig = {
 } as const;
 
 const rssUrl = new URL(siteConfig.rss.siteUrl);
+if (!Object.values(siteConfig.readingEstimate).every((value) => Number.isSafeInteger(value) && value > 0)
+  || !siteConfig.commentDrafts.storageKey || ![siteConfig.commentDrafts.maximumEntries, siteConfig.commentDrafts.maximumCharacters, siteConfig.commentDrafts.lifetimeDays].every((value) => Number.isSafeInteger(value) && value > 0)
+  || siteConfig.commentDrafts.maximumEntries > 100 || siteConfig.commentDrafts.maximumCharacters > 2000 || siteConfig.commentDrafts.lifetimeDays > 30
+  || ![siteConfig.interactionFeedback.glideMilliseconds, siteConfig.interactionFeedback.segmentMilliseconds, siteConfig.interactionFeedback.statusSpinMilliseconds].every((value) => Number.isSafeInteger(value) && value > 0)
+  || ![siteConfig.interactionFeedback.segmentStretchRatio].every((value) => Number.isFinite(value) && value >= 0 && value <= .4)) throw new Error('Invalid feedback or comment draft configuration');
 if (!siteConfig.friendApplications.ownerName.trim()
   || ![siteConfig.friendApplications.iconUrl, siteConfig.friendApplications.backgroundUrl].every((value) => /^\/(?!\/)[\w./-]+$/.test(value)
     && value.slice(1).split('/').every((segment) => segment !== '' && segment !== '.' && segment !== '..'))) {
@@ -177,7 +185,10 @@ if (![reveal.durationMilliseconds, reveal.characterDurationMilliseconds].every((
   throw new Error('Invalid reveal animation configuration');
 }
 
-if (!Object.values(siteConfig.articles).every((value) => Number.isSafeInteger(value) && value > 0)) {
+if (!Object.values(siteConfig.articles).every((value) => Number.isSafeInteger(value) && value > 0)
+  || siteConfig.articles.pageSize > 100 || siteConfig.articles.paginationRadius > 5
+  || siteConfig.articles.searchIndexBatchSize > 100 || siteConfig.articles.searchMaximumLength > 200
+  || siteConfig.articles.searchSnippetLength > 500 || siteConfig.articles.searchSnippetContext >= siteConfig.articles.searchSnippetLength) {
   throw new Error('Invalid article display configuration');
 }
 

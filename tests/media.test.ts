@@ -15,6 +15,11 @@ import { renderMarkdown } from '../src/lib/markdown';
 import { updateEditorInsertion } from '../src/lib/editor-insertion';
 import { mediaReferenceUrl, parseMediaReference, mediaReferenceSelection } from '../src/lib/media-reference';
 
+vi.mock('node:fs/promises', async (original) => {
+  const actual = await original<typeof import('node:fs/promises')>();
+  return { ...actual, readFile: vi.fn(actual.readFile) };
+});
+
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6u1sAAAAASUVORK5CYII=', 'base64');
 const file = () => new File([png], '../图片<script>.png', { type: 'image/png' });
 const address = 'https://blog.example.com/api/admin/media.json';
@@ -28,6 +33,29 @@ const upload = (origin = 'https://blog.example.com', authorized = true, image = 
 const mutation = (handler: APIRoute, method: string, body: unknown) => call(handler, new Request(address, { method, headers: { 'Content-Type': 'application/json', origin: 'https://blog.example.com' }, body: JSON.stringify(body) }));
 
 describe('authenticated image storage and media management', () => {
+  it('serves HEAD metadata and conditional headers without opening the image body', async () => {
+    const media = await saveMedia(file());
+    const reads = vi.mocked(readFile); reads.mockClear();
+    const response = await mediaResponse(media.filename, new Request(`https://blog.example.com${media.url}`, { method: 'HEAD' }));
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Content-Type')).toBe('image/png');
+    expect(response.headers.get('Content-Length')).toBe(String(png.length));
+    expect(response.headers.get('ETag')).toBe(`"${media.filename}"`);
+    expect(response.headers.get('X-Content-Type-Options')).toBe('nosniff');
+    expect(response.headers.get('Cache-Control')).toBe('public, max-age=0, must-revalidate');
+    expect(await response.text()).toBe('');
+    const conditional = await mediaResponse(media.filename, new Request(`https://blog.example.com${media.url}`, { method: 'HEAD', headers: { 'If-None-Match': `"${media.filename}"` } }));
+    expect(conditional.status).toBe(304);
+    expect(reads).not.toHaveBeenCalled();
+    const preview = await mediaResponse(media.filename, new Request(`https://blog.example.com${media.url}`, { method: 'HEAD' }), true);
+    expect(preview.headers.get('Cache-Control')).toBe('private, no-store');
+    expect(reads).not.toHaveBeenCalled();
+    const get = await mediaResponse(media.filename, new Request(`https://blog.example.com${media.url}`));
+    expect(Buffer.from(await get.arrayBuffer())).toEqual(png);
+    expect(reads).toHaveBeenCalledTimes(1);
+    getDatabase().prepare('DELETE FROM blog_media WHERE id=?').run(media.id);
+  });
+
   it('rejects unauthenticated access and cross-origin multipart uploads', async () => {
     expect((await upload(undefined, false)).status).toBe(401);
     expect((await upload('https://other.example.com')).status).toBe(403);

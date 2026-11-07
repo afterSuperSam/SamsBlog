@@ -1,4 +1,5 @@
-import { mkdtemp } from 'node:fs/promises';
+import { mkdtemp, stat } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { APIContext } from 'astro';
@@ -6,7 +7,7 @@ import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { readerConfig } from '../src/config/readers';
 import { createMessage, listPublishedMessages, updateMessageStatus, deleteMessage, getDatabase } from '../src/lib/db';
 import { saveArticle, withdrawArticle } from '../src/lib/articles';
-import { getReaderAccount, listReaderComments, updateReaderProfile } from '../src/lib/reader-account';
+import { getReaderAccount, listReaderComments, updateReaderAvatar, updateReaderProfile } from '../src/lib/reader-account';
 import { readReaderSession, resolveReaderIdentity, startReaderSession, type ReaderCookies, type ReaderPublic } from '../src/lib/readers';
 import { changeMediaVisibility, getMedia, mediaResponse, saveMedia } from '../src/lib/media';
 import { GET, PATCH } from '../src/pages/api/reader/account.json';
@@ -15,6 +16,7 @@ import { POST as uploadAvatar } from '../src/pages/api/reader/avatar.json';
 import { DELETE as deleteMedia } from '../src/pages/api/admin/media.json';
 import { POST as postComment } from '../src/pages/api/guestbook/messages.json';
 import { GET as session } from '../src/pages/api/reader/session.json';
+import { siteConfig } from '../src/config/site';
 
 vi.mock('../src/lib/reply-notifications', async (original) => ({ ...await original<object>(), replyNotificationsConfigured: true, queueReplyNotification: vi.fn(), queueAdminNotification: vi.fn() }));
 
@@ -249,5 +251,68 @@ describe('reader account isolation', () => {
     const response = await comments(context(cookies, 'GET', undefined, `/api/reader/comments.json?readerId=${other.id}&page=2`));
     expect((await response.json()).total).toBe(readerConfig.accountPageSize + 3);
     expect((await comments(context(cookies, 'GET', undefined, '/api/reader/comments.json?page=0'))).status).toBe(400);
+  });
+});
+
+let avatarSequence = 100;
+function uniqueAvatar() {
+  const bytes = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
+  bytes.writeUInt16LE(++avatarSequence, 6);
+  return new File([bytes], `fixture-${avatarSequence}.gif`);
+}
+const storedAvatar = (address: string) => path.join(process.env.BLOG_DATA_DIR!, 'uploads', address.split('/').pop()!);
+
+describe('unused avatar ownership and references', () => {
+  it('reclaims only the previous unreferenced avatar after a successful committed replacement', async () => {
+    const { reader } = fixture();
+    const original = await updateReaderAvatar(reader, uniqueAvatar());
+    const previous = original.reader.avatarUrl!;
+    const replacementFile = uniqueAvatar();
+    const replacement = await updateReaderAvatar(reader, replacementFile);
+    expect(replacement.reader.avatarUrl).not.toBe(previous);
+    expect(getMedia(previous.split('/').pop()!, true)).toBeUndefined();
+    await expect(stat(storedAvatar(previous))).rejects.toMatchObject({ code: 'ENOENT' });
+    await updateReaderAvatar(reader, replacementFile);
+    expect((await stat(storedAvatar(replacement.reader.avatarUrl!))).isFile()).toBe(true);
+    await expect(updateReaderAvatar(reader, new File(['<svg/>'], 'bad.png'))).rejects.toMatchObject({ status: 415 });
+    expect(getReaderAccount(reader).reader.avatarUrl).toBe(replacement.reader.avatarUrl);
+    expect((await stat(storedAvatar(replacement.reader.avatarUrl!))).isFile()).toBe(true);
+  });
+
+  it.each(['account', 'deleted-account', 'article', 'deleted-article', 'draft', 'library', 'promoted-library', 'configuration', 'external'] as const)('preserves old files referenced by %s', async (reference) => {
+    const { reader } = fixture();
+    const originalFile = uniqueAvatar();
+    if (reference === 'library') await saveMedia(originalFile);
+    const original = await updateReaderAvatar(reader, originalFile);
+    const address = original.reader.avatarUrl!;
+    const filename = address.split('/').pop()!;
+    const database = getDatabase();
+    const previousBackground = siteConfig.friendApplications.backgroundUrl;
+    if (reference === 'account' || reference === 'deleted-account') {
+      const other = fixture().reader;
+      database.prepare('UPDATE readers SET avatar_url=?,deleted_at=? WHERE id=?').run(address, reference === 'deleted-account' ? new Date().toISOString() : null, other.id);
+    } else if (reference === 'article' || reference === 'deleted-article') {
+      const articleId = saveArticle({ title: '隔离头像引用', content: `![引用](<${address}>)`, source: 'original', category: 'journal' });
+      if (reference === 'deleted-article') database.prepare('UPDATE blog_articles SET deleted_at=? WHERE id=?').run(new Date().toISOString(), articleId);
+    } else if (reference === 'draft') {
+      const encoded = address.replace(filename, '%' + filename.charCodeAt(0).toString(16) + filename.slice(1));
+      database.prepare('INSERT INTO blog_article_drafts(id,payload,revision,updated_at) VALUES (?,?,1,?)').run(randomUUID(), JSON.stringify({ content: `![草稿](${encoded})`, coverUrl: '' }), new Date().toISOString());
+    } else if (reference === 'promoted-library') await saveMedia(originalFile);
+    else if (reference === 'configuration') (siteConfig.friendApplications as { backgroundUrl: string }).backgroundUrl = address;
+    else if (reference === 'external') database.prepare('UPDATE readers SET avatar_url=? WHERE id=?').run(`https://other.example${address}`, reader.id);
+    try {
+      await updateReaderAvatar(reader, uniqueAvatar());
+      expect(getMedia(filename)).toBeDefined();
+      expect((await stat(storedAvatar(address))).isFile()).toBe(true);
+    } finally { (siteConfig.friendApplications as { backgroundUrl: string }).backgroundUrl = previousBackground; }
+  });
+
+  it('retains the original file when the authenticated reader is removed before replacement', async () => {
+    const { reader } = fixture();
+    const original = await updateReaderAvatar(reader, uniqueAvatar());
+    getDatabase().prepare('UPDATE readers SET deleted_at=? WHERE id=?').run(new Date().toISOString(), reader.id);
+    await expect(updateReaderAvatar(reader, uniqueAvatar())).rejects.toMatchObject({ status: 401 });
+    expect(getMedia(original.reader.avatarUrl!.split('/').pop()!)).toBeDefined();
+    expect((await stat(storedAvatar(original.reader.avatarUrl!))).isFile()).toBe(true);
   });
 });

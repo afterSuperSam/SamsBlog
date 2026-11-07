@@ -5,6 +5,15 @@ import { createReaderSurfacePath } from '../src/lib/reader-surface-geometry';
 const styles = readFileSync(new URL('../src/styles/surfaces.css', import.meta.url), 'utf8');
 
 describe('server-rendered C2 surface masks', () => {
+  it('keeps square friend avatars in one complete C2 mask without internal tile seams', () => {
+    const friendStyles = readFileSync(new URL('../src/styles/friends.css', import.meta.url), 'utf8');
+    const rule = friendStyles.match(/\.about-page \.friend-card__icon\.c2-clip\{([^}]+)\}/)?.[1] || '';
+    const image = decodeURIComponent(rule.match(/data:image\/svg\+xml,([^\"]+)/)?.[1] || '');
+    expect(image).toContain('viewBox="0 0 46 46"');
+    expect(image.match(/ d="([^"]+)"/)?.[1]).toBe(createReaderSurfacePath(46, 46, 18));
+    expect(rule.match(/url\(/g)).toHaveLength(1);
+    expect(rule).toContain('--c2-mask-size:100% 100%');
+  });
   it('uses all four fixed SVG quadrants from the proven C2 geometry without a stretched whole-box clip', () => {
     const images = [...styles.matchAll(/url\("data:image\/svg\+xml,([^\"]+)"\)/g)].map((match) => decodeURIComponent(match[1]));
     expect(images).toHaveLength(4);

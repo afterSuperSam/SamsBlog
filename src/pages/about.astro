@@ -255,6 +255,7 @@ const modelTokenUsage = buildTokenUsageCalendar(new Map<string, TokenUsage>([
     };
     const counters = [...statisticsPanel.querySelectorAll<HTMLElement>('[data-stat-value]')].map((element) => ({ element, value: Number(element.dataset.statValue), displayed: -1 }));
     const formatter = new Intl.NumberFormat('zh-CN');
+    counters.forEach((counter) => { counter.element.style.minInlineSize = `${formatter.format(counter.value).length}ch`; });
     const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
     const motionIsDisabled = () => reducedMotion.matches || document.documentElement.classList.contains('motion-paused');
     let countFrame = 0;
@@ -270,6 +271,7 @@ const modelTokenUsage = buildTokenUsageCalendar(new Map<string, TokenUsage>([
         const value = totals[counter.element.dataset.statKey || ''];
         if (!Number.isSafeInteger(value) || value < 0) return;
         counter.value = value; counter.element.dataset.statValue = String(value);
+        counter.element.style.minInlineSize = `${formatter.format(value).length}ch`;
         const reader = counter.element.parentElement?.querySelector('.stat-reader-value');
         if (reader) reader.textContent = formatter.format(value);
       });

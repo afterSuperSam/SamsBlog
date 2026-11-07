@@ -110,6 +110,7 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
 </section>
 
 <script>
+  import { markTaskState, setTaskFeedback } from '../lib/micro-feedback';
   import { createArticlePreview } from '../lib/article-preview';
   import type { ArticleRecord } from '../lib/articles';
   import { confirmAdminAction, confirmAdminDiscard, prepareAdminNavigation, registerAdminDraft } from '../lib/admin-dialog';
@@ -230,7 +231,7 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
         return true;
       } catch (error) {
         if (!(error instanceof Error)) throw error;
-        animateContentHeight(tagFeedback, () => { tagFeedback.textContent = error.message; tagFeedback.dataset.state = 'error'; });
+        animateContentHeight(tagFeedback, () => { tagFeedback.textContent = error.message; tagFeedback.dataset.state = 'error'; markTaskState(tagFeedback, 'error'); });
         tagInput.setAttribute('aria-invalid', 'true');
         tagInput.focus();
         return false;
@@ -276,13 +277,13 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
       event.preventDefault();
       const maximumBytes = Number(editor.querySelector<HTMLElement>('[data-admin-media]')?.dataset.maximumBytes);
       if (files.some((file) => !file.size || file.size > maximumBytes)) {
-        feedback.textContent = `请选择不超过 ${maximumBytes / 1024 / 1024} MB 的图片。`; feedback.dataset.state = 'error'; return;
+        feedback.textContent = `请选择不超过 ${maximumBytes / 1024 / 1024} MB 的图片。`; feedback.dataset.state = 'error'; markTaskState(feedback, 'error'); return;
       }
       const identity = editorSession;
       const insertion: EditorInsertion = { value: content.value, start: content.selectionStart, end: content.selectionEnd };
       pendingInsertions.add(insertion);
       pendingUploads++;
-      feedback.textContent = '正在上传剪贴板图片，可以继续编辑…'; feedback.dataset.state = 'loading';
+      feedback.textContent = '正在上传剪贴板图片，可以继续编辑…'; feedback.dataset.state = 'loading'; markTaskState(feedback, 'pending');
       const uploaded: MediaRecord[] = [];
       let failure = '';
       try {
@@ -314,13 +315,13 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
             content.dispatchEvent(new Event('input', { bubbles: true }));
           }
         }
-        feedback.textContent = failure || '剪贴板图片已插入，保存文章后公开展示。'; feedback.dataset.state = failure ? 'error' : 'success';
+        feedback.textContent = failure || '剪贴板图片已插入，保存文章后公开展示。'; feedback.dataset.state = failure ? 'error' : 'success'; markTaskState(feedback, failure ? 'error' : 'success');
       } finally { pendingInsertions.delete(insertion); if (identity === editorSession) pendingUploads--; }
     });
     editor.addEventListener('submit', (event) => {
       if (!pendingUploads) return;
       event.preventDefault(); event.stopImmediatePropagation();
-      feedback.textContent = '图片仍在上传，请完成后再发布。'; feedback.dataset.state = 'error';
+      feedback.textContent = '图片仍在上传，请完成后再发布。'; feedback.dataset.state = 'error'; markTaskState(feedback, 'error');
     }, true);
     editor.addEventListener('media-select', (event) => {
       if (root.getAttribute('aria-busy') === 'true') return;
@@ -352,7 +353,7 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
       renderTags();
       heading.textContent = '写点内容';
       dates.textContent = '发布后记录创建与编辑时间';
-      animateContentHeight(feedback, () => { feedback.textContent = ''; });
+      animateContentHeight(feedback, () => { feedback.textContent = ''; markTaskState(feedback, 'idle'); });
       markSaved();
       updatePreview();
       openAdminDrawer(drawer);
@@ -389,11 +390,11 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
       contentType.dispatchEvent(new Event('change', { bubbles:true }));
       heading.textContent = '编辑内容';
       dates.textContent = article.createdAt ? `创建 ${new Date(article.createdAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })} · 编辑 ${new Date(article.updatedAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}` : '发布后记录创建与编辑时间';
-      animateContentHeight(feedback, () => { feedback.textContent = ''; });
+      animateContentHeight(feedback, () => { feedback.textContent = ''; markTaskState(feedback, 'idle'); });
       markSaved();
       updatePreview();
       savedPayload = JSON.stringify(payload());
-      draftStatus.textContent = draft ? '已恢复自动保存的草稿' : '修改后自动保存为草稿';
+      setTaskFeedback(draftStatus, draft ? '已恢复自动保存的草稿' : '修改后自动保存为草稿', 'idle');
       openAdminDrawer(drawer);
       resizeContent();
       if (reference) focusMediaReference(reference);
@@ -421,7 +422,7 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
       } catch (error) {
         if (!current()) return;
         const status = drawer.open ? feedback : listFeedback;
-        status.textContent = error instanceof Error ? error.message : '引用内容暂时无法打开。'; status.dataset.state = 'error';
+        status.textContent = error instanceof Error ? error.message : '引用内容暂时无法打开。'; status.dataset.state = 'error'; markTaskState(status, 'error');
       }
     };
     editor.addEventListener('media-reference', (event) => { void openMediaReference((event as CustomEvent<MediaReferenceTarget>).detail); });
@@ -454,18 +455,18 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
         const value = payload();
         const snapshot = JSON.stringify(value);
         if (snapshot === savedPayload && revision) return;
-        draftStatus.textContent = '正在保存草稿…';
+        setTaskFeedback(draftStatus, '正在保存草稿…', 'pending');
         editor.dataset.autosaveBusy = 'true';
         const result = await requestJson('/api/admin/articles.json', 'POST', { ...value, action: 'draft', draftId, revision }, '草稿暂时无法保存，输入仍保留。').finally(() => { delete editor.dataset.autosaveBusy; }) as { draft: ArticleDraft };
         revision = result.draft.revision;
         savedPayload = snapshot;
         if (JSON.stringify(payload()) === snapshot && !tagInput.value) markSaved();
-        draftStatus.textContent = `草稿已保存 · ${new Date(result.draft.savedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`;
+        setTaskFeedback(draftStatus, `草稿已保存 · ${new Date(result.draft.savedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`, 'success');
         document.dispatchEvent(new Event('media-references-refresh'));
       });
       return saving;
     };
-    const saveFeedback = (error: unknown) => { draftStatus.textContent = error instanceof Error ? error.message : '草稿保存失败，输入仍保留'; };
+    const saveFeedback = (error: unknown) => { setTaskFeedback(draftStatus, error instanceof Error ? error.message : '草稿保存失败，输入仍保留', 'error'); };
     const scheduleSave = () => {
       clearTimeout(autosaveTimer);
       if (composing || !drawer.open || root.getAttribute('aria-busy') === 'true') return;
@@ -488,7 +489,7 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
       root.setAttribute('aria-busy', 'true');
       animateContentHeight(status, () => {
         status.textContent = '正在保存…';
-        status.dataset.state = 'loading';
+        status.dataset.state = 'loading'; markTaskState(status, 'pending');
       });
       try {
         await action();
@@ -500,7 +501,7 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
         root.removeAttribute('aria-busy');
         animateContentHeight(status, () => {
           status.textContent = error instanceof TypeError ? '网络连接失败，请检查连接后重试。' : error instanceof Error ? error.message : '文章操作失败。';
-          status.dataset.state = 'error';
+          status.dataset.state = 'error'; markTaskState(status, 'error');
         });
       }
     };
@@ -511,7 +512,7 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
       if (invalid) {
         animateContentHeight(feedback, () => {
           feedback.textContent = invalid === title ? '请填写题目。' : invalid === externalUrl ? '请填写完整的外部链接地址。' : '请填写正文或简短说明。';
-          feedback.dataset.state = 'error';
+          feedback.dataset.state = 'error'; markTaskState(feedback, 'error');
         });
         invalid.focus();
         return;
@@ -533,10 +534,10 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
         button.setAttribute('aria-label', `${starred ? '取消' : '添加'}星标：${title.textContent}`);
         const edit = item.querySelector<HTMLButtonElement>('[data-edit-article]')!;
         edit.dataset.article = JSON.stringify({ ...JSON.parse(edit.dataset.article!), starred });
-        listFeedback.dataset.state = 'success';
+        listFeedback.dataset.state = 'success'; markTaskState(listFeedback, 'success');
         listFeedback.textContent = starred ? '已添加星标' : '已取消星标';
       } catch (error) {
-        listFeedback.dataset.state = 'error';
+        listFeedback.dataset.state = 'error'; markTaskState(listFeedback, 'error');
         listFeedback.textContent = error instanceof Error ? error.message : '星标保存失败，请重试';
       } finally { button.disabled = false; }
     }));

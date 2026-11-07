@@ -107,6 +107,7 @@
   --article-toc-width: clamp(180px,12vw,224px);
   --article-toc-gap: clamp(20px,2vw,36px);
   --article-default-font: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+  --numeric-font: ui-monospace, "Cascadia Code", Consolas, monospace;
   --article-code-font: ui-monospace, "Cascadia Code", Consolas, monospace;
   --article-body-font-size: clamp(1.1875rem,1.1rem + .2vw,1.25rem);
   --article-control-font-size: clamp(1.0625rem,1rem + .15vw,1.125rem);
@@ -679,3 +680,17 @@ button:is(.articles-more,.friends-more){appearance:none;border:0;padding:0;backg
 :is(.articles-more,.friends-more):active{transform:translateY(0) scale(.97);transition-duration:var(--motion-feedback-duration)}
 @media(prefers-reduced-motion:reduce){:is(.articles-more,.friends-more),:is(.articles-more,.friends-more) span,:is(.articles-more,.friends-more)::before{transition:none}:is(.articles-more,.friends-more):is(:hover,:focus-visible),:is(.articles-more,.friends-more):is(:hover,:focus-visible) span{transform:none}}
 .motion-paused :is(.articles-more,.friends-more),.motion-paused :is(.articles-more,.friends-more) span{transform:none}
+
+/* 任务状态显式标记；图形只作装饰，读屏只读一次原反馈文字。 */
+[data-task-state]::before{content:"";display:inline-block;width:1em;height:1em;margin-right:.45em;vertical-align:-.12em;background:currentColor;mask:center/contain no-repeat var(--task-glyph);-webkit-mask:center/contain no-repeat var(--task-glyph)}
+[data-task-state="pending"]{--task-glyph:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 3a9 9 0 1 1-9 9' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E")}
+[data-task-state="pending"]::before{animation:status-turn var(--status-spin-duration,1100ms) linear infinite}
+[data-task-state="success"]{--task-glyph:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='m5 12 4.5 4.5L19 7' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")}
+[data-task-state="error"]{--task-glyph:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='m7 7 10 10M17 7 7 17' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E")}
+[data-task-state="success"]::before{color:var(--summer-pink)}[data-task-state="error"]::before{color:var(--danger)}
+@keyframes status-turn{to{rotate:360deg}}.motion-paused [data-task-state="pending"]::before,[data-feedback-hidden] [data-task-state="pending"]::before{animation:none}@media(prefers-reduced-motion:reduce){[data-task-state="pending"]::before{animation:none}}
+.comment-draft-status{display:block;color:var(--muted);font-size:var(--font-size-small)}.comment-draft-status:empty{display:none}
+:root :is(time,[data-message-count],[data-reaction-count],[data-friend-deck-count],[data-count-to],[data-stat-value],.signature-version,.article-pagination,[data-reading-size-label],[data-comments-page],.article-reading__estimate b){font-family:var(--numeric-font);font-variant-numeric:tabular-nums}
+:is([data-message-count],[data-reaction-count],[data-friend-deck-count]){display:inline-block;min-inline-size:3ch;text-align:center}.admin-reply .comment-draft-status{grid-column:1/-1}
+
+[data-stat-value]{display:inline-block}

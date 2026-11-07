@@ -78,7 +78,7 @@ export function initializeReaderAccount() {
     confirmedRemoval = null; controls();
   };
   const handleError = (error: unknown, target: HTMLElement) => {
-    setReaderFeedback(target, error instanceof Error ? error.message : '操作未能完成，请重试。');
+    setReaderFeedback(target, error instanceof Error ? error.message : '操作未能完成，请重试。', 'error');
     if (error instanceof RequestError && error.status === 401) {
       if (error.code === 'reauth_required') openLogin(true);
       else { clearIdentity(null); setReaderFeedback(feedback, '登录已失效，请重新登录。'); openLogin(); }
@@ -87,7 +87,7 @@ export function initializeReaderAccount() {
   const perform = async (target: HTMLElement, action: () => Promise<void>) => {
     if (mutation || !account) return;
     const expectedIdentity = identityId;
-    mutation = true; controls();
+    mutation = true; controls(); setReaderFeedback(target, target === profileFeedback ? '正在保存…' : '正在处理…', 'pending');
     try { await action(); }
     catch (error) { if (identityId === expectedIdentity) handleError(error, target); }
     finally { mutation = false; controls(); }
@@ -109,7 +109,7 @@ export function initializeReaderAccount() {
           if (identityId !== expectedIdentity) return;
           confirmedRemoval = null;
           if (account) account.passkeys = result.passkeys;
-          renderPasskeys(result.passkeys); setReaderFeedback(passkeyFeedback, 'Passkey 已移除。');
+          renderPasskeys(result.passkeys); setReaderFeedback(passkeyFeedback, 'Passkey 已移除。', 'success');
           label.disabled = false; label.focus({ preventScroll: true });
         });
       });
@@ -199,7 +199,7 @@ export function initializeReaderAccount() {
       applySubmittedReaderInput(name, submittedName, result.account.reader.displayName);
       applySubmittedReaderInput(website, submittedWebsite, result.account.reader.websiteUrl);
       applySubmittedReaderInput(notificationEmail, submittedNotificationEmail, result.account.notificationEmail);
-      setReaderFeedback(profileFeedback, '已保存');
+      setReaderFeedback(profileFeedback, '已保存', 'success');
       document.dispatchEvent(new Event('reader:refresh'));
     });
   });
@@ -211,12 +211,12 @@ export function initializeReaderAccount() {
     if (file.size > avatarMaximum) { setReaderFeedback(avatarFeedback, '头像图片不能超过 2 MB。'); return; }
     const expectedIdentity = identityId;
     void perform(avatarFeedback, async () => {
-      setReaderFeedback(avatarFeedback, '正在上传…');
+      setReaderFeedback(avatarFeedback, '正在上传…', 'pending');
       avatarSelect.setAttribute('aria-busy', 'true');
       const payload = new FormData(); payload.set('file', file);
       const result = await requestJson<{ error?: string; reader: ReaderIdentity; account: ReaderAccount }>('/api/reader/avatar.json', 'POST', payload, '头像未能保存，请重试。');
       if (identityId !== expectedIdentity) return;
-      renderAccount(result.account, false, false); setReaderFeedback(avatarFeedback, '头像已更新。');
+      renderAccount(result.account, false, false); setReaderFeedback(avatarFeedback, '头像已更新。', 'success');
       document.dispatchEvent(new Event('reader:refresh'));
     }).finally(() => avatarSelect.removeAttribute('aria-busy'));
   });
@@ -230,7 +230,7 @@ export function initializeReaderAccount() {
       const { startRegistration } = await import('@simplewebauthn/browser').catch(() => { throw new Error('Passkey 组件未能加载，请刷新页面后重试。'); });
       const result = await requestJson<{ error?: string; options: Parameters<typeof startRegistration>[0]['optionsJSON'] }>('/api/reader/passkeys/register-options.json', 'POST', {}, '暂时无法添加 Passkey。');
       if (identityId !== expectedIdentity) return;
-      setReaderFeedback(passkeyFeedback, '请按照设备提示创建 Passkey…');
+      setReaderFeedback(passkeyFeedback, '请按照设备提示创建 Passkey…', 'pending');
       let response;
       try { response = await startRegistration({ optionsJSON: result.options }); }
       catch { throw new Error('Passkey 创建未完成，设备名称已保留。'); }
@@ -238,7 +238,7 @@ export function initializeReaderAccount() {
       const verified = await requestJson<{ error?: string; passkeys: ReaderPasskey[] }>('/api/reader/passkeys/register-verify.json', 'POST', { response, label: passkeyLabel }, 'Passkey 未能保存。');
       if (identityId !== expectedIdentity) return;
       if (account) account.passkeys = verified.passkeys;
-      renderPasskeys(verified.passkeys); label.value = ''; setReaderFeedback(passkeyFeedback, 'Passkey 已添加。');
+      renderPasskeys(verified.passkeys); label.value = ''; setReaderFeedback(passkeyFeedback, 'Passkey 已添加。', 'success');
     });
   });
   previous.addEventListener('click', () => { if (!previous.disabled) void loadComments(page - 1); });

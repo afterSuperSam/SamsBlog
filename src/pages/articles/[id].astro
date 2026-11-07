@@ -4,6 +4,7 @@ import NotFound from '../404.astro';
 import { getArticle, getAdjacentArticles } from '../../lib/articles';
 import { articleExcerpt, renderArticleMarkdown } from '../../lib/markdown';
 import { siteConfig } from '../../config/site';
+import { articleReadingText, estimateReadingMinutes, safeArticleReturnPath } from '../../lib/reading-history';
 import '../../styles/articles.css';
 import '../../styles/article-reading.css';
 import ArticleDiscussion from '../../components/ArticleDiscussion.astro';
@@ -12,6 +13,8 @@ const identifier = Number(Astro.params.id);
 const article = Number.isSafeInteger(identifier) && identifier > 0 ? getArticle(identifier) : undefined;
 if (!article) Astro.response.status = 404;
 const rendered = article ? renderArticleMarkdown(article.content) : { html: '', headings: [] };
+const readingMinutes = estimateReadingMinutes(articleReadingText(rendered.html));
+const returnPath = safeArticleReturnPath(Astro.url.searchParams.get('from'));
 const chapterLevel = rendered.headings.length ? Math.min(...rendered.headings.map((heading) => heading.level)) : 1;
 const { previous, next } = article ? getAdjacentArticles(article) : { previous: undefined, next: undefined };
 const author = article?.source === 'repost' ? article.originalAuthor : siteConfig.name;
@@ -34,7 +37,7 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
 {article ? <BaseLayout title={article.title} description={article.summary || articleExcerpt(article.content)} image={article.coverUrl || undefined} articleMetadata={articleMetadata} bodyClass="article-page article-reading-mode">
   <article class="article-reading shell" data-article-reading data-article-id={article.id} data-article-version={article.updatedAt}>
     <div class="article-reading__lead">
-    <a class="articles-more article-reading__back" href="/content"><span aria-hidden="true">←</span> 回到内容</a>
+    <a class="articles-more article-reading__back" href={returnPath}><span aria-hidden="true">←</span> 回到内容</a>
     <header class="article-reading__heading">
       <div class="article-tags"><span class="c2-surface">{article.source === 'original' ? '原创' : '搬运'}</span><span class="c2-surface">{article.category === 'discussion' ? '杂谈' : '日志'}</span></div>
       <h1 id="article-start" class:list={{ 'article-title--starred': article.starred }}>{article.title}</h1>
@@ -56,10 +59,13 @@ const dateLabel = (value: string) => new Date(value).toLocaleString('zh-CN', { t
       <span class="article-reading__status" role="status" data-reading-status></span>
     </div>
     </div>
+    <aside class="article-reading__aside">
+      <p class="article-reading__estimate">大约阅读时间 <b>{readingMinutes}</b> 分钟</p>
     {rendered.headings.length > 0 && <details class="article-toc c2-surface">
       <summary>本文目录 <span>{rendered.headings.length} 节</span></summary>
       <nav aria-label="文章目录"><span class="article-toc__active c2-surface" aria-hidden="true"></span><ol>{rendered.headings.map((heading) => <li data-level={heading.level} data-depth={Math.min(2, heading.level - chapterLevel)}><a href={`#${heading.id}`}><span class="article-toc__item-surface c2-surface" aria-hidden="true"></span>{heading.level === chapterLevel && <span class="article-toc__number c2-surface" aria-hidden="true"></span>}{heading.text}</a></li>)}</ol></nav>
     </details>}
+    </aside>
     <div class="article-reading__content">
     <div class="article-prose" data-article-prose set:html={rendered.html}></div>
     {(previous || next) && <nav class="article-reading__footer" aria-label="相邻文章">

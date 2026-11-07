@@ -1,3 +1,4 @@
+import { markTaskState } from './micro-feedback';
 import type { MediaRecord } from './media';
 import { beginAdminAction, confirmAdminAction } from './admin-dialog';
 import { requestJson } from './client-request';
@@ -21,7 +22,7 @@ if (root) {
   let selection = 'active';
   let uploadTarget = 'library';
   let uploadButton: HTMLButtonElement | undefined;
-  const message = (target: HTMLElement, text: string, state = '') => animateContentHeight(target, () => { target.textContent = text; target.dataset.state = state; });
+  const message = (target: HTMLElement, text: string, state = '') => animateContentHeight(target, () => { target.textContent = text; target.dataset.state = state; markTaskState(target, !text ? 'idle' : state === 'loading' ? 'pending' : state === 'success' ? 'success' : state === 'error' ? 'error' : 'idle'); });
   const insert = (media: MediaRecord, target: string) => editor?.dispatchEvent(new CustomEvent('media-select', { detail: { url: media.url, name: media.name, target } }));
   const render = () => {
     const shown = records.filter((media) => Boolean(media.deletedAt) === (selection === 'deleted') && media.name.toLocaleLowerCase().includes(search.value.trim().toLocaleLowerCase()));

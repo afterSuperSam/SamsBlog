@@ -37,6 +37,7 @@ const sponsors = listSponsors();
 </section>
 
 <script>
+  import { markTaskState } from '../lib/micro-feedback';
   import type { SponsorRecord } from '../lib/sponsors';
   import { beginAdminAction, confirmAdminAction, confirmAdminDiscard, registerAdminDraft } from '../lib/admin-dialog';
   import { animateContentHeight } from '../lib/motion';
@@ -55,7 +56,7 @@ const sponsors = listSponsors();
     const saveButton = root.querySelector<HTMLButtonElement>('[data-sponsor-save]')!;
     const field = (name: string) => form.elements.namedItem(name) as HTMLInputElement;
     const markSaved = registerAdminDraft(form, () => JSON.stringify([...form.elements].filter((item) => item instanceof HTMLInputElement).map((item) => item.value)));
-    const showFeedback = (message: string, state = '') => root.querySelectorAll<HTMLElement>('[data-sponsor-feedback]').forEach((feedback) => animateContentHeight(feedback, () => { feedback.textContent = message; feedback.dataset.state = state; }));
+    const showFeedback = (message: string, state = '') => root.querySelectorAll<HTMLElement>('[data-sponsor-feedback]').forEach((feedback) => animateContentHeight(feedback, () => { feedback.textContent = message; feedback.dataset.state = state; markTaskState(feedback, !message ? 'idle' : state === 'loading' ? 'pending' : state === 'success' ? 'success' : state === 'error' ? 'error' : 'idle'); }));
     const edit = (record?: SponsorRecord) => {
       form.dataset.id = record ? String(record.id) : '';
       form.dataset.updatedAt = record?.updatedAt || '';

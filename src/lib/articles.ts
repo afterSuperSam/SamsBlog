@@ -4,9 +4,11 @@ import { getDatabase } from './db';
 import { isPublicFriendAddress } from './friend-status';
 import { HttpError, readPositiveId } from './http';
 import { siteConfig } from '../config/site';
-import { articleExcerpt, articlePlainText } from './markdown';
+import { articleExcerpt } from './markdown';
 import { getMedia, referencedMediaFilenames } from './media';
 import { parseArticleTags, articleCardLayouts, articleContentTypes, type ArticleCardLayout, type ArticleContentType } from './article-catalog';
+import { readArticleFilters, type ArticleFilters } from './article-catalog';
+import { articleSearchTokens, articleSearchSnippet, normalizeArticleText, synchronizeArticleSearch, type ArticleTextPart } from './article-search';
 
 export interface ArticleRecord {
   id: number;
@@ -222,16 +224,62 @@ export function withdrawArticle(id: number) {
   })();
 }
 
-let searchVersion = '';
-let searchDocuments: Array<{ id: number; text: string }> = [];
-export function searchArticleIds(query: string) {
-  const version = JSON.stringify(listArticleMetadata());
-  if (version !== searchVersion) {
-    searchDocuments = listArticles().map((article) => ({ id: article.id, text: `${article.title} ${article.summary} ${articlePlainText(article.content)}`.normalize('NFKC').toLocaleLowerCase('zh-CN') }));
-    searchVersion = version;
+export interface ArticlePage {
+  articles: ArticleRecord[];
+  snippets: Record<number, ArticleTextPart[]>;
+  filters: ArticleFilters;
+  total: number;
+  page: number;
+  pageCount: number;
+  pageSize: number;
+}
+
+// 公开目录在 SQL 内完成组合筛选、稳定排序和分页，只把当前页正文带入渲染。
+export function getArticlePage(input: ArticleFilters): ArticlePage {
+  const filters = readArticleFilters(new URLSearchParams(input as unknown as Record<string, string>));
+  const database = getDatabase();
+  const conditions = ["a.deleted_at IS NULL", "a.publication_status = 'published'"];
+  const parameters: Array<string | number> = [];
+  for (const [name, column] of [['contentType', 'content_type'], ['source', 'source'], ['category', 'category']] as const) {
+    if (filters[name]) { conditions.push(`a.${column} = ?`); parameters.push(filters[name]); }
   }
-  const normalized = query.normalize('NFKC').toLocaleLowerCase('zh-CN');
-  return searchDocuments.filter((article) => article.text.includes(normalized)).map((article) => article.id);
+  if (filters.starred) conditions.push('a.starred = 1');
+  if (filters.tag) {
+    conditions.push('EXISTS (SELECT 1 FROM json_each(a.tags) WHERE article_normalize(value) = ?)');
+    parameters.push(normalizeArticleText(filters.tag));
+  }
+  if (filters.period) {
+    conditions.push("strftime('%Y-%m', a.created_at, '+8 hours') LIKE ?");
+    parameters.push(`${filters.period}%`);
+  }
+  if (filters.q) {
+    synchronizeArticleSearch(database);
+    conditions.push('a.id IN (SELECT rowid FROM blog_article_search_fts WHERE blog_article_search_fts MATCH ?)');
+    parameters.push(articleSearchTokens(filters.q, true));
+    conditions.push('instr(search.normalized_text, ?) > 0');
+    parameters.push(normalizeArticleText(filters.q));
+  }
+  const from = `FROM blog_articles a ${filters.q ? 'JOIN blog_article_search search ON search.article_id = a.id' : ''} WHERE ${conditions.join(' AND ')}`;
+  const total = (database.prepare(`SELECT COUNT(*) AS count ${from}`).get(...parameters) as { count: number }).count;
+  const pageSize = siteConfig.articles.pageSize;
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const page = Math.min(Number(filters.page), pageCount);
+  filters.page = String(page);
+  const direction = filters.sort.endsWith('asc') ? 'ASC' : 'DESC';
+  const column = filters.sort.startsWith('updated') ? 'updated_at' : 'created_at';
+  const order = `${filters.view === 'archive' ? `strftime('%Y-%m', a.created_at, '+8 hours') ${direction}, ` : ''}a.${column} ${direction}, a.id ${direction}`;
+  const rows = database.prepare(`SELECT a.* ${filters.q ? ', search.plain_text AS search_text' : ''} ${from} ORDER BY ${order} LIMIT ? OFFSET ?`)
+    .all(...parameters, pageSize, (page - 1) * pageSize) as Record<string, unknown>[];
+  return {
+    articles: rows.map(mapArticle), snippets: Object.fromEntries(rows.filter(() => filters.q).map((row) => [Number(row.id), articleSearchSnippet(String(row.search_text), filters.q)])),
+    filters, total, page, pageCount, pageSize,
+  };
+}
+
+// 兼容旧调用，结果也遵守公开目录的单页上限。
+export function searchArticleIds(query: string) {
+  if (!query.trim() || query.length > siteConfig.articles.searchMaximumLength) return [];
+  return getArticlePage(readArticleFilters(new URLSearchParams({ q: query }))).articles.map((article) => article.id);
 }
 
 export function deleteArticle(id: number): boolean {

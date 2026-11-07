@@ -46,6 +46,7 @@ const allInformation = information.map(({ label, value }) => `${label}：${value
   import { siteConfig } from '../config/site';
   import { requestJson } from '../lib/client-request';
   import { animateMotion, parseCssTimeMilliseconds, setFeedbackText } from '../lib/motion';
+  import { setTaskFeedback } from '../lib/micro-feedback';
   import { attachPaperCaret } from '../lib/paper-caret';
   const dialog = document.querySelector<HTMLDialogElement>('[data-friend-application]');
   const opener = document.querySelector<HTMLButtonElement>('[data-friend-apply]');
@@ -126,13 +127,13 @@ const allInformation = information.map(({ label, value }) => `${label}：${value
       event.preventDefault(); const button = form.querySelector<HTMLButtonElement>('button[type="submit"]')!; if (button.disabled) return;
       const invalid = fields.find((input) => !input.validity.valid);
       if (invalid) { setFeedbackText(feedback, `请检查${invalid.closest('label')?.querySelector('span')?.textContent || '申请信息'}`); invalid.focus(); return; }
-      button.disabled = true; const payload = Object.fromEntries(new FormData(form)); setFeedbackText(feedback, '正在送出申请…');
+      button.disabled = true; const payload = Object.fromEntries(new FormData(form)); setTaskFeedback(feedback, '正在送出申请…', 'pending');
       try {
         await requestJson('/api/friends/applications.json', 'POST', payload, '申请暂时无法送出，填写内容仍保留。');
         if (JSON.stringify(Object.fromEntries(new FormData(form))) === JSON.stringify(payload)) form.reset();
         saveDraft(); refreshCarets.forEach((refresh) => refresh());
-        setFeedbackText(feedback, '申请已送达，通过后会出现在网站友链中。');
-      } catch (error) { setFeedbackText(feedback, error instanceof Error ? error.message : '提交失败，请稍后再试。'); }
+        setTaskFeedback(feedback, '申请已送达，通过后会出现在网站友链中。', 'success');
+      } catch (error) { setTaskFeedback(feedback, error instanceof Error ? error.message : '提交失败，请稍后再试。', 'error'); }
       finally { button.disabled = false; }
     });
     form.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled = false;

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { parseReadingHistory, getReadingTrail, measureReadingChapters, parseReadingTypography } from '../src/lib/reading-history';
+import { parseReadingHistory, getReadingTrail, measureReadingChapters, parseReadingTypography, articleReadingText, estimateReadingMinutes, safeArticleReturnPath } from '../src/lib/reading-history';
 import { siteConfig } from '../src/config/site';
 import { initializeExplanations, revealArticleTarget } from '../src/lib/reading-extras';
 import { animateMotion } from '../src/lib/motion';
@@ -10,6 +10,17 @@ vi.mock('../src/lib/motion', () => ({ animateContentHeight: vi.fn(), animateMoti
 afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks(); });
 
 const record = { version: 'v1', progress: .4, heading: 'article-heading-test', offset: 20, updatedAt: 1 };
+it('estimates Chinese and mixed text without counting punctuation as words', () => {
+  expect(estimateReadingMinutes('')).toBe(1);
+  expect(estimateReadingMinutes('字'.repeat(800))).toBe(2);
+  expect(estimateReadingMinutes('字'.repeat(400) + ' word'.repeat(220))).toBe(2);
+  expect(articleReadingText('<h2>标题</h2><pre><code>const code = 1000;</code></pre><p>正文 <code>inline</code> &amp; text</p>')).toBe('标题 正文 inline & text');
+});
+it('keeps only same-origin catalogue or home return paths', () => {
+  expect(safeArticleReturnPath('/content?query=%E4%B8%AD&page=2')).toBe('/content?query=%E4%B8%AD&page=2');
+  expect(safeArticleReturnPath('/')).toBe('/');
+  ['//other.test/content', '/\\other.test', '/admin', 'https://other.test', '/%2fother.test'].forEach((value) => expect(safeArticleReturnPath(value)).toBe('/content'));
+});
 const presentationScript = readFileSync(new URL('../public/scripts/page-presentation.js', import.meta.url), 'utf8');
 
 describe('reading targets inside collapsed explanations', () => {

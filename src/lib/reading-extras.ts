@@ -1,6 +1,16 @@
 import { siteConfig } from '../config/site';
 import { animateContentHeight, animateMotion } from './motion';
 
+const inlineContentObservers = new WeakMap<HTMLButtonElement, ResizeObserver>();
+
+// 分页替换前断开旧卡片观察器，避免保留已移除的正文节点。
+export function disposeInlineContent(container: ParentNode) {
+  container.querySelectorAll<HTMLButtonElement>('[data-note-toggle]').forEach((button) => {
+    inlineContentObservers.get(button)?.disconnect();
+    inlineContentObservers.delete(button);
+  });
+}
+
 // 短记录、外链说明与编辑器卡片共用展开状态，正文仍走安全 Markdown 渲染。
 export function initializeInlineContent(container: ParentNode) {
   container.querySelectorAll<HTMLButtonElement>('[data-note-toggle]').forEach((button) => {
@@ -41,6 +51,7 @@ export function initializeInlineContent(container: ParentNode) {
       if (content.clientWidth === previousWidth) return;
       previousWidth = content.clientWidth; refresh();
     });
+    inlineContentObservers.set(button, observer);
     observer.observe(content);
     void document.fonts.ready.then(refresh);
     button.addEventListener('click', () => {

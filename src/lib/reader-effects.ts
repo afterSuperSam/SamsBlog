@@ -1,5 +1,6 @@
 import { siteConfig } from '../config/site';
 import { animateMotion, motionDisabled } from './motion';
+import { markTaskState, type TaskState } from './micro-feedback';
 
 export function readerRippleBounds(width: number, height: number, horizontal?: number, vertical?: number) {
   const left = Math.max(0, Math.min(width, horizontal ?? width / 2));
@@ -42,7 +43,8 @@ export function initializeReaderEffects(root: HTMLElement) {
 }
 
 // 一行反馈位置保持稳定，多行错误只平滑扩展必要高度。
-export function setReaderFeedback(target: HTMLElement, message: string) {
+export function setReaderFeedback(target: HTMLElement, message: string, state: TaskState = 'idle') {
+  markTaskState(target, message ? state : 'idle');
   if (target.textContent === message) return;
   target.getAnimations().forEach((animation) => animation.cancel());
   const previousHeight = target.getBoundingClientRect().height;

@@ -2,7 +2,7 @@ import type { APIRoute } from 'astro';
 import { readerConfig } from '../config/readers';
 import { getDatabase } from './db';
 import { HttpError, route } from './http';
-import { getMedia, saveMedia } from './media';
+import { getMedia, removeUnusedAvatar, saveMedia } from './media';
 import { parseNotificationEmail } from './reply-notifications';
 import { listReaderPasskeys, readReaderSession, type ReaderPublic } from './readers';
 
@@ -60,16 +60,22 @@ export function updateReaderProfile(reader: ReaderPublic, input: Record<string, 
   return { ...reader, displayName };
 }
 
-// 头像仅更新当前读者；共用文件和旧头像沿媒体库策略保留。
+// 头像替换提交成功后再回收无引用的专用旧图，失败不会清理原头像。
 export async function updateReaderAvatar(reader: ReaderPublic, file: File) {
-  const media = await saveMedia(file, { maximumBytes: readerConfig.avatarMaximumBytes, restoreDeleted: false });
-  return getDatabase().transaction(() => {
+  const media = await saveMedia(file, { maximumBytes: readerConfig.avatarMaximumBytes, restoreDeleted: false, purpose: 'avatar' });
+  const result = getDatabase().transaction(() => {
     if (!getMedia(media.filename)) throw new HttpError(409, '这张图片暂不可用，请选择其他图片');
+    const previous = getDatabase().prepare('SELECT avatar_url AS avatarUrl FROM readers WHERE id=? AND deleted_at IS NULL').get(reader.id) as { avatarUrl: string | null } | undefined;
     const result = getDatabase().prepare('UPDATE readers SET avatar_url=?,updated_at=? WHERE id=? AND deleted_at IS NULL')
       .run(media.url, new Date().toISOString(), reader.id);
     if (!result.changes) throw new HttpError(401, '读者登录已失效，请重新登录');
-    return getReaderAccount(reader);
+    return { account: getReaderAccount(reader), previousAvatarUrl: previous?.avatarUrl ?? null };
   }).immediate();
+  if (result.previousAvatarUrl !== media.url) {
+    try { removeUnusedAvatar(result.previousAvatarUrl); }
+    catch (error) { console.warn('Unused avatar cleanup failed', { code: (error as NodeJS.ErrnoException).code ?? 'UNKNOWN' }); }
+  }
+  return result.account;
 }
 
 // 仅返回本人未删除的内容；可见性同时控制文章标题与公开跳转入口。

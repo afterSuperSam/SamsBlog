@@ -1,10 +1,37 @@
 import { describe, expect, it } from 'vitest';
-import { articleMonth, readArticleFilters, parseArticleTags, matchesArticle, compareArticles, articleFilterParameters, rankArticleTags, type CatalogArticle } from '../src/lib/article-catalog';
+import { articleMonth, readArticleFilters, parseArticleTags, matchesArticle, compareArticles, articleFilterParameters, articleCatalogHref, articlePagination, rankArticleTags, type CatalogArticle } from '../src/lib/article-catalog';
 import { siteConfig } from '../src/config/site';
+import { articleHighlight, articleSearchSnippet, articleSearchTokens } from '../src/lib/article-search';
 
 const article: CatalogArticle = { id: 1, contentType: 'article', source: 'original', category: 'journal', tags: ['TinyML', '日常'], createdAt: '2026-09-30T16:05:00Z', updatedAt: '2026-10-24T00:00:00Z', search: 'TinyML 实验 上海的日常记录', starred: false };
 
 describe('article tags and catalog', () => {
+  it('normalizes page input, preserves all filters and bounds pagination links', () => {
+    for (const page of ['0', '-1', '1.5', 'Infinity', '1000000000']) expect(readArticleFilters(new URLSearchParams({ page })).page).toBe('1');
+    const filters = readArticleFilters(new URLSearchParams('q=中文&tag=C%2B%2B&source=repost&category=journal&starred=1&contentType=note&view=archive&sort=updated-asc&period=2026&page=3'));
+    expect(readArticleFilters(new URL(articleCatalogHref(filters), 'https://example.com').searchParams)).toEqual(filters);
+    expect(articleCatalogHref(readArticleFilters(new URLSearchParams()))).toBe('/content');
+    expect(articlePagination(50, 100)).toEqual([1, null, 48, 49, 50, 51, 52, null, 100]);
+  });
+
+  it('encodes short Chinese, punctuation and FTS operators as deduplicated literal tokens', () => {
+    expect(articleSearchTokens('中', true)).toBe('u4e2d');
+    expect(articleSearchTokens('中文', true)).toBe('b4e2dz6587');
+    expect(articleSearchTokens('ＡA')).toBe('u61 b61z61');
+    expect(articleSearchTokens('" OR * : - 中文', true)).toMatch(/^[a-z0-9]+(?: AND [a-z0-9]+)*$/);
+    expect(articleSearchTokens('中'.repeat(10000))).toBe('u4e2d b4e2dz4e2d');
+  });
+
+  it('highlights original Unicode text without producing HTML and centers bounded snippets on matches', () => {
+    const source = '<img onerror=alert(1)> ＴｉｎｙＭＬ café e\u0301 中文';
+    const parts = articleHighlight(source, 'tinyml');
+    expect(parts.map((part) => part.text).join('')).toBe(source);
+    expect(parts.filter((part) => part.highlighted)).toEqual([{ text: 'ＴｉｎｙＭＬ', highlighted: true }]);
+    expect(articleHighlight(source, 'é').filter((part) => part.highlighted).map((part) => part.text)).toEqual(['é', 'e\u0301']);
+    const snippet = articleSearchSnippet('前'.repeat(500) + '正文命中' + '后'.repeat(500), '正文命中');
+    expect(snippet.filter((part) => part.highlighted).map((part) => part.text)).toEqual(['正文命中']);
+    expect(Array.from(snippet.map((part) => part.text).join('')).length).toBeLessThanOrEqual(siteConfig.articles.searchSnippetLength + 2);
+  });
   it('ranks tags by article count, counts equivalent tags once and breaks ties consistently', () => {
     const articles = [{ tags: ['A', 'Ａ', 'D'] }, { tags: ['B', 'D', 'C'] }, { tags: ['B', 'D'] }];
     const tags = rankArticleTags(articles);

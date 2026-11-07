@@ -24,7 +24,7 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
     </header>
 
     <div class="guestbook-layout">
-      <form method="post" class="message-form" data-message-form data-reader-authenticated={String(Boolean(reader))} autocomplete="off" novalidate>
+      <form method="post" class="message-form" data-message-form data-reader-authenticated={String(Boolean(reader))} data-draft-reader={reader?.id} autocomplete="off" novalidate>
         <GuestbookPaper folded />
         <span class="message-form__decor" aria-hidden="true"><i>✿</i><i>✧</i><i>✦</i></span>
         <div class="message-form__title">
@@ -105,17 +105,20 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
   import { requestJson } from '../lib/client-request';
   import { rememberVisitor } from '../lib/visitor-profile';
   import { initializeCommentInput } from '../lib/comment-tools';
+  import { initializeCommentDraft } from '../lib/comment-drafts';
+  import { markTaskState } from '../lib/micro-feedback';
   const form = document.querySelector<HTMLFormElement>('[data-message-form]');
   const visitor = form ? rememberVisitor(form) : undefined;
   const nickname = form?.querySelector<HTMLInputElement>('input[name="nickname"]');
   let anonymousNickname = nickname?.readOnly ? '' : nickname?.value || '';
   document.addEventListener('reader:session', (event) => {
     if (!form || !nickname) return;
-    const reader = (event as CustomEvent<{ displayName: string } | null>).detail;
+    const reader = (event as CustomEvent<{ id: number; displayName: string } | null>).detail;
     if (reader) {
       if (!nickname.readOnly) anonymousNickname = nickname.value;
       nickname.value = reader.displayName;
     } else if (nickname.readOnly) nickname.value = anonymousNickname;
+    drafts?.switchIdentity(reader?.id ?? null);
     nickname.readOnly = Boolean(reader);
     form.dataset.readerAuthenticated = String(Boolean(reader));
     form.querySelector<HTMLElement>('[data-guestbook-nickname]')!.hidden = Boolean(reader);
@@ -128,7 +131,9 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
   });
   const textarea = form?.querySelector<HTMLTextAreaElement>('textarea[name="content"]');
   const inputTools = form && textarea ? initializeCommentInput(form, textarea) : undefined;
+  const drafts = form && textarea ? initializeCommentDraft(textarea, 'guestbook', Number(form.dataset.draftReader) || null) : undefined;
   const counter = form?.querySelector<HTMLElement>('[data-message-count]');
+  if (counter) counter.textContent = String(Array.from(textarea?.value || '').length);
   const status = form?.querySelector<HTMLElement>('[data-form-status]');
   const messageScroll = document.querySelector<HTMLElement>('[data-message-scroll]');
   const messageWall = messageScroll?.parentElement;
@@ -182,6 +187,7 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
   let submitting = false;
   const showStatus = (text: string, state: string) => {
     if (!status) return;
+    markTaskState(status, !text ? 'idle' : state === 'loading' ? 'pending' : state === 'success' ? 'success' : 'error');
     status.querySelectorAll('.reveal-character').forEach((character) => character.getAnimations().forEach((animation) => animation.cancel()));
     animateContentHeight(status, () => {
       if (!text) { status.replaceChildren(); delete status.dataset.state; return; }
@@ -248,6 +254,7 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
     submitting = true;
     const submit = form.querySelector<HTMLButtonElement>('button[type="submit"]');
     const data = new FormData(form);
+    const draftSnapshot = drafts?.capture();
     const authenticated = form.dataset.readerAuthenticated === 'true';
     const email = authenticated ? '' : String(data.get('email') || '').trim();
     const notifyReply = data.has('notifyReply') && (authenticated || email.length > 0);
@@ -262,7 +269,8 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
       if (!result.ok) throw new Error(result.error || '提交失败，请稍后重试。');
       visitor?.save();
       // 只清空本次送出后未变化的字段，不打断等待期间的新输入或中文组词。
-      [nickname, textarea].forEach((field) => {
+      if (draftSnapshot) drafts?.complete(draftSnapshot);
+      [nickname].forEach((field) => {
         if (!field || field.readOnly || (field === nickname && visitor?.enabled()) || field.dataset.composing === 'true' || field.value !== data.get(field.name)) return;
         field.value = '';
         field.dispatchEvent(new Event('input', { bubbles: true }));
@@ -279,4 +287,5 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
     }
   });
   form?.querySelector<HTMLButtonElement>('button[type="submit"]')?.removeAttribute('disabled');
+  window.addEventListener('pagehide', (event) => { if (!event.persisted) { drafts?.destroy(); inputTools?.destroy(); } });
 </script>

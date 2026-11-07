@@ -47,11 +47,12 @@ describe('reader interaction effects', () => {
   });
   it('updates aria-live feedback in place and animates from the existing stable height', () => {
     const cancel = vi.fn();
-    const target = { textContent: '', getAnimations: () => [{ cancel }], getBoundingClientRect: () => ({ height: 30 }) } as unknown as HTMLElement;
+    const target = { textContent: '', dataset: {}, style: { setProperty: vi.fn() }, getAnimations: () => [{ cancel }], getBoundingClientRect: () => ({ height: 30 }) } as unknown as HTMLElement;
     vi.stubGlobal('getComputedStyle', () => ({ getPropertyValue: () => 'cubic-bezier(.22,1,.36,1)' }));
     setReaderFeedback(target, '已保存');
     expect(target.textContent).toBe('已保存'); expect(cancel).toHaveBeenCalledOnce();
     expect(motion.animate).toHaveBeenCalledWith(target, expect.arrayContaining([expect.objectContaining({ height: '30px', opacity: 1 })]), expect.any(Object));
     setReaderFeedback(target, '已保存'); expect(motion.animate).toHaveBeenCalledOnce();
+    setReaderFeedback(target, '已保存', 'success'); expect(target.dataset.taskState).toBe('success');
   });
 });

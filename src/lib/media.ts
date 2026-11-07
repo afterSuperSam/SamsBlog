@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, stat, unlink, writeFile } from 'node:fs/promises';
+import { renameSync, unlinkSync } from 'node:fs';
 import path from 'node:path';
 import { getDatabase } from './db';
 import { HttpError, readRequestBytes } from './http';
@@ -102,7 +103,7 @@ export async function readMediaUpload(request: Request, maximumRequestBytes: num
   return file;
 }
 
-export async function saveMedia(file: File, options: { maximumBytes?: number; restoreDeleted?: boolean } = {}) {
+export async function saveMedia(file: File, options: { maximumBytes?: number; restoreDeleted?: boolean; purpose?: 'library' | 'avatar' } = {}) {
   const maximumBytes = options.maximumBytes ?? serverConfig.mediaMaxBytes;
   if (!file.size || file.size > maximumBytes) throw new HttpError(413, `图片不能为空，且不能超过 ${maximumBytes / 1024 / 1024} MB`);
   const bytes = Buffer.from(await file.arrayBuffer());
@@ -116,15 +117,51 @@ export async function saveMedia(file: File, options: { maximumBytes?: number; re
   const temporary = path.join(destination, `${randomUUID()}.partial`);
   try {
     await writeFile(temporary, bytes, { flag: 'wx', mode: 0o600 });
-    await rename(temporary, path.join(destination, filename));
-    getDatabase().prepare(`INSERT INTO blog_media (filename, original_name, mime_type, byte_size, created_at)
-      VALUES (?, ?, ?, ?, ?) ON CONFLICT(filename) ${options.restoreDeleted === false ? 'DO NOTHING' : 'DO UPDATE SET deleted_at = NULL'}`).run(filename, name, format.type, bytes.length, new Date().toISOString());
+    getDatabase().transaction(() => {
+      if (options.restoreDeleted === false && getMedia(filename, true)?.deletedAt) throw new HttpError(409, '这张图片暂不可用，请选择其他图片');
+      renameSync(temporary, path.join(destination, filename));
+      getDatabase().prepare(`INSERT INTO blog_media (filename, original_name, mime_type, byte_size, created_at, purpose)
+        VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(filename) DO UPDATE SET
+        purpose=CASE WHEN excluded.purpose='library' THEN 'library' ELSE blog_media.purpose END
+        ${options.restoreDeleted === false ? '' : ', deleted_at=NULL'}`).run(filename, name, format.type, bytes.length, new Date().toISOString(), options.purpose ?? 'library');
+    }).immediate();
   } finally {
     await unlink(temporary).catch((error: NodeJS.ErrnoException) => { if (error.code !== 'ENOENT') throw error; });
   }
   const media = getMedia(filename);
   if (!media) throw new HttpError(409, '这张图片暂不可用，请选择其他图片');
   return media;
+}
+
+// 只回收新版本明确登记的头像专用文件，历史媒体、软删除内容和配置引用均保留。
+export function removeUnusedAvatar(address: string | null) {
+  if (!address?.startsWith('/uploads/')) return false;
+  const filename = address.slice('/uploads/'.length);
+  if (!filenamePattern.test(filename)) return false;
+  const database = getDatabase();
+  return database.transaction(() => {
+    const media = database.prepare("SELECT id FROM blog_media WHERE filename=? AND purpose='avatar'").get(filename) as { id: number } | undefined;
+    if (!media) return false;
+    const includesReference = (value: string | null) => {
+      if (!value) return false;
+      if (value.includes(filename)) return true;
+      return value.replace(/(?:%[0-9a-f]{2})+/gi, (encoded) => {
+        try { return decodeURIComponent(encoded); } catch { return encoded; }
+      }).includes(filename);
+    };
+    if (includesReference(JSON.stringify(siteConfig))) return false;
+    const references = database.prepare(`SELECT avatar_url AS value FROM readers
+      UNION ALL SELECT content FROM blog_articles UNION ALL SELECT cover_url FROM blog_articles
+      UNION ALL SELECT payload FROM blog_article_drafts UNION ALL SELECT value FROM site_settings
+      UNION ALL SELECT icon_url FROM friends UNION ALL SELECT background_url FROM friends
+      UNION ALL SELECT description FROM friends UNION ALL SELECT icon_url FROM friend_applications
+      UNION ALL SELECT content FROM messages`).iterate() as Iterable<{ value: string | null }>;
+    for (const reference of references) if (includesReference(reference.value)) return false;
+    try { unlinkSync(path.join(directory(), filename)); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+    database.prepare("DELETE FROM blog_media WHERE id=? AND purpose='avatar'").run(media.id);
+    return true;
+  }).immediate();
 }
 
 export function changeMediaVisibility(id: number, restore: boolean) {
@@ -158,9 +195,15 @@ export async function mediaResponse(filename: string, request: Request, preview 
   headers.set('ETag', `"${media.filename}"`);
   if (!preview && request.headers.get('if-none-match') === headers.get('ETag')) return new Response(null, { status: 304, headers });
   try {
+    if (request.method === 'HEAD') {
+      const metadata = await stat(path.join(directory(), media.filename));
+      if (!metadata.isFile()) return new Response(null, { status: 404, headers: { 'Cache-Control': 'no-store' } });
+      headers.set('Content-Length', String(metadata.size));
+      return new Response(null, { headers });
+    }
     const bytes = await readFile(path.join(directory(), media.filename));
     headers.set('Content-Length', String(bytes.length));
-    return new Response(request.method === 'HEAD' ? null : new Uint8Array(bytes), { headers });
+    return new Response(new Uint8Array(bytes), { headers });
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return new Response(null, { status: 404, headers: { 'Cache-Control': 'no-store' } });
     throw error;

@@ -211,6 +211,8 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
 </BaseLayout>
 
 <script>
+  import { markTaskState } from '../lib/micro-feedback';
+  import { initializeCommentDraft } from '../lib/comment-drafts';
   import { beginAdminAction, bindAdminNavigation, confirmAdminAction, prepareAdminNavigation } from '../lib/admin-dialog';
   import { requestJson } from '../lib/client-request';
   import { animateContentHeight } from '../lib/motion';
@@ -232,7 +234,7 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
     let reloading = false;
     container.setAttribute('aria-busy', 'true');
     controls.forEach((control) => { control.disabled = true; });
-    const feedback = (message: string, state: string) => { if (status) animateContentHeight(status, () => { status.textContent = message; status.dataset.state = state; }); };
+    const feedback = (message: string, state: string) => { if (status) animateContentHeight(status, () => { status.textContent = message; status.dataset.state = state; markTaskState(status, !message ? 'idle' : state === 'loading' ? 'pending' : state === 'success' ? 'success' : state === 'error' ? 'error' : 'idle'); }); };
     feedback('正在处理…', 'loading');
     try {
       const message = await action();
@@ -307,9 +309,13 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
     });
     const replyForm = owned<HTMLFormElement>('[data-reply-form]')[0];
     const replyInput = replyForm?.querySelector<HTMLInputElement>('input[name="content"]');
+    const drafts = replyInput ? initializeCommentDraft(replyInput, `message:${id}`, 'admin') : undefined;
+    window.addEventListener('pagehide', (event) => { if (!event.persisted) drafts?.destroy(); });
     replyInput?.addEventListener('input', () => replyInput.removeAttribute('aria-invalid'));
     replyForm?.addEventListener('submit', (event) => {
       event.preventDefault();
+      if (drafts?.composing) return;
+      const draftSnapshot = drafts?.capture();
       const replyForm = event.currentTarget as HTMLFormElement;
       const content = String(new FormData(replyForm).get('content') || '').trim();
       const characterCount = Array.from(content).length;
@@ -352,7 +358,7 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
         actions.append(remove);
         replies.append(reply);
         bindMessageActions(reply);
-        replyForm.reset();
+        if (draftSnapshot) drafts?.complete(draftSnapshot);
         refreshMessageCounts();
         return '回复已公开。';
       });

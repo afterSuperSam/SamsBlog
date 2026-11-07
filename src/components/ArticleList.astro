@@ -1,36 +1,23 @@
 ---
-import { listArticles, listHomepageArticles, type ArticleRecord } from '../lib/articles';
+import { getArticlePage, listHomepageArticles, type ArticleRecord } from '../lib/articles';
 import ArticleCard from './ArticleCard.astro';
 import ReadingTrail from './ReadingTrail.astro';
-import { articlePlainText } from '../lib/markdown';
-import { articleMonth, readArticleFilters, matchesArticle, compareArticles, articleFilterParameters, articleContentTypes } from '../lib/article-catalog';
+import ArticleResults from './ArticleResults.astro';
+import { readArticleFilters, articleCatalogHref, articleContentTypes } from '../lib/article-catalog';
 import { siteConfig } from '../config/site';
 import '../styles/articles.css';
 
 interface Props { featured?: boolean; articles?: ArticleRecord[] }
 const { featured = false, articles: suppliedArticles } = Astro.props;
-const filters = readArticleFilters(featured ? new URLSearchParams() : Astro.url.searchParams);
-const articles = (suppliedArticles ?? (featured ? listHomepageArticles() : listArticles()))
-  .map((article) => ({ ...article, search: !featured && filters.q ? `${article.title} ${article.summary} ${articlePlainText(article.content)}` : '' }))
-  .sort((first, second) => compareArticles(first, second, filters));
-const visibleArticles = featured ? articles.filter((article) => article.contentType === 'article').slice(0, siteConfig.articles.homepageCount) : articles;
+const result = featured ? undefined : getArticlePage(readArticleFilters(Astro.url.searchParams));
+const filters = result?.filters ?? readArticleFilters(new URLSearchParams());
+const articles = featured ? suppliedArticles ?? listHomepageArticles() : [];
+const visibleArticles = articles.filter((article) => article.contentType === 'article').slice(0, siteConfig.articles.homepageCount);
 const supportingGroups = featured ? [
   { name: 'notes', label: '短记录', kicker: 'NOTES', articles: articles.filter((article) => article.contentType === 'note' || article.contentType === 'update').slice(0, siteConfig.articles.homepageNoteCount) },
   { name: 'links', label: '精选链接', kicker: 'LINKS', articles: articles.filter((article) => article.contentType === 'link').slice(0, siteConfig.articles.homepageLinkCount) },
 ].filter((group) => group.articles.length) : [];
-const matchedArticles = visibleArticles.filter((article) => matchesArticle(article, filters));
-const matchedArticleIds = new Set(matchedArticles.map((article) => article.id));
-const archiveMonths = new Map<string, { firstArticleId: number; count: number }>();
-if (!featured) {
-  for (const article of visibleArticles) {
-    const month = articleMonth(article.createdAt);
-    const group = archiveMonths.get(month) || { firstArticleId: article.id, count: 0 };
-    if (matchedArticleIds.has(article.id)) group.count += 1;
-    archiveMonths.set(month, group);
-  }
-}
-const monthLabel = (month: string) => `${month.slice(0, 4)} 年 ${Number(month.slice(5))} 月`;
-const filterHref = (name: string, value: string) => `/content?${articleFilterParameters({ ...filters, [name]: value })}`;
+const filterHref = (name: string, value: string) => articleCatalogHref({ ...filters, [name]: value, page: '1' });
 const filterGroups = [
   { name: 'sort', label: '排序', options: [
     { value: 'created-desc', label: '最新发布' }, { value: 'created-asc', label: '最早发布' },
@@ -49,9 +36,9 @@ const legacyFilters = [filters.source && `来源：${filters.source === 'origina
       {featured ? <h2 class="sr-only" id="latest-article-title">最新内容</h2> : <div><span class="section-kicker">CONTENT</span><h1 class="section-title" id="articles-title">内容</h1></div>}
       {featured && <a class="articles-more" href="/content">全部内容 <span aria-hidden="true">↗</span></a>}
       {!featured && <div class="article-catalog__toolbar" data-catalog-toolbar>
-        {articles.length > 0 && <div class="article-catalog__search-control" data-search-control>
+        {<div class="article-catalog__search-control" data-search-control>
           <form class="article-catalog__search" id="article-search-bar" action="/content" method="get" role="search" aria-label="搜索内容" data-article-search>
-            {Object.entries(filters).filter(([name]) => name !== 'q').map(([name, value]) => <input type="hidden" name={name} value={value} />)}
+            {Object.entries(filters).filter(([name]) => name !== 'q' && name !== 'page').map(([name, value]) => <input type="hidden" name={name} value={value} />)}
             <label class="article-catalog__query paper-input-label" for="article-search"><span class="sr-only">搜索题目、摘要或正文</span><input id="article-search" type="search" name="q" value={filters.q} maxlength={siteConfig.articles.searchMaximumLength} autocomplete="off" spellcheck="false" placeholder="搜索正文与题目…" /></label>
             <button class="articles-more article-catalog__submit" type="submit">查找</button>
           </form>
@@ -59,25 +46,12 @@ const legacyFilters = [filters.source && `来源：${filters.source === 'origina
         </div>}
       </div>}
     </header>
-    {!featured && <ReadingTrail articles={articles} />}
+    {!featured && <ReadingTrail />}
     {!featured && <p class="article-filter-context" data-filter-context hidden={!legacyFilters}><span data-filter-context-label>当前筛选：{legacyFilters}</span><a href="/content" data-filter-reset>重置筛选</a></p>}
-    <div class:list={['article-browser', { 'article-browser--filters': !featured && articles.length > 0 }]} hidden={featured && !visibleArticles.length}>
-      <div class="article-browser__main">
-        <div class="article-grid" data-article-grid data-view={filters.view}>
-          {visibleArticles.map((article) => {
-            const month = articleMonth(article.createdAt);
-            const group = archiveMonths.get(month);
-            return <>
-              {group?.firstArticleId === article.id && <h2 class="article-archive-heading" data-archive-month={month} hidden={filters.view !== 'archive' || !group.count}>{monthLabel(month)} <span>{group.count} 条</span></h2>}
-              <ArticleCard article={article} hidden={!matchedArticleIds.has(article.id)} headingLevel={featured || filters.view === 'archive' ? 3 : 2} filterable={!featured} />
-            </>;
-          })}
-        </div>
-        {!featured && <p class="articles-empty c2-surface" data-article-empty hidden={matchedArticles.length > 0}><span aria-hidden="true">{articles.length ? '⌕' : '✎'}</span><span>{articles.length ? '还没有找到这样的内容，试试其他关键词或重置筛选' : '纸页已经铺好，等下一次落笔'}</span></p>}
-        {!featured && <p class="article-results" role="status" aria-live="polite" data-article-results>共 {matchedArticles.length} 条内容</p>}
-      </div>
-      {!featured && articles.length > 0 && <aside class="article-filters" data-article-filters aria-label="内容筛选与排序">
-        <nav class="article-catalog__views" aria-label="内容展示方式">{[{ value: 'list', label: '全部' }, { value: 'archive', label: '归档' }].map((option) => <a class="c2-surface" href={filterHref('view', option.value)} data-filter-name="view" data-filter-value={option.value} aria-current={filters.view === option.value ? 'true' : undefined}>{option.label}</a>)}</nav>
+    <div class:list={['article-browser', { 'article-browser--filters': !featured }]} hidden={featured && !visibleArticles.length}>
+      {featured ? <div class="article-browser__main"><div class="article-grid">{visibleArticles.map((article) => <ArticleCard article={article} headingLevel={3} />)}</div></div> : result && <ArticleResults result={result} />}
+      {!featured && <aside class="article-filters" data-article-filters aria-label="内容筛选与排序">
+        <nav class="article-catalog__views" aria-label="内容展示方式" data-rubber-segment><span class="rubber-segment__indicator c2-surface" aria-hidden="true"></span>{[{ value: 'list', label: '全部' }, { value: 'archive', label: '归档' }].map((option) => <a class="c2-surface" href={filterHref('view', option.value)} data-filter-name="view" data-filter-value={option.value} aria-current={filters.view === option.value ? 'true' : undefined}>{option.label}</a>)}</nav>
         <button class="article-filters__toggle" type="button" aria-expanded="false" aria-controls="article-filter-groups" data-filter-toggle><span data-filter-summary>{selectedFilters}</span><span aria-hidden="true">⌄</span></button>
         <div class="article-filters__body" id="article-filter-groups"><div class="article-filters__groups">
           {filterGroups.map((group) => <fieldset class="article-filters__group">
@@ -101,8 +75,8 @@ const legacyFilters = [filters.source && `来源：${filters.source === 'origina
   import { animateMotion, animateContentHeight, setFeedbackText } from '../lib/motion';
   import { siteConfig } from '../config/site';
   import { attachPaperCaret } from '../lib/paper-caret';
-  import { initializeInlineContent } from '../lib/reading-extras';
-  import { articleMonth, readArticleFilters, matchesArticle, compareArticles, articleFilterParameters, articleDateLabel, articleLinkHost, type CatalogArticle } from '../lib/article-catalog';
+  import { initializeInlineContent, disposeInlineContent } from '../lib/reading-extras';
+  import { readArticleFilters, articleCatalogHref, articleDateLabel, articleLinkHost } from '../lib/article-catalog';
 
   document.querySelectorAll<HTMLButtonElement>('[data-link-shuffle]').forEach((button) => {
     button.hidden = false;
@@ -153,14 +127,7 @@ const legacyFilters = [filters.source && `来源：${filters.source === 'origina
 
 
   document.querySelectorAll<HTMLElement>('[data-article-list]').forEach((section) => {
-    const grid = section.querySelector<HTMLElement>('[data-article-grid]')!;
-    const filters = section.querySelector<HTMLElement>('[data-article-filters]');
-    if (!filters) return;
-    const cards = [...grid.querySelectorAll<HTMLElement>('[data-article-card]')].map((element) => ({
-      element, id: Number(element.dataset.articleCard), contentType: element.dataset.contentType as CatalogArticle['contentType'], source: element.dataset.source!, category: element.dataset.category!,
-      createdAt: element.dataset.created!, updatedAt: element.dataset.updated!, tags: JSON.parse(element.dataset.tags || '[]') as string[], search: '', starred: element.dataset.starred === 'true',
-    } satisfies CatalogArticle & { element: HTMLElement }));
-    const headers = new Map([...grid.querySelectorAll<HTMLElement>('[data-archive-month]')].map((header) => [header.dataset.archiveMonth!, header]));
+    const filters = section.querySelector<HTMLElement>('[data-article-filters]')!;
     const links = [...section.querySelectorAll<HTMLAnchorElement>('[data-filter-name]')];
     const filterContext = section.querySelector<HTMLElement>('[data-filter-context]')!;
     const filterContextLabel = filterContext.querySelector<HTMLElement>('[data-filter-context-label]')!;
@@ -217,7 +184,7 @@ const legacyFilters = [filters.source && `来源：${filters.source === 'origina
       if (!searchExpanded && query.value.trim()) {
         query.value = '';
         refreshCaret();
-        filterArticles();
+        void navigateCatalog({ ...values, q: '', page: '1' });
       } else setSearchExpanded(!searchExpanded);
     });
     searchControl.addEventListener('keydown', (event) => {
@@ -229,8 +196,6 @@ const legacyFilters = [filters.source && `来源：${filters.source === 'origina
     });
     document.addEventListener('pointerdown', (event) => { if (!searchControl.contains(event.target as Node)) setSearchExpanded(false); });
     searchControl.addEventListener('focusout', (event) => { if (event.relatedTarget && !searchControl.contains(event.relatedTarget as Node)) setSearchExpanded(false); });
-    const empty = section.querySelector<HTMLElement>('[data-article-empty]')!;
-    const result = section.querySelector<HTMLElement>('[data-article-results]')!;
     const toggle = filters.querySelector<HTMLButtonElement>('[data-filter-toggle]')!;
     const summary = filters.querySelector<HTMLElement>('[data-filter-summary]')!;
     const filterBody = filters.querySelector<HTMLElement>('.article-filters__body')!;
@@ -256,106 +221,92 @@ const legacyFilters = [filters.source && `来源：${filters.source === 'origina
     });
     let searchRevision = 0;
     let searchController: AbortController | undefined;
-    let searchedQuery = '';
-    let searchedIds = new Set<number>();
-    const filterArticles = async () => {
-      clearTimeout(searchTimer);
-      values.q = query.value.trim().slice(0, siteConfig.articles.searchMaximumLength);
-      updateSearchToggle();
-      const revision = ++searchRevision;
-      searchController?.abort();
-      if (values.q && searchedQuery !== values.q) {
-        const searchTerm = values.q;
-        searchController = new AbortController();
-        setFeedbackText(result, '正在搜索正文…');
-        try {
-          const response = await fetch(`/api/articles/search.json?${new URLSearchParams({ q: searchTerm })}`, { signal: AbortSignal.any([searchController.signal, AbortSignal.timeout(siteConfig.interactions.requestTimeoutMilliseconds)]) });
-          if (!response.ok) throw new Error('Search request failed');
-          const data = await response.json() as { ids: number[] };
-          if (revision !== searchRevision) return;
-          searchedIds = new Set(data.ids); searchedQuery = searchTerm;
-        } catch { if (revision === searchRevision) setFeedbackText(result, '搜索暂时不可用，请稍后再试。'); return; }
-      }
-      const included = (card: CatalogArticle) => matchesArticle(card, { ...values, q: '' }) && (!values.q || searchedIds.has(card.id));
-      const positions = new Map(cards.filter((card) => !card.element.hidden).map((card) => [card.element, card.element.getBoundingClientRect()]));
-      cards.forEach((card) => card.element.getAnimations().forEach((animation) => animation.cancel()));
-      const counts = new Map<string, number>();
-      const includedMonths = new Set<string>();
-      cards.filter(included).forEach((card) => {
-        const month = articleMonth(card.createdAt);
-        counts.set(month, (counts.get(month) || 0) + 1);
-      });
-      let count = 0;
-      const fragment = document.createDocumentFragment();
-      cards.sort((first, second) => compareArticles(first, second, values)).forEach((card) => {
-        const month = articleMonth(card.createdAt);
-        if (!includedMonths.has(month)) {
-          const header = headers.get(month)!;
-          header.hidden = values.view !== 'archive' || !counts.has(month);
-          header.querySelector('span')!.textContent = `${counts.get(month) || 0} 条`;
-          fragment.append(header);
-          includedMonths.add(month);
-        }
-        card.element.hidden = !included(card);
-        card.element.querySelector('h3')!.setAttribute('aria-level', values.view === 'archive' ? '3' : '2');
-        if (!card.element.hidden) count += 1;
-        fragment.append(card.element);
-      });
-      const viewChanged = grid.dataset.view !== values.view;
-      grid.dataset.view = values.view;
-      grid.append(fragment);
-      if (viewChanged) initializeInlineContent(grid);
-      empty.hidden = count > 0;
-      setFeedbackText(result, `共 ${count} 条内容`);
+    const synchronizeControls = () => {
       links.forEach((link) => {
         const name = link.dataset.filterName as keyof typeof values;
         if (values[name] === link.dataset.filterValue) link.setAttribute('aria-current', 'true');
         else link.removeAttribute('aria-current');
-        link.href = `/content?${articleFilterParameters({ ...values, [name]: link.dataset.filterValue || '' })}`;
+        link.href = articleCatalogHref({ ...values, [name]: link.dataset.filterValue || '', page: '1' });
       });
-      const legacyFilters = [values.source && `来源：${values.source === 'original' ? '原创' : '搬运'}`, values.category && `分类：${values.category === 'discussion' ? '杂谈' : '日志'}`, values.tag && `标签：# ${values.tag}`, values.period && `日期：${values.period}`].filter(Boolean).join(' · ');
-      filterContext.hidden = !legacyFilters;
-      filterContextLabel.textContent = `当前筛选：${legacyFilters}`;
+      const context = [values.source && `来源：${values.source === 'original' ? '原创' : '搬运'}`, values.category && `分类：${values.category === 'discussion' ? '杂谈' : '日志'}`, values.tag && `标签：# ${values.tag}`, values.period && `日期：${values.period}`].filter(Boolean).join(' · ');
+      filterContext.hidden = !context;
+      filterContextLabel.textContent = `当前筛选：${context}`;
       setFeedbackText(summary, ['sort', 'contentType', 'starred'].flatMap((name) => {
         const selected = links.find((link) => link.dataset.filterName === name && link.getAttribute('aria-current') === 'true');
         return selected && (name === 'sort' || values[name as keyof typeof values]) ? [selected.childNodes[0].textContent?.trim()] : [];
       }).join(' · '));
       search.querySelectorAll<HTMLInputElement>('input[type="hidden"]').forEach((input) => { input.value = values[input.name as keyof typeof values]; });
-      const easing = getComputedStyle(document.documentElement).getPropertyValue('--ease-out').trim();
-      cards.filter((card) => !card.element.hidden).forEach(({ element }) => {
-        const previous = positions.get(element);
-        const next = element.getBoundingClientRect();
-        element.classList.remove('reveal-pending');
-        element.dataset.reordered = 'true';
-        animateMotion(element, [
-          { translate: previous ? `${previous.left - next.left}px ${previous.top - next.top}px` : '0 16px', opacity: previous ? 1 : 0 },
-          { translate: '0 0', opacity: 1 },
-        ], { duration: siteConfig.articles.reorderMilliseconds, easing });
-      });
-      const url = new URL(location.href);
-      url.search = articleFilterParameters(values).toString();
-      history.replaceState(history.state, '', url);
+      updateSearchToggle();
+      document.dispatchEvent(new CustomEvent('articles:updated'));
     };
-    links.forEach((link) => link.addEventListener('click', (event) => {
-      if (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    const navigateCatalog = async (next: typeof values, historyMode: 'push' | 'none' = 'push', moveFocus = false) => {
+      clearTimeout(searchTimer);
+      const revision = ++searchRevision;
+      searchController?.abort();
+      searchController = new AbortController();
+      section.setAttribute('aria-busy', 'true');
+      const current = section.querySelector<HTMLElement>('[data-article-results-container]')!;
+      setFeedbackText(current.querySelector<HTMLElement>('[data-article-results]')!, next.q ? '正在搜索正文…' : '正在翻阅…');
+      try {
+        const address = new URL(articleCatalogHref(next), location.origin);
+        const response = await fetch(`/api/articles/catalog${address.search}`, { signal: AbortSignal.any([searchController.signal, AbortSignal.timeout(siteConfig.interactions.requestTimeoutMilliseconds)]) });
+        if (!response.ok) throw new Error(`Article catalog returned ${response.status}`);
+        const markup = new DOMParser().parseFromString(await response.text(), 'text/html');
+        const rendered = markup.querySelector<HTMLElement>('[data-article-results-container]');
+        if (!rendered?.dataset.catalogUrl) throw new Error('Article catalog fragment missing');
+        if (revision !== searchRevision) return;
+        const canonical = new URL(rendered.dataset.catalogUrl, location.origin);
+        values = readArticleFilters(canonical.searchParams);
+        const replacement = document.importNode(rendered, true);
+        disposeInlineContent(current);
+        current.replaceWith(replacement);
+        initializeInlineContent(replacement);
+        replacement.querySelectorAll<HTMLImageElement>('.article-card__image').forEach((image) => {
+          const hideFailed = () => { image.closest<HTMLElement>('.article-card__cover')!.hidden = true; };
+          image.addEventListener('error', hideFailed);
+          if (image.complete && !image.naturalWidth) hideFailed();
+        });
+        query.value = values.q;
+        refreshCaret();
+        synchronizeControls();
+        if (historyMode === 'push' && canonical.href !== location.href) history.pushState(history.state, '', canonical);
+        else if (canonical.href !== location.href) history.replaceState(history.state, '', canonical);
+        if (moveFocus) {
+          const grid = replacement.querySelector<HTMLElement>('[data-article-grid]')!;
+          grid.tabIndex = -1;
+          grid.focus({ preventScroll: true });
+          replacement.scrollIntoView({ block: 'start', behavior: 'instant' });
+        }
+        replacement.querySelectorAll<HTMLElement>('[data-article-card]').forEach((card) => animateMotion(card, [{ opacity: 0, translate: '0 12px' }, { opacity: 1, translate: '0 0' }], { duration: siteConfig.articles.reorderMilliseconds, easing: getComputedStyle(document.documentElement).getPropertyValue('--ease-out').trim() }));
+      } catch (error) {
+        if (revision !== searchRevision) return;
+        console.warn('Article catalog request failed', error);
+        setFeedbackText(section.querySelector<HTMLElement>('[data-article-results]')!, '内容暂时无法加载，请再次选择或刷新页面重试。');
+      } finally {
+        if (revision === searchRevision) section.removeAttribute('aria-busy');
+      }
+    };
+    section.addEventListener('click', (event) => {
+      if (!(event instanceof MouseEvent) || event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      const link = (event.target as Element).closest<HTMLAnchorElement>('a[data-filter-name], a[data-catalog-page], a[data-filter-reset]');
+      if (!link) return;
       event.preventDefault();
-      values[link.dataset.filterName as keyof typeof values] = link.dataset.filterValue || '';
-      filterArticles();
-    }));
-    search.addEventListener('submit', (event) => { event.preventDefault(); filterArticles(); });
+      const next = readArticleFilters(new URL(link.href).searchParams);
+      void navigateCatalog(next, 'push', link.hasAttribute('data-catalog-page'));
+    });
+    const searchArticles = () => void navigateCatalog({ ...values, q: query.value.trim().slice(0, siteConfig.articles.searchMaximumLength), page: '1' });
+    search.addEventListener('submit', (event) => { event.preventDefault(); searchArticles(); });
     query.addEventListener('input', (event) => {
       clearTimeout(searchTimer);
-      if (!(event as InputEvent).isComposing) searchTimer = setTimeout(filterArticles, siteConfig.articles.searchDelayMilliseconds);
+      searchRevision += 1;
+      searchController?.abort();
+      section.removeAttribute('aria-busy');
+      if (!(event as InputEvent).isComposing) searchTimer = setTimeout(searchArticles, siteConfig.articles.searchDelayMilliseconds);
     });
-    query.addEventListener('compositionend', () => { clearTimeout(searchTimer); searchTimer = setTimeout(filterArticles, siteConfig.articles.searchDelayMilliseconds); });
-    section.querySelectorAll('[data-filter-reset]').forEach((reset) => reset.addEventListener('click', (event) => {
-      if (event instanceof MouseEvent && (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)) return;
-      event.preventDefault();
-      values = readArticleFilters(new URLSearchParams());
-      query.value = '';
-      refreshCaret();
-      filterArticles();
-    }));
-    window.addEventListener('pagehide', () => { clearTimeout(searchTimer); searchController?.abort(); });
+    query.addEventListener('compositionend', () => { clearTimeout(searchTimer); searchTimer = setTimeout(searchArticles, siteConfig.articles.searchDelayMilliseconds); });
+    window.addEventListener('popstate', () => { void navigateCatalog(readArticleFilters(new URLSearchParams(location.search)), 'none'); });
+    window.addEventListener('pagehide', () => { clearTimeout(searchTimer); searchRevision += 1; searchController?.abort(); });
+    synchronizeControls();
+
   });
 </script>

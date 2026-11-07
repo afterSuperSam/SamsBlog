@@ -43,6 +43,7 @@ const settings = getProjectSettings();
 </section>
 
 <script>
+  import { markTaskState } from '../lib/micro-feedback';
   import type { ProjectRecord } from '../lib/projects';
   import { animateContentHeight } from '../lib/motion';
   import { beginAdminAction, registerAdminDraft } from '../lib/admin-dialog';
@@ -54,7 +55,7 @@ const settings = getProjectSettings();
   if (form) {
     const items = form.querySelector<HTMLElement>('[data-project-items]')!;
     const template = form.querySelector<HTMLTemplateElement>('[data-project-template]')!;
-    const showFeedback = (message: string, state = '') => form.querySelectorAll<HTMLElement>('[data-project-feedback]').forEach((feedback) => animateContentHeight(feedback, () => { feedback.textContent = message; feedback.dataset.state = state; }));
+    const showFeedback = (message: string, state = '') => form.querySelectorAll<HTMLElement>('[data-project-feedback]').forEach((feedback) => animateContentHeight(feedback, () => { feedback.textContent = message; feedback.dataset.state = state; markTaskState(feedback, !message ? 'idle' : state === 'loading' ? 'pending' : state === 'success' ? 'success' : state === 'error' ? 'error' : 'idle'); }));
     const entries = () => [...items.querySelectorAll<HTMLFieldSetElement>('[data-project-entry]')];
     const markSaved = registerAdminDraft(form, () => JSON.stringify([...form.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input,textarea')]
       .map((field) => [field.value, field instanceof HTMLInputElement && field.checked])));
