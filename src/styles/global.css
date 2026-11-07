@@ -665,11 +665,11 @@ form>label[hidden]{display:none!important}
 
 /* 触摸设备保留点击和键盘反馈，不保留鼠标悬停的位移与光效。 */
 @media(hover:none),(pointer:coarse){
-  .project-list article:hover:not(:has(:focus-visible)),.article-card:hover:not(:has(:focus-visible)),.friend-card:hover:not(:has(:focus-visible)),.about-link:hover:not(:focus-visible){transform:none;box-shadow:none}
+  .project-list article:hover:not(:has(:focus-visible)),.article-card:hover:not(:has(:focus-visible)),.friend-card:hover:not(:has(:focus-visible)),.about-link:hover:not(:focus-visible),.about-link:hover:not(:focus-visible) .about-link__shadow{transform:none;box-shadow:none}
   .project-list article:hover:not(:has(:focus-visible)) h3 a{text-shadow:none;color:var(--text)}
   .about-link:hover:not(:focus-visible) .about-link__icon{transform:none}
   .article-card:hover:not(:has(:focus-visible)) .article-card__cover img{transform:none}
-  .article-card:hover:not(:has(:focus-visible))>.article-card__surface,.friend-card:hover:not(:has(:focus-visible))::after,.about-link:hover:not(:focus-visible)::before{opacity:0}
+  .article-card:hover:not(:has(:focus-visible))>.article-card__surface,.friend-card:hover:not(:has(:focus-visible))::after,.about-link:hover:not(:focus-visible) .about-link__light::before{opacity:0}
   :is(.articles-more,.friends-more):hover:not(:focus-visible),:is(.articles-more,.friends-more):hover:not(:focus-visible) span,.friend-card__rss:hover:not(:focus-visible),.article-filters__options button:hover:not(:focus-visible){transform:none}
   :is(.articles-more,.friends-more):hover:not(:focus-visible)::before,.friend-card__rss:hover:not(:focus-visible)::before{opacity:0}
   .friend-card__rss:hover:not(:focus-visible) path{stroke-dashoffset:.16;opacity:.65}

@@ -47,14 +47,19 @@
 .contribution-panel>footer small { font-size:inherit; }
 .contribution-panel>footer a { color:var(--graph-accent); font-weight:700; }
 .about-links { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:20px; max-width:var(--max); align-items:stretch; }
-.about-link { --link-accent:var(--summer-blue); position:relative; isolation:isolate; display:grid; grid-template-columns:64px minmax(0,1fr); gap:16px; align-items:center; min-height:160px; padding:24px 10px; overflow:hidden; border:0; border-radius:22px; color:var(--text); text-align:left; cursor:pointer; transition:color .25s ease,background .3s ease,transform .35s var(--ease),box-shadow .45s var(--ease-out); background:transparent; }
+.about-link { --link-accent:var(--summer-blue); position:relative; isolation:isolate; display:grid; grid-template-columns:64px minmax(0,1fr); gap:16px; align-items:center; min-height:160px; padding:24px 10px; border:0; color:var(--text); text-align:left; cursor:pointer; transition:color .25s ease,background .3s ease,transform .35s var(--ease); background:transparent; }
 .about-link:nth-child(2) { --link-accent:var(--summer-pink); }
 .about-link:nth-child(3) { --link-accent:var(--summer-orange); }
 .about-link:nth-child(4) { --link-accent:var(--accent-2); }
-.about-link::before { position:absolute; inset:0; border-radius:inherit; content:""; pointer-events:none; background:radial-gradient(ellipse at 50% 58%,color-mix(in oklab,color-mix(in oklab,var(--link-accent),white var(--glow-white-mix)) var(--contact-hover-light-strength),transparent),transparent 78%); opacity:0; transform:scale(.9); transition:opacity .4s var(--ease-out),transform .55s var(--ease-out); }
-.about-link:is(:hover,:focus-visible) { color:var(--link-accent); transform:translateY(-3px); background:transparent; box-shadow:0 12px 38px color-mix(in oklab,color-mix(in oklab,var(--link-accent),white var(--glow-white-mix)) var(--contact-hover-shadow-strength),transparent); }
-.about-link:is(:hover,:focus-visible)::before { opacity:1; transform:scale(1.05); }
-.about-link.c2-shape{--c2-corner:var(--surface-corner-large);overflow:visible;border-radius:0}.about-link.c2-shape::before{border-radius:0;clip-path:var(--c2-clip);transform:none}.about-link.c2-shape:is(:hover,:focus-visible){box-shadow:none;filter:drop-shadow(0 12px 19px color-mix(in oklab,var(--link-accent) var(--contact-hover-shadow-strength),transparent))}.about-link.c2-shape:focus-visible{outline:0}.about-link.c2-shape:focus-visible strong{text-decoration:underline;text-underline-offset:6px}
+/* 固定柔光在静止曲面内缩放，外扩散影只属于空灯光层，不投射文字或图标。 */
+.about-link__shadow,.about-link__light{position:absolute;inset:0;pointer-events:none}
+.about-link__shadow{z-index:-1;border-radius:22px;box-shadow:none;transition:box-shadow .45s var(--ease-out)}
+.about-link__light{z-index:0;overflow:hidden}
+.about-link__light::before { position:absolute; inset:0; border-radius:22px; content:""; pointer-events:none; background:radial-gradient(ellipse at 50% 58%,color-mix(in oklab,color-mix(in oklab,var(--link-accent),white var(--glow-white-mix)) var(--contact-hover-light-strength),transparent),transparent 78%); opacity:0; transform:scale(.9); transition:opacity .4s var(--ease-out),transform .55s var(--ease-out); }
+.about-link:is(:hover,:focus-visible) { color:var(--link-accent); transform:translateY(-3px); background:transparent; }
+.about-link:is(:hover,:focus-visible) .about-link__shadow{box-shadow:0 12px 38px color-mix(in oklab,color-mix(in oklab,var(--link-accent),white var(--glow-white-mix)) var(--contact-hover-shadow-strength),transparent)}
+.about-link:is(:hover,:focus-visible) .about-link__light::before { opacity:1; transform:scale(1.05); }
+.about-link.c2-shape{--c2-corner:var(--surface-corner-large);overflow:visible;border-radius:0}.about-link.c2-shape:focus-visible{outline:0}.about-link.c2-shape:focus-visible strong{text-decoration:underline;text-underline-offset:6px}
 .about-link__icon { position:relative; z-index:1; display:grid; width:64px; height:64px; place-items:center; color:var(--link-accent); transition:transform .35s var(--ease),background .3s ease; background:transparent; }
 .about-link:is(:hover,:focus-visible) .about-link__icon {  transform:rotate(-4deg) scale(1.06);  background:transparent; }
 .about-link__icon svg { width:38px; height:38px; fill:none; stroke:currentColor; stroke-width:1.55; stroke-linecap:round; stroke-linejoin:round; }
