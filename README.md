@@ -49,11 +49,13 @@ Header 最右端的“读者”为普通链接，进入 `/reader`：未登录显
 
 Google／BlogsClub／GitHub／Passkey 以两列等宽连续曲率胶囊排列，图标与文字各占固定列，整组居中、列内左对齐；BlogsClub 使用原创实心 B 单色 SVG（无外框或描线），文字沿用站内艺术字体。胶囊轻影贴合曲率，悬停字色平滑过渡，点击呈现 Material 式涟漪；暂停或减少动效时使用短暂静态反馈。登录成功后显示服务端账号页，退出后显示登录页。
 
-OAuth 在点击时打开独立浏览器授权窗口，授权期间 `/reader` 保留当前位置和输入。完成页只提示原页面重新查询服务端会话，不传递身份、授权码或令牌；会话创建时间变化后才确认登录或同账号重验。窗口通信受限时继续查询，关窗不当作成功；支持取消与超时，失败后恢复控件和焦点。窗口尺寸、查询间隔及等待上限由 `siteConfig.readerPopup` 配置，默认520×720、3秒、10分钟。
+OAuth 在点击时打开独立授权窗口，保留原页面的位置和输入。每次启动使用独立 `flowId`，完成页和窗口消息只传流程号与结果，不传身份或令牌；原页按该流程的服务端状态及有效会话确认完成，不再用会话创建时间推测成功。同浏览器新流程使旧流程失效，支持精确取消、超时及通信受限时回查；关窗不当作成功，失败恢复控件和焦点。窗口尺寸、查询间隔及等待上限由 `siteConfig.readerPopup` 配置，默认520×720、3秒、10分钟。
 
 账号页直接展示无外框、连续曲率轮廓与低对比半透明纯色层次的卡片，桌面加宽、小字放大，卡内保持紧凑，区块上下间距略增。登录方式图标徽标位于注册时间左侧，保留名称的 `aria-label` 与 `title`；统计行最右侧为“退出登录”胶囊。可修改昵称、个人网站及回复通知邮箱，点击头像更换图片；头像悬停或聚焦时显示铅笔图标并虚化底图。编辑昵称需2–12个 Unicode 码点，修改同步既有署名，旧长昵称保留可读。头像仅接受 JPEG／PNG／WebP／GIF，文件不超过2MiB；更换后仅自动回收新头像用途（`purpose=avatar`）且无引用的旧图。历史媒体库图片、共享头像，以及文章、草稿或软删除记录仍引用的图片保留，共用或仍被读者引用的头像禁止后台删除。可管理 Passkey，查看注册时间、累计留言与评论次数及本人留言分页；隐藏文章不返回标题或跳转地址。Passkey 添加和移除需15分钟内重新验证，移除需二次点击；过期时在同页切换到身份验证区域，也可返回账号，验证后自行重新选择操作。身份切换先清空旧资料。
 
-回复通知邮箱默认空、可选，仅在自己的账号页和私有账号响应中显示；只校验地址格式，不用于登录或身份合并。登录留言与文章评论隐藏邮箱输入，勾选通知且发信已配置时由服务端读取账户邮箱，忽略客户端提交的邮箱；未设置时照常发表且不订阅。修改或清空仅影响之后新帖，既有订阅、已入队邮件与逐帖退订规则保持原样。
+账号页“登录方式”展示已绑定的提供方及数量，可添加邮箱、BlogsClub、GitHub、Google。绑定需近期验证当前身份，再验证新身份；挑战绑定当前账号、会话和提供方，默认10分钟、单次使用，可主动取消。其他账号已占用的身份拒绝绑定，相同邮箱不自动合并，私有身份清单只返回提供方与数量，不暴露 subject 或原始身份邮箱；Passkey 保留原管理区域与近期验证规则。
+
+回复通知邮箱默认空、可选，仅在本人账号页和私有响应显示，不用于登录或身份合并。地址须单独验证后才能订阅；新地址等待验证时继续使用旧的已验证地址，确认后才替换并撤销旧留言订阅，清空则撤销通知。登录留言从服务端读取已验证地址并忽略客户端邮箱，未设置仍可发表。历史未验证地址不会自动恢复订阅。
 
 完整账号资料、Passkey 和首批本人留言均由服务端直接输出，客户端接管已有状态。保存资料原位反馈并保留等待期间的新编辑，不重复读取列表。
 
@@ -71,7 +73,7 @@ OAuth 在点击时打开独立浏览器授权窗口，授权期间 `/reader` 保
 
 首页字标随原生滚动时间线轻退场，正文仍正常滚动进入；浏览器不支持时保持静态。字标、搜索和跳转按钮只在操作时反馈，内容内层复用现有一次性可见性观察。首页、内容、关于与文章页统一采用整页柔焦淡出和清晰淡入，不再拆分导航、正文与封面快照。区块入场不新增动画依赖或持续帧循环，暂停和系统减少动效立即呈现内容。
 
-局部动效共用 `--ease-spring`：支持时使用原生 CSS `linear()` 短回弹，旧浏览器回退贝塞尔曲线；字标、菜单图标和选中标记共用曲线。手机筛选在原位置展开和收束，搜索状态与结果数量在文案变化时短暂接入。复制成功显示粉色文字和确认勾；提示浮层以触发位置为中心首次出现，连续浏览热力图日期立即更新，不重复入场。后台文章下拉复用同一块 C2 底色移动选中，保留键盘操作；“全部／归档”用伸展标记跟随实际选中，仍是可直接导航的链接。表单与上传显示真实等待、成功或失败图形及中文状态，不显示虚构百分比；暂停和减少动效时使用静态反馈。日期、计数和版本仅数字区域采用等宽数字。参数集中在 `siteConfig.interactionFeedback`。
+局部动效共用 `--ease-spring`：支持时使用原生 CSS `linear()` 短回弹，旧浏览器回退贝塞尔曲线；字标、菜单图标和选中标记共用曲线。手机筛选在原位置展开和收束，搜索状态与结果数量在文案变化时短暂接入。复制成功显示粉色文字和确认勾；提示浮层以触发位置为中心首次出现，连续浏览热力图日期立即更新，不重复入场。后台文章下拉复用同一块 C2 底色移动选中，保留键盘操作；“全部／归档”用伸展标记跟随实际选中，仍是可直接导航的链接。表单与上传显示真实等待、成功或失败图形及中文状态，不显示虚构百分比；暂停和减少动效时使用静态反馈。日期、计数和版本沿用原艺术字体，保留 `tabular-nums` 对齐。参数集中在 `siteConfig.interactionFeedback`。
 
 内容页支持题目、手动摘要与 Markdown 正文全文搜索（含代码文字）；“全部／归档”位于右侧筛选顶部，下方依次为排序、形式和星标；桌面筛选固定于浏览器视口，滚动到页顶、中段或页底均保持可见；避开顶部导航和正文，低高度时区域内部可滚动；手机“全部／归档”常显于筛选折叠入口上方，排序、形式和星标仍在原位折叠，搜索展开不隐藏视图切换，筛选项悬停不位移，不显示筛选底部的重置按钮。旧 URL 中的来源、分类、标签和发表年月继续生效，当前条件在列表上方显示并可重置；星标、形式与搜索、归档及旧条件组合，保存在 URL。标题旁“搜索”在同一行向左展开无底板的手写输入栏，点击收起、外部或 Escape 关闭；保留关键词时入口变为红色“取消”，点击仅清空搜索，其他筛选不变。动效适配暂停与减少动态效果，搜索与留言共用短手绘光标，保留原生选区和中文输入法。归档按北京时间的发表年月分组，组内沿所选排序，文章保持公开。列表与归档复用同一套卡片，筛选规则集中在 `src/lib/article-catalog.ts`。
 
@@ -99,17 +101,19 @@ OAuth 在点击时打开独立浏览器授权窗口，授权期间 `/reader` 保
 
 后台 `/admin` 概览直接展示7／30／90天浏览、访客、趋势与文章排行，移除工作台入口网格和重复的统计导航；旧 `/admin/analytics` 地址继续可用。登录入口的标题、说明、密码标签、输入框、按钮与状态提示使用放大后的字号，手机不再额外缩小说明文字；不影响编辑工作区字号。内容、媒体、评论与留言、友链、友链申请、项目、赞助、回复通知分别拥有独立地址。列表保留在主区域，新建、编辑、审核在右侧抽屉完成；手机使用全屏抽屉，标题固定、正文独立滚动，Escape 与关闭按钮恢复焦点。媒体页可独立上传、复制和回收图片，插入正文与设为首图仅在文章编辑器中提供。
 
+友链使用逐条 `revision`，项目使用集合 `revision`，初始均为1；更新、星标、推荐或删除按版本比较，冲突返回409并保留当前输入，不覆盖其他窗口的新编辑。关键管理写入与成功审计同事务提交；审计只记录时间、对象类型／编号、操作、结果和可用版本，不记录正文、IP、UA 或密钥。
+
 申请友链弹窗与后台抽屉共用 CSS 时长换算，兼容秒和毫秒；生产样式压缩不会改变进退动画时长。
 
-首页留言、文章评论及后台站长回复正文自动保存为本机草稿：按匿名／读者／管理员身份及留言、文章、回复目标隔离，刷新或失败后保留；公开区与后台各最多40条、每条1000字符、保留7天，由 `siteConfig.commentDrafts` 校验。成功仅清理相同的提交快照，等待期间的新输入、中文组词和其他目标草稿保留；新草稿不包含邮箱、验证码或昵称。
+首页留言、文章评论及后台站长回复保存本机正文草稿，按匿名／读者／管理员身份及留言、文章、回复目标隔离；公开区与后台各最多40条、每条1000字符、保留7天，由 `siteConfig.commentDrafts` 校验。公开提交另保存操作编号、完整请求摘要及通知勾选／引用等最小重试状态，刷新或失败后沿用同一请求；字段明确改变才生成新编号，不保存邮箱、验证码或昵称。成功只清理相同提交快照，等待期间的新输入、中文组词和其他目标草稿保留。
 
-匿名文章评论与首页留言先审核，已登录读者使用服务端身份提交；后台可隐藏和软删除。每篇文章隔离根评论与一级回复，隐藏父评论后回复也不公开。“喜欢／有帮助／有启发”位于 COMMENTS 标题区右上角，窄屏自然换行并保持右对齐；每个匿名浏览器对同一文章保留一项，可切换或取消。邮箱和匿名指纹不出现在公开接口。
+匿名文章评论与首页留言先审核，已登录读者使用服务端身份提交；后台可隐藏和软删除。每篇文章隔离根评论与一级回复，隐藏父评论后回复也不公开。“喜欢／有帮助／有启发”位于 COMMENTS 标题区右上角，窄屏自然换行并保持右对齐；每个匿名浏览器对同一文章保留一项，可切换或取消。邮箱和匿名指纹不出现在公开接口。 回复仍按根帖与一级回复展示，真实 `replyTargetId` 决定通知对象；公开列表不新增“回复xxx”标签。提交使用身份作用域内的 UUIDv4 `operationId`，完整请求摘要、留言、队列和原响应在同一事务保存；相同操作和摘要返回原201，不重复创建或扣成功额度，异摘要或身份变化返回409并保留输入。匿名作用域由 HttpOnly Cookie 维持，服务端只存摘要；登录后使用读者编号隔离。
 
 留言与评论输入框随内容增高，最多8行，删减后缩回；`Ctrl + Enter` 提交，普通 Enter 换行，输入法组词及确认键释放前不会误提交。颜文字提供10个精选选项，在当前光标或选区插入，最近6个仅保存在本机；展开与收起使用非线性高度和透明度过渡，暂停或减少动效时立即切换。长留言／回复可展开全文，每组先显示3条回复，其余展开查看；后台身份的回复使用页脚同款 SuperSam 手写标识，不根据昵称判断。
 
 文章评论中选中不超过180字的原话，再点击该条“引用回复”，表单显示原话和对象。服务器确认引用来自同一文章的公开评论；源评论或所在根线程隐藏、删除后，不再公开旧引用。提交期间继续输入的文字保留，成功后新回复所在折叠组自动展开。
 
-留言和评论直接显示邮箱与手绘勾选框，“记住称呼和邮箱”和“收到回复邮件通知”默认勾选。提交成功后在本站 localStorage 保存称呼和邮箱；取消记忆立即清除资料，并保留关闭记忆的选择，不显示清除成功提示。通知授权不随称呼和邮箱资料保存；未填邮箱时正常留言，不订阅通知；邮箱仅在勾选通知且填写邮箱时传给服务端。未配置发信服务时不显示通知选项。
+留言和评论直接显示邮箱与手绘勾选框，“记住称呼和邮箱”和“收到回复邮件通知”默认勾选。提交成功后在本站 localStorage 保存称呼和邮箱；取消记忆立即清除资料，并保留关闭记忆的选择，不显示清除成功提示。通知选择随本次草稿保留，实际订阅仍以邮箱确认和本次提交为准；未填邮箱时正常留言，不订阅通知；邮箱仅在勾选通知且填写邮箱时传给服务端。未配置发信服务时不显示通知选项。
 
 首页留言纸条标题旁与关于页友链区提供申请入口，复用同一套友链申请弹窗。弹窗使用纸面输入与手绘光标，展示申请要求。关闭、Escape 或点击对话框外侧都会保留本机草稿，重新打开及刷新可继续填写；成功送出后清除本次草稿，等待期间的新输入保留。草稿仅存本机，不自动提交。内容页阅读路径位于 CONTENT 标题下方，最多展示最近两条；首页移除“最近写下”抬头和“之前读到”阅读路径，内容卡片保持原样。
 
@@ -131,16 +135,21 @@ OAuth 在点击时打开独立浏览器授权窗口，授权期间 `/reader` 保
 4. 在服务器环境文件设置 `RESEND_API_KEY`、`MAIL_FROM=blog@moesam.com`、`MAIL_REPLY_TO=blog@moesam.com` 和已有的至少32字符 `BLOG_SECRET`。需要站长提醒时增加 `MAIL_ADMIN_TO=实际收件邮箱`，留空则关闭。密钥只存服务端，不填到文章或前端。
 5. 在 [Resend Templates](https://resend.com/templates) 创建并发布模板，分别将 ID 或别名写入 `RESEND_REPLY_TEMPLATE_ID`、`RESEND_ADMIN_TEMPLATE_ID`。当前模板别名为 `samsblog-reply-v1`、`samsblog-admin-v1`；可直接在 Resend 修改文案和排版后 Publish，保留现有变量名。模板 ID 留空时使用代码内同款信纸；单个变量超出服务商2000字符限制时也使用完整 HTML，不截断留言。模板定义由 `src/lib/reply-email.ts` 的 `createResendTemplate` 生成，云端后续修改不会自动覆盖本地后备模板。
 6. 部署代码及 `public/media/branding/mail-*` 图片并重启博客；邮件与图片链接使用 `siteConfig.rss.siteUrl`，应可从公网访问。先用 Resend 官方 `delivered@resend.dev` 测试地址验证模板，再用自己授权的测试邮箱验证实际收件。服务商接受请求只记为“已提交”，不等同于已经到达收件箱。免费转发没有个人邮箱收件箱或 SMTP，本方案只承担博客通知与收取回复。
+7. 在 Resend 配置 `PUBLIC_SITE_URL` 下的 `/api/notifications/resend.json`，订阅 `email.delivered`、`email.bounced`、`email.complained`，将控制台签名密钥写入服务端 `RESEND_WEBHOOK_SECRET`。未完成真实控制台配置与收件验证前，不把本地模拟通过视为投递成功。
 
-通知共用持久队列，超时／429／5xx 退避重试，默认最多5次；首次投递前保存请求正文，重试复用正文和幂等键，超过23小时不再重试。原回复队列迁移时保留 ID、状态与请求快照。服务重启后首次请求恢复队列。访客回信发送前重新核对评论、文章公开状态和通知授权；先回复再审核公开的留言会补排通知。访客回信附签名退订链接，退订清除该评论的邮箱与订阅；完成、取消或永久失败时清除请求正文。已经交给发信服务的邮件不能撤回。API 密钥尚未配置时不会实际发信。官方设置说明：[Resend 验证域名](https://resend.com/docs/dashboard/domains/introduction)、[发布模板](https://resend.com/docs/api-reference/templates/publish-template)。
+通知邮箱独立于登录身份验证。匿名留言勾选通知后仅排队发送受限验证邀请，GET `/notifications/verify?token=...` 只展示确认页；本人显式同源 POST 后才激活该条留言。账号新地址也需确认后生效；令牌默认1小时、单次使用，数据库只存摘要。历史留言和账号地址迁移为未验证，不自动发信。
+
+通知共用持久队列，超时／429／5xx 退避重试，默认最多5次、退避上限1小时，累计间隔与请求超时必须小于所配有效期（默认23小时）。首次投递前保存请求正文，重试复用正文和幂等键。服务重启后首次请求恢复队列。访客回信按真实回复目标排队，投递前复核目标、根帖、文章公开状态、邮箱验证、订阅及地址抑制；先回复再审核公开的留言会补排通知。退订清除该评论邮箱与订阅；完成、取消或永久失败清除请求正文，已提交的邮件不能撤回。API 密钥未配置时不实际发信。官方设置说明：[Resend 验证域名](https://resend.com/docs/dashboard/domains/introduction)、[发布模板](https://resend.com/docs/api-reference/templates/publish-template)。
+
+Resend webhook 使用原始请求体签名校验与事件编号持久去重，仅接受本站已记录的服务商邮件编号及匹配收件地址摘要。永久退信或投诉建立地址抑制，晚到的 delivered 事件不解除抑制。“已提交”仅表示服务商接受请求，“收件服务器已接收”仍不代表进入收件箱。
 
 两套邮件采用米白星空信纸，左上角为 SamsBlog 字标，右侧链接 moesam.com，边缘使用稀疏星点与粉蓝光晕。访客回信同时显示原留言和回复；站长回复使用页脚 SuperSam 手写笔迹的静态图片，访客回复保留实际昵称。正文是可复制的 HTML，并同时提供纯文本；屏蔽图片时仍可阅读、查看回复和退订。颜色取自 `global.css` 的 `--mail-*`，静态装饰位于 `public/media/branding/mail-*`；邮箱客户端可能替换字体、颜色或忽略背景图。
 
-站长提醒仅针对启用后收到的新留言、文章评论、访客回复和友链申请，附对应后台入口，不补发历史记录。后台自己回复不通知自己；发送前已隐藏／删除的留言或已处理的友链申请自动取消。访客是否订阅回信不影响站长提醒。后台“邮件通知”显示访客回信、站长提醒和“友链通过回信”的排队、已提交或失败状态，并提供 Resend 模板管理入口。
+站长提醒仅针对启用后收到的新留言、文章评论、访客回复和友链申请，附对应后台入口，不补发历史记录。后台自己回复不通知自己；发送前已隐藏／删除的留言或已处理的友链申请自动取消。访客是否订阅回信不影响站长提醒。后台“邮件通知”显示访客回信、站长提醒、友链通过回信与邮箱验证的队列状态，以及收件服务器接收、永久退信或投诉事件，并提供 Resend 模板管理入口。
 
 ### 订阅与跨站数据
 
-`/rss.xml` 每次请求读取最新20篇公开文章，`description` 输出摘要，`content:encoded` 输出首图与完整正文。频道为 SamsBlog，简介为“只是一只大黄狗”，公开地址在 `siteConfig.rss` 配置为 `https://blog.moesam.com/`，本地预览也不会输出 localhost 文章链接；主题名称与版本取本站名称和 `package.json`。发布、撤回、编辑、删除、恢复后自动更新，无需生成文件；订阅器决定拉取频率。站内链接和图片转为完整网址。阅读页输出专属 Open Graph、发表／编辑时间与 `BlogPosting`。
+`/rss.xml` 每次请求读取最新20篇公开文章，`description` 输出摘要，`content:encoded` 输出首图与完整正文。频道为 SamsBlog，简介为“只是一只大黄狗”，站点与 RSS 地址同取 `PUBLIC_SITE_URL`，本地预览显式使用本地根地址，生产使用实际 HTTPS 根地址；主题名称与版本取本站名称和 `package.json`。发布、撤回、编辑、删除、恢复后自动更新，无需生成文件；订阅器决定拉取频率。站内链接和图片转为完整网址。阅读页输出专属 Open Graph、发表／编辑时间与 `BlogPosting`。
 
 页脚 RSS 提供订阅说明、地址复制及原 XML 入口，禁用脚本时直接打开订阅源。浏览器直接打开 `/rss.xml` 时显示蓝色标签、粉色属性的彩色源码，自动换行；订阅器仍收到标准 XML，`/rss.xml?raw` 始终返回原始 XML。根据 `Accept` 与 `Sec-Fetch-Dest` 区分响应并设置 `Vary`，不依赖 XSLT 或执行正文 HTML。首页每张友链卡内展示该站最新一篇 RSS 文章标题和纯文字短摘要，标题打开原文；无有效条目时省略，不复制卡片内容到外部区域。首屏读取已有缓存，接近友链区后刷新，不阻塞首屏。友链 RSS 在服务器按需刷新并持久缓存30分钟；刷新失败保留同一订阅的有效旧条目，换地址后不复用旧缓存，缺失日期省略。
 
@@ -177,7 +186,7 @@ OAuth 在点击时打开独立浏览器授权窗口，授权期间 `/reader` 保
 
 无 JavaScript 时解释与剧透仍可展开，旁注仍可阅读；原始 HTML 继续转义。剧透不进入自动摘要或目录，RSS 用原文查看提示代替剧透正文；其余解释与旁注保留完整内容。剧透属于阅读遮挡，不是内容访问权限。
 
-需要 Node.js 22.12+ 与 pnpm。复制 `.env.example` 为 `.env`，完成配置后执行：
+需要 Node.js 22.12+ 与 pnpm。复制 `.env.example` 为 `.env`；本地预览显式设置 `PUBLIC_SITE_URL=http://localhost:4321`，生产改为实际 HTTPS 根地址，再执行：
 
 ```bash
 pnpm install --frozen-lockfile
@@ -188,7 +197,7 @@ pnpm dev:background
 
 | 配置 | 用途 |
 | --- | --- |
-| `PUBLIC_SITE_URL` | 最终源地址，不带路径、查询或账号密码；生产构建必填 HTTPS 地址，改域名后重新构建 |
+| `PUBLIC_SITE_URL` | 站点与 RSS 共用的根地址，不带路径、查询、片段或账号密码；本地预览用 `http://localhost:4321`，生产构建必填实际 HTTPS 地址，改域名后重新构建 |
 | `BLOG_SECRET` | 至少32个随机字符，签名与来源指纹使用；生产配置无效时拒绝管理认证 |
 | `ADMIN_PASSWORD_HASH` | `salt:scrypt` 哈希；用 `pnpm hash:admin -- "至少12字符的密码"` 生成，不保存明文密码 |
 | `BLOG_DATA_DIR` | SQLite 数据目录；生产推荐 `/opt/samsblog/shared/data`，应用与备份共用 |
@@ -217,7 +226,11 @@ Astro 构建配置按 `.env` → `.env.local` → `.env.<mode>` → `.env.<mode>
 | 留言和文章评论（共用配额） | `MESSAGE_SUBMISSION_LIMIT=2`、`MESSAGE_SUBMISSION_WINDOW_SECONDS=60` |
 | 文章 | `ARTICLE_TITLE_MAX_LENGTH=160`、`ARTICLE_CONTENT_MAX_LENGTH=100000`、`ARTICLE_SUMMARY_MAX_LENGTH=500`、`ARTICLE_AUTOSAVE_MILLISECONDS=1800`、`ARTICLE_REQUEST_MAX_BYTES=1048576` |
 | 互动和友链申请 | `REACTION_COOLDOWN_SECONDS=2`；`FRIEND_APPLICATION_SUBMISSION_LIMIT=2`、`FRIEND_APPLICATION_SUBMISSION_WINDOW_SECONDS=3600` |
-| 邮件 | `NOTIFICATION_TIMEOUT_MILLISECONDS=7000`、`NOTIFICATION_RETRY_SECONDS=60`、`NOTIFICATION_MAXIMUM_ATTEMPTS=5`、`NOTIFICATION_BATCH_SIZE=5`（最多20）、`NOTIFICATION_EXPIRY_HOURS=23`（最多23） |
+| 邮件 | `NOTIFICATION_TIMEOUT_MILLISECONDS=7000`、`NOTIFICATION_RETRY_SECONDS=60`、`NOTIFICATION_RETRY_MAXIMUM_SECONDS=3600`、`NOTIFICATION_MAXIMUM_ATTEMPTS=5`、`NOTIFICATION_BATCH_SIZE=5`（最多20）、`NOTIFICATION_EXPIRY_HOURS=23`（最多23） |
+| 通知邮箱验证 | `NOTIFICATION_VERIFICATION_SECONDS=3600`、`NOTIFICATION_VERIFICATION_COOLDOWN_SECONDS=60`、`NOTIFICATION_VERIFICATION_DAILY_LIMIT=5`（每地址） |
+| Resend webhook | `RESEND_WEBHOOK_SECRET`（签名密钥）、`NOTIFICATION_WEBHOOK_TOLERANCE_SECONDS=300`、`NOTIFICATION_WEBHOOK_MAXIMUM_BYTES=65536` |
+| 匿名提交身份 | `COMMENT_IDENTITY_SECONDS=31536000`，仅用于身份作用域内的持久防重 |
+| 维护只读 | `BLOG_MAINTENANCE_MODE=false`、`MAINTENANCE_RETRY_SECONDS=300`，修改后重启生效 |
 | 媒体 | `MEDIA_MAX_BYTES=10485760`（单张图片上限，可调低，最大10MiB） |
 | GitHub | `GITHUB_USERNAME=afterSuperSam`、`GITHUB_CACHE_SECONDS=21600`、`GITHUB_RETRY_SECONDS=60`、`GITHUB_TIMEOUT_MILLISECONDS=5000`、`GITHUB_CONCURRENCY=3`（最多6） |
 | 友链探测 | `FRIEND_STATUS_CACHE_SECONDS=300`、`FRIEND_STATUS_TIMEOUT_MILLISECONDS=5000`、`FRIEND_STATUS_SLOW_MILLISECONDS=1800`、`FRIEND_STATUS_CONCURRENCY=3`、`FRIEND_STATUS_MAX_REDIRECTS=3` |
@@ -239,12 +252,13 @@ Astro 构建配置按 `.env` → `.env.local` → `.env.<mode>` → `.env.<mode>
 | 发送验证码额度 | `READER_EMAIL_ADDRESS_LIMIT=5`、`READER_EMAIL_SOURCE_LIMIT=10`、`READER_EMAIL_GLOBAL_LIMIT=100` |
 | 验证额度 | `READER_VERIFY_SOURCE_LIMIT=30`、`READER_VERIFY_GLOBAL_LIMIT=1000` |
 | 分钟验证额度 | `READER_VERIFY_MINUTE_LIMIT=5`（1–5），同来源与同邮箱各按滚动60秒计数，持久保存，刷新或重新发码不清零 |
+| 备用身份绑定 | `READER_IDENTITY_LINK_SECONDS=600`（最多900）、`READER_IDENTITY_LINK_LIMIT=20`（每持久额度窗口，最多100） |
 | OAuth 登录额度 | `READER_OAUTH_SOURCE_LIMIT=30`、`READER_OAUTH_GLOBAL_LIMIT=1000` |
 | 请求边界 | `READER_REQUEST_MAXIMUM_BYTES=4096`、`READER_UPSTREAM_TIMEOUT_MILLISECONDS=8000`、`READER_UPSTREAM_MAXIMUM_BYTES=65536` |
 
 读者会话默认30天，验证码固定为三位数字、默认有效10分钟；单个验证码验证尝试默认3次、上限3次，旧六位验证码需重新获取。读者认证额度持久化到 SQLite，重启不清零。读者身份不保存原始登录邮箱或提供方令牌；邮箱身份使用规范化邮箱的稳定摘要，验证码和邮箱额度使用带密钥摘要。回复通知邮箱是独立可选的私有账号资料，留言订阅仍保存提交时的邮箱快照。
 
-数值参数须为正整数。探测超时最多15000ms，慢阈值须小于超时，并发最多6、跳转最多5。订阅缓存最多86400秒、响应最多4MiB、条目最多500、深度最多64；复用探测的超时与并发限制。文章字符数和请求字节数独立校验；修改请求上限时同步调整 Node adapter 与代理。
+数值参数须为正整数并受业务上界约束。近期认证不超过会话期限，绑定挑战不超过近期认证与 OAuth 有效期，Passkey 挑战不超过近期认证；重试间隔须大于单次超时、退避上限小于队列有效期，累计等待与超时也须小于有效期。配置不一致时启动拒绝。探测超时最多15000ms，慢阈值须小于超时，并发最多6、跳转最多5。订阅缓存最多86400秒、响应最多4MiB、条目最多500、深度最多64；复用探测的超时与并发限制。文章字符数和请求字节数独立校验；修改请求上限时同步调整 Node adapter 与代理。
 
 管理写操作和公开写请求的次数上限最多10000、窗口最多86400秒，公开来源跟踪最多100000。默认公开来源表满1000项时拒绝新来源，等待过期释放，不逐出仍有效的额度。管理登录、管理写操作与公开请求的基础限速仅保存在单进程内存，重启会重置；留言／评论每来源2次／分钟、友链申请每来源2次／小时的成功提交配额由数据库记录计算，重启不会清空。
 
@@ -259,11 +273,16 @@ Astro 构建配置按 `.env` → `.env.local` → `.env.<mode>` → `.env.<mode>
 | `/api/admin/login.json` | POST／公开限速 | `{password}`；登录 Cookie；401密码错误、429限速、503配置不可用 |
 | `/api/admin/logout.json` | POST／管理员 | 清除管理 Cookie |
 | `/api/reader/session.json` | GET／当前浏览器 | `{reader,options,authenticatedAt}`，返回公开资料、登录选项及当前有效会话创建时间，不返回令牌 |
-| `/api/reader/email-code.json` | POST／同源限速 | `{email}`；统一成功消息及验证码有效期／重发间隔 |
-| `/api/reader/email-login.json` | POST／同源限速 | `{email,code}`；成功返回 `{reader}` 并设置独立读者会话 |
-| `/api/reader/oauth/blogsclub.json` | POST／同源限速 | 返回 `{url}`，独立窗口授权；已登记根路径回调后303转入 `/reader/oauth-complete`，仅带 `result=success` 或 `result=error` |
-| `/api/reader/oauth/github.json`、`/api/reader/oauth/google.json` | POST／同源限速 | 返回 `{url}`，独立窗口授权；固定提供方回调后进入同一完成页 |
-| `/api/reader/account.json` | GET/PATCH／当前读者 | 私有资料、顶层 `notificationEmail`、注册时间、累计评论数和 Passkey；PATCH `{displayName,websiteUrl,notificationEmail?}`，邮箱省略保留、空串清除；昵称2–12个 Unicode 码点 |
+| `/api/reader/email-code.json` | POST／同源限速 | `{email,bindingToken?}`；统一成功消息及验证码有效期／重发间隔，绑定与登录挑战隔离 |
+| `/api/reader/email-login.json` | POST／同源限速 | `{email,code,bindingToken?,reauthenticate?}`；登录返回 `{reader}` 并设会话；重验仅接受当前账号已有身份 |
+| `/api/reader/oauth/blogsclub.json` | POST／同源限速 | `{intent?:login/reauthenticate/link,bindingToken?,flowId?}` → `{url,flowId}`；根路径回调转入带流程号与结果的干净完成页 |
+| `/api/reader/oauth/github.json`、`/api/reader/oauth/google.json` | POST／同源限速 | 与 BlogsClub 相同启动契约，固定提供方回调转入同一完成页 |
+| `/api/reader/oauth/flow.json` | GET/DELETE／对应浏览器 | GET `?flow=ID` 返回流程状态；DELETE `{flowId}` 精确取消未完成流程；completed 还需匹配有效会话 |
+| `/api/reader/identities.json` | POST/DELETE／当前读者、同源限速 | 近期验证后 POST `{provider}` → `{bindingToken}`；DELETE `{bindingToken}` 取消绑定 |
+| `/api/reader/account.json` | GET/PATCH／当前读者 | 私有资料、通知地址及验证状态、`identities:[{provider,count}]`、`authOptions`、Passkey；PATCH `{displayName,websiteUrl,notificationEmail?}`，地址省略保留、空串撤销，新地址待验证；昵称2–12个 Unicode 码点 |
+| `/api/reader/notification-email.json` | POST／当前读者、同源限速 | 重新排队通知邮箱验证，通用结果不泄露地址 |
+| `/notifications/verify?token=...` | GET/POST／验证链接 | GET 只展示确认页；显式同源 POST 消费单次令牌并激活对应订阅或账号地址 |
+| `/api/notifications/resend.json` | POST／Resend 签名 | 原始请求体验签、时间窗口、事件去重与本站邮件／收件摘要关联；不接受任意投递状态更新 |
 | `/api/reader/avatar.json` | POST／当前读者、同源限速 | multipart 单一 `file`，JPEG／PNG／WebP／GIF且不超过2MiB；返回 `{reader,account}` |
 | `/api/reader/comments.json?page=1` | GET／当前读者 | 本人未删除评论分页，包含审核状态；非公开文章不返回标题或链接 |
 | `/api/reader/passkeys/{register,login}-{options,verify}.json` | POST／同源限速 | options 返回挑战；verify 验证浏览器凭据。注册需已登录且近期验证 |
@@ -272,10 +291,10 @@ Astro 构建配置按 `.env` → `.env.local` → `.env.<mode>` → `.env.<mode>
 | `/api/articles/search.json?q=词&page=1` | GET／公开 | 沿内容页筛选；返回当前页 `{ids,snippets,page,pageCount,total,pageSize}`，片段为文本与高亮标记数据，不返回 HTML |
 | `/api/articles/catalog` | GET／公开 | 沿相同筛选返回服务端渲染的当前页结果与真实分页链接；仅含公开文章 |
 | `/api/admin/articles.json` | GET/POST/PATCH/DELETE／管理员 | GET含软删除；创建／编辑用 `title,coverUrl?,cardLayout?,source,category,tags?,content,originalAuthor?,originalUrl?`；布局枚举 `left/right/text`；编辑加 `id`，恢复 `{id,restore:true}`，删除 `{id}` |
-| `/api/admin/messages.json` | GET/PATCH/POST/DELETE／管理员 | 全部未删除线程；`{id,status}` 审核；`{parentId,content}` 回复；`{id}` 删除 |
-| `/api/admin/friends.json` | GET/POST/PATCH/DELETE／管理员 | `name,url,description,iconUrl,backgroundUrl?,rssUrl?,visible`；更新带 `id`，删除 `{id}` |
-| `/api/admin/projects.json` | GET/PUT／管理员 | `{projects:[{id?,repository,name,url,description,keyword,status,visible}]}`；顺序即展示顺序，新项无ID，已有项目须全部保留，整组原子保存 |
-| `/api/guestbook/messages.json` | GET/POST／公开 | 最新公开线程；提交 `{nickname,content,articleId?,parentId?,quoteMessageId?,quoteContent?,email?,notifyReply?,website?}`；匿名全部待审核，登录读者使用服务端称呼和账户通知邮箱、忽略客户端邮箱并直接公开，响应含 `status: pending/published`；只能回复公开父帖，引用只接受同文章的公开原话，`website` 为反垃圾字段 |
+| `/api/admin/messages.json` | GET/PATCH/POST/DELETE／管理员 | 全部未删除线程；`{id,status}` 审核；`{parentId,replyTargetId?,content}` 回复，通知真实目标；`{id}` 删除 |
+| `/api/admin/friends.json` | GET/POST/PATCH/DELETE／管理员 | `name,url,description,iconUrl,backgroundUrl?,rssUrl?,visible`；新建 revision=1，更新／推荐／星标／删除均需 `id,revision`；冲突409，不覆盖新版本 |
+| `/api/admin/projects.json` | GET/PUT／管理员 | GET 返回 `{projects,revision}`；PUT `{projects:[{id?,repository,name,url,description,keyword,status,visible}],revision}`，集合版本原子比较；冲突409保留输入，顺序即展示顺序 |
+| `/api/guestbook/messages.json` | GET/POST／公开 | 提交 `{operationId,nickname,content,articleId?,parentId?,replyTargetId?,submissionIdentity?,quoteMessageId?,quoteContent?,email?,notifyReply?,website?}`；operationId 为 UUIDv4，身份可为 anonymous／reader:id；同身份同摘要重放原201，冲突409。匿名待审核，登录读者使用服务端身份与已验证通知地址；只能回复同文章、同根的公开目标，`website` 为反垃圾字段 |
 | `/api/friends/status.json` | GET／公开 | `{statuses:[{id,status,latencyMilliseconds,checkedAt}],friends}`，仅探测公开友链；附当前分组排序结果 |
 | `/api/friends/feeds.json` | GET／公开 | `{feeds:[{id,title,url,publishedAt,checkedAt,sourceName,sourceUrl}]}`，仅已配置的公开订阅，不接受查询参数 |
 | `/api/public/project-commits.json` | GET／公开 | 当前公开项目仓库的提交日期，不接受任意探测地址 |
@@ -313,7 +332,11 @@ pnpm audit
 
 反代入口对两条提交路径的 POST 另设按 IP 和全站突发限流，具体参数见 `deploy/nginx.conf`；GET、缓存资源和管理路由不计入。使用 Cloudflare 时，可另设按 IP 的短窗口限流，仅匹配博客这两条 API（套餐不支持 Method 时按路径匹配）；边缘层不是精确小时／分钟配额。Tunnel 回源时，Nginx 仅从本机可信连接读取 `CF-Connecting-IP`，并重写传给应用的地址头；不得信任客户端自带的转发头。
 
-数据库为 `$BLOG_DATA_DIR/blog.sqlite`，使用 WAL、外键和 CHECK 约束。迁移在启动时按记录增量应用；新文章使用 `blog_articles`，不读取或自动发布退役的历史文章／相册表，也不在启动时删除历史表。保留数据库及备份目录。读者账号迁移兼容草稿版本已有字段与旧 OAuth 校验字段，保留账号、会话和通行密钥，避免重复加列导致页面无法打开。
+数据库为 `$BLOG_DATA_DIR/blog.sqlite`，使用 WAL、外键和 CHECK 约束；迁移在正常启动时按记录增量应用。当前 schema 标记为1，版本0的已知结构可升级；已知历史迁移须通过结构核验，未来版本或未知迁移在写入前拒绝。新文章使用 `blog_articles`，不读取或自动发布退役历史内容，也不把旧迁移标记写入新库。保留账号、会话、通行密钥及既有业务数据。
+
+`BLOG_MAINTENANCE_MODE=true` 在启动时启用数据库只读：公开页面及现有缓存仍可读，写请求与 OAuth 返回503和 `Retry-After`，邮件、GitHub 与友链刷新暂停。维护模式要求已完成当前全部迁移，不负责升级旧库；修改环境配置需按既有进程流程重启。
+
+升级先在外部停写的维护窗口保留配套程序、数据库和图片备份，再用目标版本完成迁移并进入只读维护验收，最后关闭维护恢复写入。回滚必须恢复同一批程序与数据库／图片快照；旧 v1.35 二进制没有新 schema guard，不能保证把旧程序直接接到升级库后仍兼容。环境密钥仍独立私密恢复。
 
 域名迁移遇到友链地址冲突时，优先保留已使用新域名的记录，其余记录软删除并保留原编号、内容和缓存后迁移；不会覆盖新记录的编辑内容。冲突记录不能直接恢复为重复地址。首页、RSS 和跨站卡片按所需数量查询；站点地图与相邻文章不读取全部正文。
 
@@ -343,7 +366,7 @@ bash deploy/backup.sh restore /path/to/BUNDLE /path/to/NEW_DIRECTORY
 
 ## 安全边界
 
-- 管理会话为签名、到期校验的 HttpOnly Cookie，SameSite=Strict，生产 Secure。每个管理接口独立鉴权；所有管理写操作统一检查同源 Origin，登录也先检查来源。Astro 来源检查、JSON 类型约束与 Strict Cookie 共同限制跨站写入，不开放管理 CORS。
+- 管理会话为签名、到期校验的 HttpOnly Cookie，SameSite=Strict；生产只接受 `__Host-samsblog_admin`，使用 Secure、Path=/、无 Domain，旧 `samsblog_admin` 不再授权，登录／退出清理旧 Cookie，升级后需重新登录。每个管理接口独立鉴权，所有管理写操作及登录统一检查同源 Origin，不开放管理 CORS。
 - 图片上传还要求同源 Origin，按实际字节限额并识别文件签名，仅服务四种栅格图片，拒绝 SVG/HTML；原始文件名只作后台展示，不用于存储路径。图片响应带 nosniff 与重新校验缓存，回收站预览禁止缓存。原图不转码、不移除照片元数据。
 - 写入表单显式使用 POST，提交按钮在各自脚本初始化后才启用；禁用脚本时显示说明，密码与正文不会通过原生 GET 提交进入网址。
 - 密码使用异步 scrypt；来源及全站登录限速在解析正文前执行。管理写操作默认全会话共享120次／分钟，读取不受此额度影响。留言、申请、表态和浏览确认默认每来源共享60次／分钟请求额度，包含无效正文；更换匿名 Cookie 不会重置来源额度。以上均为单进程内存初级限速，重启会重置，不宣称抵御分布式流量攻击；成功留言／评论和友链申请另受持久化提交配额约束。

@@ -8,5 +8,5 @@ export const POST = route(async ({ request, cookies, clientAddress }) => {
   const source = fingerprintIp(getClientIp(request, clientAddress));
   requirePublicActivityAllowance(source);
   const body = await readReaderJson(request);
-  return json({ reader: verifyReaderEmailCode(readReaderEmail(body.email), body.code, source, cookies) });
+  return json({ reader: verifyReaderEmailCode(readReaderEmail(body.email), body.code, source, cookies, { bindingToken: body.bindingToken, reauthenticate: body.reauthenticate === true }) });
 });

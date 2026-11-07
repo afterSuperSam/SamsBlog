@@ -1,9 +1,16 @@
+const publicSiteUrl = new URL(import.meta.env.PUBLIC_SITE_URL || 'http://localhost:4321');
+if (!['http:', 'https:'].includes(publicSiteUrl.protocol) || publicSiteUrl.username || publicSiteUrl.password
+  || publicSiteUrl.pathname !== '/' || publicSiteUrl.search || publicSiteUrl.hash
+  || publicSiteUrl.protocol === 'http:' && !['localhost', '127.0.0.1', '[::1]'].includes(publicSiteUrl.hostname)) {
+  throw new Error('Invalid public site origin: HTTP is only available for local preview');
+}
+
 export const siteConfig = {
   name: 'SamsBlog',
   description: '二次元与日常，收藏想象，也认真生活',
-  siteUrl: import.meta.env.PUBLIC_SITE_URL || 'http://localhost:4321',
+  siteUrl: publicSiteUrl.origin,
   locale: 'zh-CN',
-  rss: { description: '只是一只大黄狗', siteUrl: 'https://blog.moesam.com/' },
+  rss: { description: '只是一只大黄狗', siteUrl: publicSiteUrl.href },
   nav: [
     { href: '/', label: '首页' },
     { href: '/content', label: '内容' },
@@ -96,7 +103,7 @@ if (sponsorAvatarUrl.protocol !== 'https:' || sponsorAvatarUrl.username || spons
   || ![siteConfig.sponsorPresentation.avatarTimeoutMilliseconds, siteConfig.sponsorPresentation.avatarPreloadMarginPixels].every((value) => Number.isSafeInteger(value) && value > 0)
   || !Number.isSafeInteger(siteConfig.sponsorFields.nameMaximumLength) || siteConfig.sponsorFields.nameMaximumLength < 1
   || !Number.isSafeInteger(siteConfig.sponsorFields.maximumAmount) || siteConfig.sponsorFields.maximumAmount < 1) throw new Error('Invalid sponsor configuration');
-if (!siteConfig.rss.description.trim() || rssUrl.protocol !== 'https:' || rssUrl.username || rssUrl.password
+if (!siteConfig.rss.description.trim() || rssUrl.origin !== publicSiteUrl.origin || rssUrl.username || rssUrl.password
   || rssUrl.pathname !== '/' || rssUrl.search || rssUrl.hash) {
   throw new Error('Invalid RSS configuration');
 }

@@ -75,7 +75,7 @@ export function requireRecentReaderSession(cookies: Pick<AstroCookies, 'get'>): 
   if (!reader || !validReaderToken(token)) throw new HttpError(401, '请先登录读者账号', 'reauth_required');
   const session = getDatabase().prepare('SELECT created_at FROM reader_sessions WHERE token_hash=?').get(readerTokenHash(token)) as { created_at: number };
   if (session.created_at <= Date.now() - readerConfig.recentAuthenticationSeconds * 1000 || session.created_at > Date.now()) {
-    throw new HttpError(401, '请重新验证身份后管理通行密钥', 'reauth_required');
+    throw new HttpError(401, '请重新验证当前账号后继续', 'reauth_required');
   }
   return reader;
 }
@@ -95,7 +95,10 @@ export function listReaderPasskeys(readerId: number) {
 
 export function endReaderSession(cookies: ReaderCookies) {
   const token = cookies.get(readerCookieName)?.value;
-  if (validReaderToken(token)) getDatabase().prepare('DELETE FROM reader_sessions WHERE token_hash=?').run(readerTokenHash(token));
+  if (validReaderToken(token)) {
+    getDatabase().prepare('DELETE FROM reader_identity_links WHERE session_hash=?').run(readerTokenHash(token));
+    getDatabase().prepare('DELETE FROM reader_sessions WHERE token_hash=?').run(readerTokenHash(token));
+  }
   cookies.delete(readerCookieName, readerCookieOptions());
 }
 
@@ -106,11 +109,85 @@ export function startReaderSession(cookies: ReaderCookies, reader: Pick<ReaderPu
   const now = Date.now();
   database.transaction(() => {
     database.prepare('DELETE FROM reader_sessions WHERE expires_at<=?').run(now);
-    if (validReaderToken(previous)) database.prepare('DELETE FROM reader_sessions WHERE token_hash=?').run(readerTokenHash(previous));
+    if (validReaderToken(previous)) {
+      database.prepare('DELETE FROM reader_identity_links WHERE session_hash=?').run(readerTokenHash(previous));
+      database.prepare('DELETE FROM reader_sessions WHERE token_hash=?').run(readerTokenHash(previous));
+    }
     database.prepare('INSERT INTO reader_sessions(token_hash,reader_id,created_at,expires_at,login_method,passkey_id) VALUES (?,?,?,?,?,?)')
       .run(readerTokenHash(token), reader.id, now, now + readerConfig.sessionSeconds * 1000, loginMethod, passkeyId);
   }).immediate();
   cookies.set(readerCookieName, token, { ...readerCookieOptions(), maxAge: readerConfig.sessionSeconds });
+}
+
+export function listReaderIdentities(readerId: number) {
+  return getDatabase().prepare('SELECT provider,count(*) AS count FROM reader_identities WHERE reader_id=? GROUP BY provider ORDER BY provider')
+    .all(readerId) as Array<{ provider: ReaderProvider | 'email'; count: number }>;
+}
+
+type ReaderIdentityProvider = ReaderProvider | 'email';
+export interface ReaderIdentityLink { token_hash: string; reader_id: number; session_hash: string; provider: ReaderIdentityProvider }
+
+// 绑定只承认近期账号证明和独立新身份，不使用提供方邮箱合并账号。
+export function createReaderIdentityLink(cookies: ReaderCookies, provider: unknown, sourceHash: string) {
+  const reader = requireRecentReaderSession(cookies);
+  if (!['email', 'blogsclub', 'github', 'google'].includes(String(provider))) throw new HttpError(400, '请选择有效的登录方式');
+  const target = provider as ReaderIdentityProvider;
+  const options = getReaderAuthOptions();
+  if (!(target === 'email' ? options.email : options.providers.find((item) => item.id === target)?.enabled)) throw new HttpError(503, '该登录方式尚未配置');
+  if (!takeReaderAllowance([
+    { key: `identity-link-reader:${reader.id}`, maximum: readerConfig.identityLinkLimit, seconds: readerConfig.quotaWindowSeconds },
+    { key: `identity-link-source:${sourceHash}`, maximum: readerConfig.identityLinkLimit, seconds: readerConfig.quotaWindowSeconds },
+  ])) throw new HttpError(429, '绑定尝试过于频繁，请稍后重试');
+  const token = readerToken();
+  const sessionHash = readerTokenHash(cookies.get(readerCookieName)!.value);
+  const now = Date.now();
+  getDatabase().transaction(() => {
+    getDatabase().prepare('DELETE FROM reader_identity_links WHERE expires_at<=? OR session_hash=?').run(now, sessionHash);
+    getDatabase().prepare('INSERT INTO reader_identity_links(token_hash,reader_id,session_hash,provider,created_at,expires_at) VALUES (?,?,?,?,?,?)')
+      .run(readerTokenHash(token), reader.id, sessionHash, target, now, now + readerConfig.identityLinkSeconds * 1000);
+  }).immediate();
+  return token;
+}
+
+export function requireReaderIdentityLink(cookies: ReaderCookies, tokenHash: string, provider: ReaderIdentityProvider): ReaderIdentityLink {
+  const reader = requireRecentReaderSession(cookies);
+  const session = cookies.get(readerCookieName)?.value;
+  const link = getDatabase().prepare('SELECT token_hash,reader_id,session_hash,provider FROM reader_identity_links WHERE token_hash=? AND expires_at>?')
+    .get(tokenHash, Date.now()) as ReaderIdentityLink | undefined;
+  if (!link || link.reader_id !== reader.id || !validReaderToken(session) || link.session_hash !== readerTokenHash(session) || link.provider !== provider) {
+    throw new HttpError(400, '绑定已失效，请从当前账号重新开始');
+  }
+  return link;
+}
+
+export function readReaderBindingToken(value: unknown) {
+  if (!validReaderToken(value)) throw new HttpError(400, '绑定状态无效，请重新开始');
+  return readerTokenHash(value);
+}
+
+export function cancelReaderIdentityLink(cookies: ReaderCookies, value: unknown) {
+  const tokenHash = readReaderBindingToken(value);
+  const session = cookies.get(readerCookieName)?.value;
+  if (validReaderToken(session)) getDatabase().prepare('DELETE FROM reader_identity_links WHERE token_hash=? AND session_hash=?').run(tokenHash, readerTokenHash(session));
+}
+
+export function linkReaderIdentity(cookies: ReaderCookies, tokenHash: string, provider: ReaderIdentityProvider, subject: string): ReaderPublic {
+  if (!subject || subject.length > 255) throw new HttpError(400, '登录身份无效');
+  return getDatabase().transaction(() => {
+    const link = requireReaderIdentityLink(cookies, tokenHash, provider);
+    const existing = getDatabase().prepare('SELECT reader_id FROM reader_identities WHERE provider=? AND subject=?').get(provider, subject) as { reader_id: number } | undefined;
+    if (existing) throw new HttpError(409, existing.reader_id === link.reader_id ? '该身份已绑定当前账号' : '该身份已属于其他账号，不能绑定');
+    getDatabase().prepare('INSERT INTO reader_identities(provider,subject,reader_id) VALUES (?,?,?)').run(provider, subject, link.reader_id);
+    getDatabase().prepare('DELETE FROM reader_identity_links WHERE token_hash=?').run(tokenHash);
+    return readReaderSession(cookies)!;
+  }).immediate();
+}
+
+export function requireReaderReauthenticationIdentity(cookies: ReaderCookies, provider: ReaderIdentityProvider, subject: string) {
+  const reader = readReaderSession(cookies);
+  const identity = reader && getDatabase().prepare('SELECT 1 FROM reader_identities WHERE provider=? AND subject=? AND reader_id=?').get(provider, subject, reader.id);
+  if (!reader || !identity) throw new HttpError(403, '请使用当前账号已绑定的登录方式验证');
+  return reader;
 }
 
 export function resolveReaderIdentity(provider: ReaderProvider | 'email', subject: string, displayName: string, avatarUrl: string | null): ReaderPublic {

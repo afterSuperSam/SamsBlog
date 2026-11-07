@@ -1,4 +1,5 @@
 ---
+import { ensureCommentIdentity } from '../lib/comment-submissions';
 import { listPublishedMessages } from '../lib/db';
 import { replyNotificationsConfigured } from '../lib/reply-notifications';
 import { readReaderSession } from '../lib/readers';
@@ -10,6 +11,7 @@ import '../styles/guestbook.css';
 const { articleId } = Astro.props as { articleId: number };
 const messages = listPublishedMessages(60, articleId);
 const reader = readReaderSession(Astro.cookies);
+ensureCommentIdentity(Astro.cookies, Astro.url);
 const dateLabel = (date: string) => new Date(date).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 ---
 <section class="article-discussion c2-surface" id="comments" data-article-discussion data-article-id={articleId} aria-labelledby="comments-title">
@@ -29,7 +31,7 @@ const dateLabel = (date: string) => new Date(date).toLocaleString('zh-CN', { tim
     <label class="article-comment-form__body"><span>想说的话</span><textarea name="content" rows="3" minlength="2" maxlength="1000" data-character-maximum="500" required></textarea></label>
     <label data-comment-email hidden={Boolean(reader)}><span>邮箱 · 可选，不公开</span><input name="email" type="text" inputmode="email" maxlength="254" autocomplete="off" /></label>
     <div class="visitor-preferences">
-      {replyNotificationsConfigured && <PaperCheckbox name="notifyReply">收到回复邮件通知</PaperCheckbox>}
+      {replyNotificationsConfigured && <PaperCheckbox name="notifyReply">验证邮箱后接收回复通知</PaperCheckbox>}
       <PaperCheckbox remember>记住称呼和邮箱</PaperCheckbox>
     </div>
     <small data-remember-status role="status"></small>
@@ -69,6 +71,7 @@ const dateLabel = (date: string) => new Date(date).toLocaleString('zh-CN', { tim
     let quoteContent = '';
     let selectedQuote: { id: number; text: string } | undefined;
     let parentId: number | null = null;
+    let replyTargetId: number | null = null;
     let composing = false;
     const refreshCaret = attachPaperCaret(content);
     const nickname = field('nickname') as HTMLInputElement;
@@ -93,13 +96,19 @@ const dateLabel = (date: string) => new Date(date).toLocaleString('zh-CN', { tim
     attachPaperCaret(field('email') as HTMLInputElement);
     content.addEventListener('compositionstart', () => { composing = true; });
     content.addEventListener('compositionend', () => { composing = false; });
-    const resetReply = () => { parentId = null; quoteMessageId = null; quoteContent = ''; selectedQuote = undefined; quoteBox.hidden = true; target.textContent = '写给这篇文章'; cancel.hidden = true; };
+    const resetReply = () => { parentId = null; replyTargetId = null; quoteMessageId = null; quoteContent = ''; selectedQuote = undefined; quoteBox.hidden = true; target.textContent = '写给这篇文章'; cancel.hidden = true; };
     const restoreDraftReply = () => {
       const targetId = drafts.target.split(':')[4];
       const button = targetId ? root.querySelector<HTMLButtonElement>(`[data-comment-message="${targetId}"]`) : null;
       resetReply();
-      if (button) { parentId = Number(button.dataset.commentReply); target.textContent = `回复 ${button.dataset.commentName}`; cancel.hidden = false; }
+      if (button) { parentId = Number(button.dataset.commentReply); replyTargetId = Number(button.dataset.commentMessage); target.textContent = `回复 ${button.dataset.commentName}`; cancel.hidden = false; }
       else drafts.switchTarget(`article:${articleId}:root`);
+      const submissionState = drafts.submissionState;
+      if (button && submissionState?.quoteMessageId === replyTargetId && submissionState.quoteContent) {
+        quoteMessageId = submissionState.quoteMessageId; quoteContent = submissionState.quoteContent; quoteBox.hidden = false;
+        quoteBox.querySelector('[data-comment-quote-name]')!.textContent = button.dataset.commentName || '';
+        quoteBox.querySelector('[data-comment-quote-content]')!.textContent = quoteContent;
+      }
     };
     restoreDraftReply();
     cancel.addEventListener('click', () => { resetReply(); drafts.switchTarget(`article:${articleId}:root`); });
@@ -121,7 +130,7 @@ const dateLabel = (date: string) => new Date(date).toLocaleString('zh-CN', { tim
       const button = (event.target as Element).closest<HTMLButtonElement>('[data-comment-reply]');
       if (!button) return;
       drafts.switchTarget(`article:${articleId}:reply:${button.dataset.commentReply}:${button.dataset.commentMessage}`);
-      parentId = Number(button.dataset.commentReply); target.textContent = `回复 ${button.dataset.commentName}`; cancel.hidden = false;
+      parentId = Number(button.dataset.commentReply); replyTargetId = Number(button.dataset.commentMessage); target.textContent = `回复 ${button.dataset.commentName}`; cancel.hidden = false;
       const quote = selectedQuote?.id === Number(button.dataset.commentMessage) ? selectedQuote : undefined;
       quoteMessageId = quote?.id ?? null; quoteContent = quote?.text || ''; quoteBox.hidden = !quote;
       quoteBox.querySelector<HTMLElement>('[data-comment-quote-name]')!.textContent = quote ? `引用 ${button.dataset.commentName}` : '';
@@ -133,19 +142,20 @@ const dateLabel = (date: string) => new Date(date).toLocaleString('zh-CN', { tim
       event.preventDefault(); if (submit.disabled || composing) return;
       const authenticated = form.dataset.readerAuthenticated === 'true';
       const email = authenticated ? '' : field('email')!.value.trim();
-      const notifyReply = Boolean((field('notifyReply') as HTMLInputElement)?.checked && (authenticated || email));
-      const body = { articleId, parentId, quoteMessageId, quoteContent, nickname: field('nickname')!.value.trim(), content: content.value.trim(), email: notifyReply ? email : '', notifyReply, website: field('website')!.value };
+      const notifyReply = Boolean((field('notifyReply') as HTMLInputElement)?.checked);
+      if (notifyReply && !authenticated && !email) { setTaskFeedback(feedback, '接收回复通知需要填写邮箱。', 'error'); field('email')!.focus(); return; }
+      const body = { articleId, parentId, replyTargetId, quoteMessageId, quoteContent, nickname: authenticated ? '' : field('nickname')!.value.trim(), content: content.value.trim(), email: notifyReply ? email : '', notifyReply, website: field('website')!.value };
       const invalidName = !(field('nickname') as HTMLInputElement).readOnly && ([...body.nickname].length < 2 || [...body.nickname].length > 24);
       if (invalidName || [...body.content].length < 2 || [...body.content].length > 500) { setTaskFeedback(feedback, invalidName ? '称呼需要 2–24 个字符。' : '评论需要 2–500 个字符。', 'error'); (invalidName ? field('nickname')! : content).focus(); return; }
-      const draftSnapshot = drafts.capture();
       submit.disabled = true; setTaskFeedback(feedback, '正在送出…', 'pending');
       let posted = false;
       try {
-        const published = await requestJson<{ error?: string; id?: number; status?: string; message?: string }>('/api/guestbook/messages.json', 'POST', body, '评论暂时无法送出，输入仍保留。'); posted = true;
+        const draftSnapshot = await drafts.captureSubmission(body);
+        const published = await requestJson<{ error?: string; id?: number; status?: string; message?: string }>('/api/guestbook/messages.json', 'POST', { ...body, operationId: draftSnapshot.operationId, submissionIdentity: draftSnapshot.key.split('/')[0] }, '评论暂时无法送出，输入仍保留。'); posted = true;
         visitor.save();
         if (drafts.complete(draftSnapshot)) {
           inputTools.resize(); refreshCaret();
-          if (parentId === body.parentId && quoteMessageId === body.quoteMessageId && quoteContent === body.quoteContent) { resetReply(); drafts.switchTarget(`article:${articleId}:root`); }
+          if (parentId === body.parentId && replyTargetId === body.replyTargetId && quoteMessageId === body.quoteMessageId && quoteContent === body.quoteContent) { resetReply(); drafts.switchTarget(`article:${articleId}:root`); }
         }
         if (published.status !== 'published') { setTaskFeedback(feedback, published.message || '评论已送达，审核后会公开展示。', 'success'); return; }
         setTaskFeedback(feedback, published.message || '评论已发表，谢谢你的分享。', 'success');

@@ -1,3 +1,5 @@
+import { recordAdminAudit } from './admin-audit';
+import { requireWritableSite } from './maintenance';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readFile, stat, unlink, writeFile } from 'node:fs/promises';
 import { renameSync, unlinkSync } from 'node:fs';
@@ -103,7 +105,8 @@ export async function readMediaUpload(request: Request, maximumRequestBytes: num
   return file;
 }
 
-export async function saveMedia(file: File, options: { maximumBytes?: number; restoreDeleted?: boolean; purpose?: 'library' | 'avatar' } = {}) {
+export async function saveMedia(file: File, options: { maximumBytes?: number; restoreDeleted?: boolean; purpose?: 'library' | 'avatar'; auditAdmin?: boolean } = {}) {
+  requireWritableSite();
   const maximumBytes = options.maximumBytes ?? serverConfig.mediaMaxBytes;
   if (!file.size || file.size > maximumBytes) throw new HttpError(413, `图片不能为空，且不能超过 ${maximumBytes / 1024 / 1024} MB`);
   const bytes = Buffer.from(await file.arrayBuffer());
@@ -124,6 +127,7 @@ export async function saveMedia(file: File, options: { maximumBytes?: number; re
         VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(filename) DO UPDATE SET
         purpose=CASE WHEN excluded.purpose='library' THEN 'library' ELSE blog_media.purpose END
         ${options.restoreDeleted === false ? '' : ', deleted_at=NULL'}`).run(filename, name, format.type, bytes.length, new Date().toISOString(), options.purpose ?? 'library');
+      if (options.auditAdmin) recordAdminAudit({ objectType: 'media', objectId: getMedia(filename)!.id, operation: 'create' }, 'success');
     }).immediate();
   } finally {
     await unlink(temporary).catch((error: NodeJS.ErrnoException) => { if (error.code !== 'ENOENT') throw error; });

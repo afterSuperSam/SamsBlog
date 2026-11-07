@@ -1,3 +1,4 @@
+import { isMaintenanceMode } from './maintenance';
 import { serverConfig } from '../config/server';
 import { getDatabase } from './db';
 import { listFriends } from './friends';
@@ -234,6 +235,7 @@ let pending: Promise<void> | undefined;
 
 // 公开接口只刷新后台公开的订阅，成功和失败都受同一缓存期限约束。
 export async function getFriendFeeds(): Promise<FriendFeedUpdate[]> {
+  if (isMaintenanceMode()) return getCachedFriendFeeds();
   if (pending) { await pending; return getCachedFriendFeeds(); }
   const friends = listFriends().filter((friend) => friend.rssUrl);
   const stale = friends.filter((friend) => {

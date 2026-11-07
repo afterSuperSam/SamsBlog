@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -9,7 +10,7 @@ import { serverConfig } from '../src/config/server';
 import { deleteFriend, listFriends, parseFriendInput, saveFriend, setFriendRecommended, setFriendStarred } from '../src/lib/friends';
 import { getSiteStats, hashVisitorToken, recordPageView } from '../src/lib/stats';
 import { createMessage, createAdminReply, deleteMessage, getDatabase, listAllMessages, listPublishedMessages, updateMessageStatus } from '../src/lib/db';
-import { createAdminSession } from '../src/lib/admin-auth';
+import { adminCookie, createAdminSession } from '../src/lib/admin-auth';
 import { POST as postPublicMessage } from '../src/pages/api/guestbook/messages.json';
 import { POST as postAdminReply } from '../src/pages/api/admin/messages.json';
 import { PATCH as patchFriend } from '../src/pages/api/admin/friends.json';
@@ -38,14 +39,29 @@ async function callMessageApi(handler: APIRoute, body: Record<string, unknown>, 
   messageRequestSequence += 1;
   return handler({
     request: new Request('https://blog.example.com/api/messages.json', {
-      method: 'POST', headers: { 'content-type': 'application/json', origin: 'https://blog.example.com' }, body: JSON.stringify(body),
+      method: 'POST', headers: { 'content-type': 'application/json', origin: 'https://blog.example.com' }, body: JSON.stringify(handler === postPublicMessage ? { operationId: randomUUID(), ...body } : body),
     }),
     clientAddress: `203.0.113.${messageRequestSequence}`,
-    cookies: { get: () => authorized ? { value: createAdminSession() } : undefined },
+    cookies: { get: (name: string) => name === adminCookie.name ? authorized ? { value: createAdminSession() } : undefined : { value: '11111111-1111-4111-8111-111111111111' }, set: vi.fn() },
   } as unknown as APIContext) as Promise<Response>;
 }
 
+const friendRevision = (id: number) => (getDatabase().prepare('SELECT revision FROM friends WHERE id=?').get(id) as { revision: number }).revision;
+
 describe('SQLite content management', () => {
+  it('rejects stale friend edits after star, recommendation and soft deletion while auditing versions', () => {
+    const id = Number(saveFriend(parseFriendInput({ name: '版本友链', url: 'https://revision.example.com/', description: '并发内容不可覆盖', iconUrl: 'https://revision.example.com/avatar.png' })));
+    const original = listFriends().find((friend) => friend.id === id)!;
+    setFriendStarred(id, true, original.revision);
+    expect(() => saveFriend({ ...original, name: '过期覆盖' })).toThrow('当前输入已保留');
+    expect(() => setFriendRecommended(id, true, original.revision)).toThrow('友链已变化');
+    setFriendRecommended(id, true, original.revision + 1);
+    deleteFriend(id, original.revision + 2);
+    expect(() => saveFriend({ ...original, revision: original.revision + 2 })).toThrow('友链已变化');
+    expect(getDatabase().prepare('SELECT name,revision,deleted_at FROM friends WHERE id=?').get(id)).toMatchObject({ name: original.name, revision: original.revision + 3, deleted_at: expect.any(String) });
+    const serialized = JSON.stringify(getDatabase().prepare("SELECT * FROM admin_audit WHERE object_type='friend' AND object_id=?").all(id));
+    expect(serialized).toContain('conflict'); expect(serialized).not.toContain(original.description); expect(serialized).not.toContain(original.url);
+  });
   it('counts runtime days at Shanghai midnight and stays zero before launch', () => {
     const launch = new Date(`${serverConfig.siteLaunchedAt}T00:00:00+08:00`).getTime();
     expect(getSiteStats(new Date(launch - 1)).runtimeDays).toBe(0);
@@ -71,7 +87,7 @@ describe('SQLite content management', () => {
     const input = parseFriendInput({ name: '测试友链', url: 'https://example.com', description: '用于验证友链后台。', iconUrl: 'https://example.com/icon.png', backgroundUrl: 'https://example.com/background.jpg', visible: true });
     const id = Number(saveFriend(input));
     expect(listFriends().find((friend) => friend.id === id)?.backgroundUrl).toBe(input.backgroundUrl);
-    expect(saveFriend({ ...input, id, name: '改名友链', visible: false })).toBe(true);
+    expect(saveFriend({ ...input, id, revision: friendRevision(id), name: '改名友链', visible: false })).toBe(true);
     expect(listFriends().some((friend) => friend.id === id)).toBe(false);
     expect(listFriends({ includeHidden: true }).some((friend) => friend.name === '改名友链')).toBe(true);
     expect(() => parseFriendInput({ ...input, iconUrl: 'javascript:alert(1)' })).toThrow();
@@ -79,7 +95,7 @@ describe('SQLite content management', () => {
     expect(() => parseFriendInput({ ...input, backgroundUrl: 'javascript:alert(1)' })).toThrow();
     expect(() => parseFriendInput({ ...input, backgroundUrl: 'https://user:secret@example.com/background.jpg' })).toThrow();
     expect(() => parseFriendInput({ ...input, backgroundUrl: 123 })).toThrow();
-    expect(deleteFriend(id)).toBe(true);
+    expect(deleteFriend(id, friendRevision(id))).toBe(true);
     expect(listFriends({ includeHidden: true }).some((friend) => friend.id === id)).toBe(false);
     expect(getDatabase().prepare('SELECT deleted_at FROM friends WHERE id = ?').get(id)).toMatchObject({ deleted_at: expect.any(String) });
     expect(saveFriend(input)).toBeGreaterThan(id);
@@ -95,17 +111,17 @@ describe('SQLite content management', () => {
     }))));
     ids.forEach((id, index) => database.prepare('UPDATE friends SET created_at=? WHERE id=?').run(`2026-01-0${4 - index}T00:00:00.000Z`, id));
     const ordered = () => listFriends().filter((friend) => ids.includes(friend.id)).map((friend) => friend.id);
-    expect(setFriendStarred(ids[3], true)).toBe(true);
-    expect(setFriendStarred(ids[1], true)).toBe(true);
+    expect(setFriendStarred(ids[3], true, friendRevision(ids[3]))).toBe(true);
+    expect(setFriendStarred(ids[1], true, friendRevision(ids[1]))).toBe(true);
     expect(ordered()).toEqual([ids[1], ids[3], ids[0], ids[2]]);
     const starred = listFriends().find((friend) => friend.id === ids[1])!;
     const { starred: ignored, ...ordinaryEdit } = starred;
     expect(saveFriend(parseFriendInput({ ...ordinaryEdit, name: '修改名称不清除星标' }))).toBe(true);
     expect(listFriends().find((friend) => friend.id === ids[1])).toMatchObject({ starred: true, createdAt: '2026-01-03T00:00:00.000Z' });
-    setFriendStarred(ids[1], false);
+    setFriendStarred(ids[1], false, friendRevision(ids[1]));
     expect(ordered()).toEqual([ids[3], ids[0], ids[1], ids[2]]);
     expect(() => database.prepare('UPDATE friends SET starred=2 WHERE id=?').run(ids[0])).toThrow();
-    ids.forEach(deleteFriend);
+    ids.forEach((id) => deleteFriend(id, friendRevision(id)));
   });
 
   it('groups unavailable links last and sorts each group by matching RSS dates without changing saved flags', () => {
@@ -142,16 +158,16 @@ describe('SQLite content management', () => {
     saveFriend(parseFriendInput({ ...ordinaryEdit, name: '普通编辑保留推荐' }));
     expect(ordered().find(({ id }) => id === ids[2])?.recommended).toBe(true);
     expect(() => database.prepare('UPDATE friends SET recommended=2 WHERE id=?').run(ids[2])).toThrow();
-    expect(setFriendRecommended(ids[2], false)).toBe(true);
-    ids.forEach(deleteFriend);
+    expect(setFriendRecommended(ids[2], false, friendRevision(ids[2]))).toBe(true);
+    ids.forEach((id) => deleteFriend(id, friendRevision(id)));
   });
 
   it('validates recommended updates and preserves hidden and deleted boundaries', async () => {
     const input = parseFriendInput({ name: '推荐边界', url: 'https://recommended-boundary.example.com', description: '推荐验证', iconUrl: 'https://example.com/icon.png', visible: false });
     const id = Number(saveFriend(input));
     const request = (recommended: unknown, authorized = true, origin = 'https://blog.example.com') => patchFriend({
-      request: new Request('https://blog.example.com/api/admin/friends.json', { method: 'PATCH', headers: { 'content-type': 'application/json', origin }, body: JSON.stringify({ id, action: 'recommend', recommended }) }),
-      clientAddress: '203.0.113.170', cookies: { get: () => authorized ? { value: createAdminSession() } : undefined },
+      request: new Request('https://blog.example.com/api/admin/friends.json', { method: 'PATCH', headers: { 'content-type': 'application/json', origin }, body: JSON.stringify({ id, revision: friendRevision(id), action: 'recommend', recommended }) }),
+      clientAddress: '203.0.113.170', cookies: { get: (name: string) => name === adminCookie.name ? authorized ? { value: createAdminSession() } : undefined : { value: '11111111-1111-4111-8111-111111111111' }, set: vi.fn() },
     } as unknown as APIContext) as Promise<Response>;
     expect((await request(true, false)).status).toBe(401);
     expect((await request(true, true, 'https://other.example')).status).toBe(403);
@@ -162,16 +178,16 @@ describe('SQLite content management', () => {
     expect((await request(true)).status).toBe(200);
     expect(listFriends().some((friend) => friend.id === id)).toBe(false);
     expect(listFriends({ includeHidden: true }).find((friend) => friend.id === id)?.recommended).toBe(true);
-    deleteFriend(id);
-    expect((await request(false)).status).toBe(404);
+    deleteFriend(id, friendRevision(id));
+    expect((await request(false)).status).toBe(409);
   });
 
   it('validates star updates and never exposes hidden or deleted starred friends', async () => {
     const input = parseFriendInput({ name: '星标边界', url: 'https://star-boundary.example.com', description: '边界验证', iconUrl: 'https://example.com/icon.png', visible: false });
     const id = Number(saveFriend(input));
     const request = (starred: unknown, authorized = true, origin = 'https://blog.example.com') => patchFriend({
-      request: new Request('https://blog.example.com/api/admin/friends.json', { method: 'PATCH', headers: { 'content-type': 'application/json', origin }, body: JSON.stringify({ id, action: 'star', starred }) }),
-      clientAddress: '203.0.113.170', cookies: { get: () => authorized ? { value: createAdminSession() } : undefined },
+      request: new Request('https://blog.example.com/api/admin/friends.json', { method: 'PATCH', headers: { 'content-type': 'application/json', origin }, body: JSON.stringify({ id, revision: friendRevision(id), action: 'star', starred }) }),
+      clientAddress: '203.0.113.170', cookies: { get: (name: string) => name === adminCookie.name ? authorized ? { value: createAdminSession() } : undefined : { value: '11111111-1111-4111-8111-111111111111' }, set: vi.fn() },
     } as unknown as APIContext) as Promise<Response>;
     expect((await request(true, false)).status).toBe(401);
     expect((await request(true, true, 'https://other.example')).status).toBe(403);
@@ -182,9 +198,9 @@ describe('SQLite content management', () => {
     expect((await request(true)).status).toBe(200);
     expect(listFriends().some((friend) => friend.id === id)).toBe(false);
     expect(listFriends({ includeHidden: true }).find((friend) => friend.id === id)?.starred).toBe(true);
-    deleteFriend(id);
-    expect((await request(false)).status).toBe(404);
-    expect(setFriendStarred(id, false)).toBe(false);
+    deleteFriend(id, friendRevision(id));
+    expect((await request(false)).status).toBe(409);
+    expect(() => setFriendStarred(id, false, friendRevision(id))).toThrow('友链已变化');
   });
 
   it('rejects incomplete HTTP addresses in every friend URL field', () => {
@@ -201,7 +217,7 @@ describe('SQLite content management', () => {
     const input = parseFriendInput({ ...friend, backgroundUrl: 'https://example.com/art.webp' });
     expect(saveFriend(input)).toBe(true);
     expect(listFriends().find((item) => item.id === friend.id)?.backgroundUrl).toBe('https://example.com/art.webp');
-    expect(saveFriend(parseFriendInput({ ...input, backgroundUrl: '  ' }))).toBe(true);
+    expect(saveFriend(parseFriendInput({ ...input, revision: friendRevision(friend.id), backgroundUrl: '  ' }))).toBe(true);
     expect(listFriends().find((item) => item.id === friend.id)?.backgroundUrl).toBe('');
     expect(parseFriendInput({ ...input, backgroundUrl: undefined }).backgroundUrl).toBe('');
   });
@@ -213,9 +229,9 @@ describe('SQLite content management', () => {
     const input = parseFriendInput({ name: '订阅友链', url: 'https://rss.example.com', description: '可订阅的友链', iconUrl: 'https://rss.example.com/icon.png', rssUrl: ' https://rss.example.com/feed.xml?a=1&b=2#ignored ' });
     const id = Number(saveFriend(input));
     expect(listFriends().find((friend) => friend.id === id)?.rssUrl).toBe('https://rss.example.com/feed.xml?a=1&b=2');
-    expect(saveFriend(parseFriendInput({ ...input, id, rssUrl: 'http://rss.example.com/atom.xml' }))).toBe(true);
+    expect(saveFriend(parseFriendInput({ ...input, id, revision: friendRevision(id), rssUrl: 'http://rss.example.com/atom.xml' }))).toBe(true);
     expect(listFriends().find((friend) => friend.id === id)?.rssUrl).toBe('http://rss.example.com/atom.xml');
-    expect(saveFriend(parseFriendInput({ ...input, id, rssUrl: '  ' }))).toBe(true);
+    expect(saveFriend(parseFriendInput({ ...input, id, revision: friendRevision(id), rssUrl: '  ' }))).toBe(true);
     expect(listFriends().find((friend) => friend.id === id)?.rssUrl).toBe('');
     expect(parseFriendInput({ ...input, rssUrl: undefined }).rssUrl).toBe('');
     for (const rssUrl of [123, null, '/rss.xml', 'javascript:alert(1)', 'ftp://example.com/rss.xml', 'https://user:secret@example.com/rss.xml']) {

@@ -1,4 +1,5 @@
 ---
+import { ensureCommentIdentity } from '../lib/comment-submissions';
 import { listPublishedMessages } from '../lib/db';
 import { replyNotificationsConfigured } from '../lib/reply-notifications';
 import { readReaderSession } from '../lib/readers';
@@ -12,6 +13,7 @@ import '../styles/guestbook.css';
 
 const messages = listPublishedMessages();
 const reader = readReaderSession(Astro.cookies);
+ensureCommentIdentity(Astro.cookies, Astro.url);
 const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' });
 ---
 
@@ -48,7 +50,7 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
         <div class="message-contact">
           <label class="paper-input-label" data-guestbook-email hidden={Boolean(reader)}><span>邮箱 · 可选，不公开</span><input name="email" type="text" inputmode="email" maxlength="254" autocomplete="off" /></label>
           <div class="visitor-preferences">
-            {replyNotificationsConfigured && <PaperCheckbox name="notifyReply">收到回复邮件通知</PaperCheckbox>}
+            {replyNotificationsConfigured && <PaperCheckbox name="notifyReply">验证邮箱后接收回复通知</PaperCheckbox>}
             <PaperCheckbox remember>记住称呼和邮箱</PaperCheckbox>
           </div>
           <small data-remember-status role="status"></small>
@@ -251,19 +253,21 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
       invalidField.focus();
       return;
     }
-    submitting = true;
     const submit = form.querySelector<HTMLButtonElement>('button[type="submit"]');
     const data = new FormData(form);
-    const draftSnapshot = drafts?.capture();
     const authenticated = form.dataset.readerAuthenticated === 'true';
     const email = authenticated ? '' : String(data.get('email') || '').trim();
-    const notifyReply = data.has('notifyReply') && (authenticated || email.length > 0);
+    const notifyReply = data.has('notifyReply');
+    if (notifyReply && !authenticated && !email) { showStatus('接收回复通知需要填写邮箱。', 'invalid'); form.querySelector<HTMLInputElement>('[name="email"]')?.focus(); return; }
+    submitting = true;
+    const body = { nickname: authenticated ? '' : data.get('nickname'), content: data.get('content'), website: data.get('website'), email: notifyReply ? email : '', notifyReply };
     submit?.setAttribute('disabled', 'true');
     showStatus('正在送出…', 'loading');
     try {
+      const draftSnapshot = await drafts?.captureSubmission(body);
       const result = await requestJson<{ ok?: boolean; message?: string; error?: string }>(
         '/api/guestbook/messages.json', 'POST',
-        { nickname: data.get('nickname'), content: data.get('content'), website: data.get('website'), email: notifyReply ? email : '', notifyReply },
+        { ...body, operationId: draftSnapshot?.operationId || crypto.randomUUID(), submissionIdentity: draftSnapshot?.key.split('/')[0] },
         '留言服务暂时不可用，请稍后重试。',
       );
       if (!result.ok) throw new Error(result.error || '提交失败，请稍后重试。');

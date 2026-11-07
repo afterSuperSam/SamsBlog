@@ -129,6 +129,17 @@ describe('passkey registration and account boundaries', () => {
 });
 
 describe('passkey authentication proofs', () => {
+  it('reauthenticates only a previously registered key of the initiating account and session', async () => {
+    const first = await registered('first'); const second = await registered('second');
+    const wrong = await createPasskeyLoginOptions(first.cookies, true);
+    await expect(verifyPasskeyLogin(first.cookies, { response: second.device.login(wrong.challenge, second.userHandle) })).rejects.toThrow('当前账号已绑定');
+    expect(readReaderSession(first.cookies)?.id).toBe(first.reader.id);
+    const stale = await createPasskeyLoginOptions(first.cookies, true);
+    startReaderSession(first.cookies, first.reader, 'email');
+    await expect(verifyPasskeyLogin(first.cookies, { response: first.device.login(stale.challenge, first.userHandle) })).rejects.toThrow('当前账号已绑定');
+    const valid = await createPasskeyLoginOptions(first.cookies, true);
+    expect((await verifyPasskeyLogin(first.cookies, { response: first.device.login(valid.challenge, first.userHandle) })).id).toBe(first.reader.id);
+  });
   it('verifies a real signature, updates the counter, rotates the session and rejects replay', async () => {
     const account = await registered();
     const oldSession = account.values.get(readerCookieName);

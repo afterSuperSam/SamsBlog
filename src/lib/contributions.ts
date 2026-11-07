@@ -1,4 +1,5 @@
 import { serverConfig } from '../config/server';
+import { isMaintenanceMode } from './maintenance';
 
 export interface ContributionDay {
   date: string;
@@ -74,6 +75,10 @@ export function parseGithubContributions(html: string): ContributionCalendar {
 
 // 旧快照立即返回并单飞刷新，首次无缓存才等待；失败保留快照并短暂退避。
 export function getGithubContributions(): Promise<ContributionCalendar> {
+  if (isMaintenanceMode()) {
+    const value = githubCache?.value || { ...buildContributionCalendar(new Map()), available: false };
+    return Promise.resolve(value);
+  }
   if (githubCache && githubCache.expiresAt > Date.now()) return Promise.resolve(githubCache.value);
   pendingGithubRequest ??= fetchGithubContributions().finally(() => { pendingGithubRequest = undefined; });
   return githubCache ? Promise.resolve(githubCache.value) : pendingGithubRequest;

@@ -502,7 +502,7 @@ describe('project settings and automatically refreshed feeds', () => {
     const before = getProjectSettings();
     expect(before.projects.map((project) => project.status)).toEqual(['active', 'maintenance', 'active', 'archived']);
     const projects = before.projects.map((project) => ({ ...project }));
-    const payload = { projects };
+    const payload = { projects, revision: before.revision };
     payload.projects[0].name = '项目的新名字';
     payload.projects[0].url = 'https://example.com/project';
     payload.projects[0].description = '新的项目简介';
@@ -576,7 +576,7 @@ describe('project settings and automatically refreshed feeds', () => {
     expect(feed).toContain('&amp;lt;script&amp;gt;alert(1)&amp;lt;/script&amp;gt;');
     expect(feed).toContain('xmlns:content="http://purl.org/rss/1.0/modules/content/"');
     expect(feed).toContain('<description>只是一只大黄狗</description>');
-    expect(feed).toContain('<link>https://blog.moesam.com/</link>');
+    expect(feed).toContain(`<link>${new URL('/', siteConfig.siteUrl).href}</link>`);
     expect(feed).not.toContain('localhost');
     const item = feed.split('<item>').find((item) => item.includes(`/articles/${id}</link>`))!;
     expect(item).not.toContain('不要直接展示的结局');

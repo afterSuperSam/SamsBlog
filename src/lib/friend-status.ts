@@ -1,3 +1,4 @@
+import { isMaintenanceMode } from './maintenance';
 import { lookup } from 'node:dns/promises';
 import { request as requestHttp } from 'node:http';
 import { request as requestHttps } from 'node:https';
@@ -157,6 +158,7 @@ export function getCachedFriendStatuses(): FriendStatus[] {
 
 // 共用检测任务与短期缓存，公开请求不能指定任意探测地址
 export async function getFriendStatuses(): Promise<FriendStatus[]> {
+  if (isMaintenanceMode()) return getCachedFriendStatuses();
   if (pending) {
     await pending;
     return getCachedFriendStatuses();

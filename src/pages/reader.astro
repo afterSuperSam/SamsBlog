@@ -2,13 +2,15 @@
 import BaseLayout from '../layouts/BaseLayout.astro';
 import ReaderMethodBadge from '../components/ReaderMethodBadge.astro';
 import ReaderLogin from '../components/ReaderLogin.astro';
-import { readReaderSession } from '../lib/readers';
+import { getReaderAuthOptions, readReaderSession } from '../lib/readers';
 import { getReaderAccount, listReaderComments } from '../lib/reader-account';
 import { readerConfig } from '../config/readers';
 import '../styles/reader.css';
 const reader = readReaderSession(Astro.cookies);
 const account = reader ? getReaderAccount(reader) : null;
 const comments = reader ? listReaderComments(reader.id) : null;
+const authOptions = getReaderAuthOptions();
+const methodNames: Record<string, string> = { email: '邮箱', blogsclub: 'BlogsClub', github: 'GitHub', google: 'Google' };
 const date = (value: string | null | undefined) => value ? new Date(value).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '尚未使用';
 const totalPages = comments ? Math.max(1, Math.ceil(comments.total / comments.pageSize)) : 1;
 const statusLabels: Record<string, string> = { pending: '待审核', published: '已公开', hidden: '已隐藏' };
@@ -36,6 +38,13 @@ Astro.response.headers.set('X-Robots-Tag', 'noindex, nofollow');
             <div class="reader-profile-website"><label class="reader-field reader-profile-field paper-input-label"><span>个人网站 · 可选</span><input name="websiteUrl" value={account?.reader.websiteUrl || ''} type="text" inputmode="url" maxlength="2048" placeholder="https://example.com" autocomplete="url" disabled /></label><button type="submit" disabled>保存资料</button></div></div>
             <p class="reader-feedback" data-profile-feedback role="status" aria-live="polite"></p>
           </form>
+          <div class="reader-passkey-confirm" data-notification-verification hidden={!account?.notificationEmail}><span data-notification-verification-status>{account?.notificationEmailVerified ? '邮箱已验证' : account?.verifiedNotificationEmail ? '新邮箱待验证，原邮箱继续接收' : '邮箱待验证'}</span><button type="button" data-notification-resend hidden={account?.notificationEmailVerified} disabled>发送验证邮件</button></div>
+        </section>
+        <section class="reader-paper reader-account-wide" aria-labelledby="reader-identities-title"><div class="reader-card-heading"><h2 id="reader-identities-title">登录方式</h2></div>
+          <ul class="reader-passkeys" data-account-identities>{account?.identities.map((identity) => <li><span>{methodNames[identity.provider]}</span><small>{identity.count > 1 ? `${identity.count} 个身份` : '已绑定'}</small></li>)}</ul>
+          <div class="reader-passkey-confirm"><button type="button" data-identity-provider="email" disabled={!authOptions.email}>绑定邮箱</button>{authOptions.providers.map((provider) => <button type="button" data-identity-provider={provider.id} disabled={!provider.enabled}>绑定 {provider.name}</button>)}<button type="button" data-identity-cancel hidden>取消</button></div>
+          <form class="reader-passkey-add" data-identity-email autocomplete="off" novalidate hidden><label class="reader-field paper-input-label"><span>备用登录邮箱</span><input name="email" type="text" inputmode="email" maxlength="254" autocomplete="off" autocapitalize="none" spellcheck="false" /></label><button type="button" data-identity-email-send>获取验证码</button><label class="reader-field paper-input-label"><span>验证码</span><input name="code" type="text" inputmode="numeric" maxlength="3" pattern="[0-9]{3}" autocomplete="one-time-code" /></label><button type="submit">绑定</button></form>
+          <p class="reader-feedback" data-identity-feedback role="status" aria-live="polite"></p>
         </section>
         <section class="reader-paper reader-account-wide" aria-labelledby="reader-passkeys-title"><div class="reader-card-heading"><h2 id="reader-passkeys-title">Passkey</h2><span class="reader-card-count" data-passkey-count>{account?.passkeys.length ?? 0} 个</span></div>
           <ul class="reader-passkeys" data-account-passkeys>{account?.passkeys.map((passkey) => <li><div><strong>{passkey.label}</strong><small>添加于 {date(passkey.createdAt)} · 最近使用 {date(passkey.lastUsedAt)}</small></div><button type="button" disabled>移除</button></li>)}</ul><p class="reader-help" data-passkeys-empty hidden={Boolean(account?.passkeys.length)}>暂无 Passkey</p>

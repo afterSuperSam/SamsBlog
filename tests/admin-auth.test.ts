@@ -1,7 +1,7 @@
 import { createHmac, scryptSync } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { APIContext, APIRoute } from 'astro';
-import { allowLoginAttempt, createAdminSession, verifyAdminPassword, verifyAdminSession } from '../src/lib/admin-auth';
+import { adminCookie, allowLoginAttempt, createAdminSession, readAdminSession, verifyAdminPassword, verifyAdminSession } from '../src/lib/admin-auth';
 import { serverConfig } from '../src/config/server';
 import { adminRoute, json, readJsonObject, readPositiveId, readRequestBytes, requirePublicActivityAllowance } from '../src/lib/http';
 import { POST as saveFriend } from '../src/pages/api/admin/friends.json';
@@ -10,6 +10,15 @@ import { POST as login } from '../src/pages/api/admin/login.json';
 afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
 describe('admin boundaries', () => {
+  it('uses a host-only secure production cookie and rejects legacy-only credentials', () => {
+    vi.stubEnv('NODE_ENV', 'production'); vi.stubEnv('BLOG_SECRET', 'fixture-only-production-secret-123456789');
+    const token = createAdminSession();
+    expect(adminCookie.name).toBe('__Host-samsblog_admin');
+    expect(adminCookie.options).toMatchObject({ secure: true, httpOnly: true, sameSite: 'strict', path: '/' });
+    expect(adminCookie.options).not.toHaveProperty('domain');
+    expect(readAdminSession({ get: (name) => name === 'samsblog_admin' ? { value: token } : undefined })).toBe(false);
+    expect(readAdminSession({ get: (name) => name === adminCookie.name ? { value: token } : undefined })).toBe(true);
+  });
   it('accepts signed sessions and rejects tampering and malformed tokens', () => {
     const token = createAdminSession();
     expect(verifyAdminSession(token)).toBe(true);

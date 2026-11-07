@@ -14,7 +14,7 @@ const palette = {
 };
 const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]!);
 const textHtml = (value: string) => escapeHtml(value).replace(/\r\n?|\n/g, '<br>');
-type EmailKind = 'reply' | 'admin' | 'application_accepted';
+type EmailKind = 'reply' | 'admin' | 'application_accepted' | 'verification';
 
 function publicAddress(value: string) {
   const address = new URL(value);
@@ -28,7 +28,7 @@ export function createResendTemplate(kind: EmailKind, origin: string) {
   const asset = (name: string) => escapeHtml(new URL(`/media/branding/${name}`, base).href);
   const subject = kind === 'reply' ? 'SamsBlog · 你的评论收到了新的回复~' : 'SamsBlog · {{{EVENT_TEXT}}}';
   const heading = kind === 'reply' ? '你的评论收到了新的回复~' : '{{{EVENT_HTML}}}';
-  const actionLabel = kind === 'reply' ? '查看并回复' : kind === 'application_accepted' ? '查看网站友链' : '前往后台处理';
+  const actionLabel = kind === 'reply' ? '查看并回复' : kind === 'application_accepted' ? '查看网站友链' : kind === 'verification' ? '确认通知邮箱' : '前往后台处理';
   const original = kind === 'reply' ? `<tr><td class="mail-padding" style="padding:0 28px 22px;word-break:break-word;overflow-wrap:anywhere;"><p style="margin:0 0 10px;font-size:14px;line-height:1.8;color:${palette.muted};">你此前在SamsBlog的留言</p><div style="font-size:16px;line-height:1.9;color:${palette.muted};">{{{ORIGINAL_HTML}}}</div></td></tr>` : '';
   const optOut = kind === 'reply' ? `<p style="margin:14px 0 0;font-size:12px;line-height:1.8;"><a href="{{{OPT_OUT_HTML}}}" style="display:inline-block;padding:8px 0;color:${palette.muted};text-decoration:underline;">不再接收此留言的回复通知</a></p>` : '';
   const html = `<!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light"><title>${subject}</title>
@@ -113,6 +113,19 @@ export function createApplicationAcceptedEmail(input: { name: string; address: s
     EVENT_HTML: event, EVENT_TEXT: event, PREHEADER_HTML: `${escapeHtml(input.name)}已加入网站友链`,
     GREETING_HTML: `${escapeHtml(input.name)}，你好！`, GREETING_TEXT: `${input.name}，你好！`,
     CONTEXT_HTML: '网站友链 · 审核通过', CONTEXT_TEXT: '网站友链 · 审核通过',
+    AUTHOR_HTML: 'SamsBlog', AUTHOR_TEXT: 'SamsBlog', CONTENT_HTML: textHtml(content), CONTENT_TEXT: content,
+    ACTION_HTML: escapeHtml(input.address), ACTION_TEXT: input.address,
+  });
+}
+
+// 验证信不包含留言正文，误填地址只会收到一次受限的所有权确认邀请。
+export function createNotificationVerificationEmail(input: { address: string; expiresInMinutes: number }) {
+  const address = publicAddress(input.address);
+  const event = '请确认你的回复通知邮箱';
+  const content = `有人申请使用此邮箱接收 SamsBlog 的回复通知。请在 ${input.expiresInMinutes} 分钟内打开链接并点击确认。若不是你本人操作，请忽略此邮件；不会自动订阅。`;
+  return renderEmail('verification', address.origin, {
+    EVENT_HTML: event, EVENT_TEXT: event, PREHEADER_HTML: event,
+    GREETING_HTML: '你好！', GREETING_TEXT: '你好！', CONTEXT_HTML: '回复通知 · 邮箱验证', CONTEXT_TEXT: '回复通知 · 邮箱验证',
     AUTHOR_HTML: 'SamsBlog', AUTHOR_TEXT: 'SamsBlog', CONTENT_HTML: textHtml(content), CONTENT_TEXT: content,
     ACTION_HTML: escapeHtml(input.address), ACTION_TEXT: input.address,
   });

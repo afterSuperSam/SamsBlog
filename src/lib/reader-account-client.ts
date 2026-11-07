@@ -1,10 +1,11 @@
 import { setReaderFeedback } from './reader-effects';
 import { requestJson, RequestError } from './client-request';
 import { attachPaperCaret } from './paper-caret';
-import { renderReaderMethodBadge, type ReaderIdentity } from './reader-menu';
+import { readerMethodLabel, renderReaderMethodBadge, type ReaderIdentity } from './reader-menu';
+import { openReaderOAuthPopup } from './reader-oauth-popup';
 
 interface ReaderPasskey { id: number; label: string; createdAt: string; lastUsedAt: string | null }
-interface ReaderAccount { error?: string; reader: ReaderIdentity & { websiteUrl: string; createdAt: string }; notificationEmail: string; commentCount: number; passkeys: ReaderPasskey[] }
+interface ReaderAccount { error?: string; reader: ReaderIdentity & { websiteUrl: string; createdAt: string }; notificationEmail: string; notificationEmailVerified: boolean; verifiedNotificationEmail: string; commentCount: number; passkeys: ReaderPasskey[]; identities: Array<{ provider: string; count: number }>; authOptions: { email: boolean; providers: Array<{ id: string; name: string; enabled: boolean; startUrl: string }> } }
 interface ReaderCommentPage { error?: string; comments: Array<{ id: number; content: string; createdAt: string; status: string; articleId: number | null; articleTitle: string | null; parentId: number | null; url: string | null }>; page: number; pageSize: number; total: number }
 
 // 仅规范化仍与提交内容一致的输入，后续编辑和当前选区不被响应覆盖。
@@ -30,6 +31,15 @@ export function initializeReaderAccount() {
   const passkeyForm = query<HTMLFormElement>('[data-passkey-add]');
   const label = passkeyForm.elements.namedItem('label') as HTMLInputElement;
   attachPaperCaret(label);
+  const identityEmailForm = query<HTMLFormElement>('[data-identity-email]');
+  const identityEmail = identityEmailForm.elements.namedItem('email') as HTMLInputElement;
+  const identityCode = identityEmailForm.elements.namedItem('code') as HTMLInputElement;
+  [identityEmail, identityCode].forEach(attachPaperCaret);
+  const identityFeedback = query<HTMLElement>('[data-identity-feedback]');
+  const identityCancel = query<HTMLButtonElement>('[data-identity-cancel]');
+  let bindingToken: string | undefined;
+  let bindingEmail = '';
+  let identityController: AbortController | undefined;
   const profileFeedback = query<HTMLElement>('[data-profile-feedback]');
   const avatarFeedback = query<HTMLElement>('[data-avatar-feedback]');
   const avatarFile = query<HTMLInputElement>('[data-avatar-file]');
@@ -60,13 +70,21 @@ export function initializeReaderAccount() {
     previous.disabled = mutation || loadingComments || !account || page <= 1;
     next.disabled = mutation || loadingComments || !account || page >= totalPages;
     avatarFile.disabled = avatarSelect.disabled = mutation || !account;
+    root.querySelectorAll<HTMLButtonElement>('[data-identity-provider]').forEach((button) => {
+      const provider = button.dataset.identityProvider;
+      button.disabled = mutation || !account || !(provider === 'email' ? account.authOptions.email : account.authOptions.providers.find((option) => option.id === provider)?.enabled);
+    });
+    identityEmailForm.querySelectorAll<HTMLInputElement | HTMLButtonElement>('input,button').forEach((control) => { control.disabled = mutation || !account; });
+    query<HTMLButtonElement>('[data-notification-resend]').disabled = mutation || !account;
     root.setAttribute('aria-busy', String(mutation));
   };
   const clearIdentity = (readerId: number | null) => {
+    identityController?.abort(); bindingToken = undefined; bindingEmail = ''; identityEmailForm.reset(); identityEmailForm.hidden = true; identityCancel.hidden = true;
     identityId = readerId; account = undefined; accountGeneration++; commentsGeneration++; loadingComments = false;
     query('[data-account-passkeys]').replaceChildren(); query('[data-account-comments]').replaceChildren();
+    query('[data-account-identities]').replaceChildren(); query('[data-notification-verification]').hidden = true;
     profileForm.reset(); name.value = ''; website.value = ''; notificationEmail.value = ''; label.value = '';
-    [profileFeedback, passkeyFeedback, commentFeedback, avatarFeedback].forEach((target) => setReaderFeedback(target, ''));
+    [profileFeedback, passkeyFeedback, commentFeedback, avatarFeedback, identityFeedback].forEach((target) => setReaderFeedback(target, ''));
     avatarFile.value = '';
     query('[data-passkey-count]').textContent = query('[data-comment-count]').textContent = '—';
     query('[data-comments-page]').textContent = '—'; page = 1; totalPages = 1;
@@ -135,6 +153,12 @@ export function initializeReaderAccount() {
     const avatar = query<HTMLImageElement>('[data-account-avatar]'); avatar.hidden = !value.reader.avatarUrl;
     if (value.reader.avatarUrl) avatar.src = value.reader.avatarUrl; else avatar.removeAttribute('src');
     if (replaceInputs) { name.value = value.reader.displayName; website.value = value.reader.websiteUrl; notificationEmail.value = value.notificationEmail; }
+    query('[data-account-identities]').replaceChildren(...value.identities.map((identity) => {
+      const row = element('li'); row.append(element('span', readerMethodLabel(identity.provider)), element('small', identity.count > 1 ? `${identity.count} 个身份` : '已绑定')); return row;
+    }));
+    query('[data-notification-verification]').hidden = !value.notificationEmail;
+    query('[data-notification-verification-status]').textContent = value.notificationEmailVerified ? '邮箱已验证' : value.verifiedNotificationEmail ? '新邮箱待验证，原邮箱继续接收' : '邮箱待验证';
+    query('[data-notification-resend]').hidden = value.notificationEmailVerified;
     if (replaceLists) { confirmedRemoval = null; renderPasskeys(value.passkeys); }
     controls();
   };
@@ -203,6 +227,71 @@ export function initializeReaderAccount() {
       document.dispatchEvent(new Event('reader:refresh'));
     });
   });
+  query('[data-notification-resend]').addEventListener('click', () => void perform(profileFeedback, async () => {
+    const result = await requestJson<{ error?: string; message: string }>('/api/reader/notification-email.json', 'POST', {}, '验证邮件暂时无法发送。');
+    setReaderFeedback(profileFeedback, result.message, 'success');
+  }));
+  const cancelBinding = async () => {
+    const token = bindingToken; bindingToken = undefined; bindingEmail = '';
+    if (token) await requestJson('/api/reader/identities.json', 'DELETE', { bindingToken: token }, '绑定取消尚未确认。');
+  };
+  identityCancel.addEventListener('click', () => {
+    if (identityController) { identityController.abort(); return; }
+    if (mutation) return;
+    void perform(identityFeedback, async () => { await cancelBinding(); identityEmailForm.reset(); identityEmailForm.hidden = true; identityCancel.hidden = true; setReaderFeedback(identityFeedback, '已取消'); });
+  });
+  root.querySelectorAll<HTMLButtonElement>('[data-identity-provider]').forEach((button) => button.addEventListener('click', () => {
+    if (mutation || !account) return;
+    const provider = button.dataset.identityProvider!;
+    if (provider === 'email') { identityEmailForm.hidden = false; identityCancel.hidden = false; identityEmail.focus(); return; }
+    const option = account.authOptions.providers.find((item) => item.id === provider);
+    if (!option?.enabled) return;
+    const expectedIdentity = identityId;
+    identityController = new AbortController();
+    const authorization = openReaderOAuthPopup(option.startUrl, identityController.signal, async () => {
+      await cancelBinding();
+      const result = await requestJson<{ error?: string; bindingToken: string }>('/api/reader/identities.json', 'POST', { provider }, '暂时无法开始绑定。');
+      bindingToken = result.bindingToken;
+      return { intent: 'link', bindingToken };
+    });
+    identityCancel.hidden = false;
+    void perform(identityFeedback, async () => {
+      try {
+        await authorization;
+        if (identityId !== expectedIdentity) return;
+        bindingToken = undefined; await loadAccount(false); setReaderFeedback(identityFeedback, '已绑定', 'success');
+      } finally {
+        identityController = undefined; identityCancel.hidden = true;
+        identityEmailForm.hidden = true; identityEmailForm.reset();
+        if (bindingToken) await cancelBinding();
+      }
+    });
+  }));
+  query('[data-identity-email-send]').addEventListener('click', () => {
+    const address = identityEmail.value.trim().toLowerCase();
+    const validator = document.createElement('input'); validator.type = 'email'; validator.required = true; validator.value = address;
+    if (!validator.checkValidity()) { setReaderFeedback(identityFeedback, '请填写有效的邮箱地址。', 'error'); identityEmail.focus(); return; }
+    void perform(identityFeedback, async () => {
+      if (!bindingToken || bindingEmail !== address) {
+        await cancelBinding();
+        const result = await requestJson<{ error?: string; bindingToken: string }>('/api/reader/identities.json', 'POST', { provider: 'email' }, '暂时无法开始绑定。');
+        bindingToken = result.bindingToken; bindingEmail = address;
+      }
+      await requestJson('/api/reader/email-code.json', 'POST', { email: address, bindingToken }, '验证码暂时无法发送。');
+      setReaderFeedback(identityFeedback, '请查收验证码。'); identityCode.disabled = false; identityCode.focus();
+    });
+  });
+  identityEmailForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    if (!bindingToken || bindingEmail !== identityEmail.value.trim().toLowerCase()) { setReaderFeedback(identityFeedback, '请先获取验证码。', 'error'); return; }
+    if (!/^\d{3}$/.test(identityCode.value)) { setReaderFeedback(identityFeedback, '请输入三位验证码。', 'error'); identityCode.focus(); return; }
+    void perform(identityFeedback, async () => {
+      await requestJson('/api/reader/email-login.json', 'POST', { email: bindingEmail, code: identityCode.value, bindingToken }, '绑定未能完成。');
+      bindingToken = undefined; bindingEmail = ''; identityEmailForm.reset(); identityEmailForm.hidden = true; identityCancel.hidden = true;
+      await loadAccount(false); setReaderFeedback(identityFeedback, '已绑定', 'success');
+    });
+  });
+  window.addEventListener('pagehide', () => { identityController?.abort(); bindingToken = undefined; bindingEmail = ''; identityEmailForm.reset(); });
   avatarSelect.addEventListener('click', () => { if (!mutation && account) avatarFile.click(); });
   avatarFile.addEventListener('change', () => {
     const file = avatarFile.files?.[0];

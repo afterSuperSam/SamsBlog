@@ -113,7 +113,7 @@ describe('authenticated image storage and media management', () => {
     expect((await mutation(DELETE, 'DELETE', { id: media.id })).status).toBe(409);
     const rss = await getRss({ request: new Request('https://blog.example.com/rss.xml') } as APIContext);
     const xml = await rss.text();
-    expect(xml).toContain(`https://blog.moesam.com${media.url}`);
+    expect(xml).toContain(new URL(media.url, siteConfig.siteUrl).href);
     deleteArticle(id);
     expect((await mutation(DELETE, 'DELETE', { id: media.id })).status).toBe(409);
     getDatabase().prepare('DELETE FROM blog_articles WHERE id = ?').run(id);

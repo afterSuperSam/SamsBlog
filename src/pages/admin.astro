@@ -74,7 +74,7 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
         {activeSection === 'articles' && <AdminArticles />}
         {activeSection === 'media' && <AdminMedia />}
         {activeSection === 'applications' && <AdminApplications />}
-        {activeSection === 'notifications' && <section class="admin-panel"><header class="admin-panel__heading"><div><span>NOTIFICATIONS</span><h2>邮件通知</h2></div></header><p>{replyNotificationsConfigured ? 'Resend 发信配置已填写。填写邮箱的友链申请审核通过后，将排队发送通过回信。“已提交”表示服务商已接受请求，实际收件仍需邮箱验证。' : '尚未启用。验证发信域名后，设置 RESEND_API_KEY、MAIL_FROM 和 BLOG_SECRET，再重启博客。访客端暂不展示邮件通知选项。'}</p><p>{adminNotificationsConfigured ? '站长提醒已开启：接收新留言、访客回复和友链申请；后台回复不通知自己。' : '站长提醒未开启：设置 MAIL_ADMIN_TO 后重启博客。'}</p><a href="https://resend.com/templates" target="_blank" rel="noopener noreferrer">管理 Resend 邮件模板 ↗</a><div class="admin-data-table"><table><thead><tr><th>来源</th><th>通知类型</th><th>状态</th><th>尝试次数</th></tr></thead><tbody>{listReplyNotifications().map((notification) => <tr><td>{notification.nickname}</td><td>{{ reply: '访客回信', message: '站长 · 留言', application: '站长 · 友链', application_accepted: '友链通过回信' }[notification.kind]}</td><td>{{ pending: '等待发送', sent: '已提交', failed: '发送失败', cancelled: '已取消' }[notification.status]}</td><td>{notification.attempts}</td></tr>)}</tbody></table></div></section>}
+        {activeSection === 'notifications' && <section class="admin-panel"><header class="admin-panel__heading"><div><span>NOTIFICATIONS</span><h2>邮件通知</h2></div></header><p>{replyNotificationsConfigured ? 'Resend 发信配置已填写。填写邮箱的友链申请审核通过后，将排队发送通过回信。“已提交”表示服务商已接受请求，“收件服务器已接收”不代表进入收件箱。回复通知需先验证收件邮箱。' : '尚未启用。验证发信域名后，设置 RESEND_API_KEY、MAIL_FROM 和 BLOG_SECRET，再重启博客。访客端暂不展示邮件通知选项。'}</p><p>{adminNotificationsConfigured ? '站长提醒已开启：接收新留言、访客回复和友链申请；后台回复不通知自己。' : '站长提醒未开启：设置 MAIL_ADMIN_TO 后重启博客。'}</p><a href="https://resend.com/templates" target="_blank" rel="noopener noreferrer">管理 Resend 邮件模板 ↗</a><div class="admin-data-table"><table><thead><tr><th>来源</th><th>通知类型</th><th>状态</th><th>尝试次数</th></tr></thead><tbody>{listReplyNotifications().map((notification) => <tr><td>{notification.nickname}</td><td>{{ reply: '访客回信', message: '站长 · 留言', application: '站长 · 友链', application_accepted: '友链通过回信', verification: '通知邮箱验证' }[notification.kind]}</td><td>{notification.deliveryStatus ? { delivered: '收件服务器已接收', bounced: '永久退信 · 已抑制', complained: '投诉 · 已抑制' }[notification.deliveryStatus] : { pending: '等待发送', sent: '已提交', failed: '发送失败', cancelled: '已取消' }[notification.status]}</td><td>{notification.attempts}</td></tr>)}</tbody></table></div></section>}
 
         {activeSection === 'messages' && <section class="admin-panel" id="messages">
           <header class="admin-panel__heading"><div><span>01 / VOICES</span><h2>留言</h2></div><p>审核、回复或收起访客留下的纸条。</p></header>
@@ -146,11 +146,11 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
           </AdminDrawer>
           <div class="admin-friend-list">
             {friends.map((friend) => (
-              <div class="admin-record-row" data-friend-row={friend.id} data-friend-starred={friend.starred} data-friend-recommended={friend.recommended} data-friend-lost={friend.group === 'lost'} data-friend-published={friend.latestPublishedAt || ''}>
+              <div class="admin-record-row" data-friend-row={friend.id} data-revision={friend.revision} data-friend-starred={friend.starred} data-friend-recommended={friend.recommended} data-friend-lost={friend.group === 'lost'} data-friend-published={friend.latestPublishedAt || ''}>
               <div><b>{friend.name}</b><p>{friend.description}</p><p class="form-status" role="status" data-admin-feedback></p></div>
               <div class="admin-friend-actions"><button type="button" class="article-star-toggle" data-star-friend={friend.id} aria-pressed={friend.starred} aria-label={`${friend.starred ? '取消' : '添加'}星标：${friend.name}`}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.8 5.8 6.4.9-4.6 4.5 1.1 6.3-5.7-3-5.7 3 1.1-6.3L2.8 9.7l6.4-.9Z" /></svg>星标</button><button type="button" data-drawer-open={`friend-${friend.id}`}>编辑</button></div>
               <AdminDrawer id={`friend-${friend.id}`} title={`编辑 ${friend.name}`}>
-              <form method="post" novalidate class="admin-friend-card" data-friend-id={friend.id}>
+              <form method="post" novalidate class="admin-friend-card" data-friend-id={friend.id} data-revision={friend.revision}>
                 <span class="admin-friend-card__icon"><b>{friend.name.slice(0, 1)}</b><img src={friend.iconUrl} alt="" loading="lazy" referrerpolicy="no-referrer" /></span>
                 <div class="admin-friend-card__fields">
                   <label><span>名称</span><input name="name" value={friend.name} minlength="1" maxlength="60" aria-label="友链名称" required /></label>
@@ -219,7 +219,7 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
   bindAdminNavigation();
   // 后台写入统一呈现失败，并防止同一区域重复提交。
   async function sendAdminRequest(url: string, method: string, payload?: unknown) {
-    return requestJson<{ error?: string; message?: string; id?: number }>(url, method, payload, '管理服务暂时不可用，请稍后重试。');
+    return requestJson<{ error?: string; message?: string; id?: number; revision?: number }>(url, method, payload, '管理服务暂时不可用，请稍后重试。');
   }
 
   async function runAdminAction(container: HTMLElement, action: () => Promise<string | void>, reloadOnSuccess = false) {
@@ -371,6 +371,7 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
     const data = new FormData(form);
     return {
       id,
+      revision: id ? Number(form.dataset.revision) : undefined,
       name: data.get('name'),
       url: data.get('url'),
       description: data.get('description'),
@@ -399,7 +400,10 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
       const starred = button.getAttribute('aria-pressed') !== 'true';
       const restoreFocus = document.activeElement === button;
       await runAdminAction(row, async () => {
-        await sendAdminRequest('/api/admin/friends.json', 'PATCH', { id: Number(button.dataset.starFriend), action: 'star', starred });
+        const result = await sendAdminRequest('/api/admin/friends.json', 'PATCH', { id: Number(button.dataset.starFriend), revision: Number(row.dataset.revision), action: 'star', starred });
+        row.dataset.revision = String(result.revision);
+        const editor = row.querySelector<HTMLFormElement>('[data-friend-id]');
+        if (editor) editor.dataset.revision = String(result.revision);
         button.setAttribute('aria-pressed', String(starred));
         button.setAttribute('aria-label', `${starred ? '取消' : '添加'}星标：${row.querySelector('b')?.textContent || ''}`);
         row.dataset.friendStarred = String(starred);
@@ -420,7 +424,10 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
       const payload = friendPayload(form, id);
       void runAdminAction(form, async () => {
         form.classList.remove('is-saved');
-        await sendAdminRequest('/api/admin/friends.json', 'PATCH', payload);
+        const result = await sendAdminRequest('/api/admin/friends.json', 'PATCH', payload);
+        form.dataset.revision = String(result.revision);
+        const row = form.closest<HTMLElement>('[data-friend-row]');
+        if (row) row.dataset.revision = String(result.revision);
         form.classList.add('is-saved');
         const summary = form.closest<HTMLElement>('.admin-record-row');
         if (summary) summary.dataset.friendRecommended = String(payload.recommended);
@@ -432,7 +439,7 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shangha
     form.querySelector('[data-delete-friend]')?.addEventListener('click', async () => {
       if (!await confirmAdminAction('确定删除这条友链吗？', '删除友链')) return;
       void runAdminAction(form, async () => {
-        await sendAdminRequest('/api/admin/friends.json', 'DELETE', { id });
+        await sendAdminRequest('/api/admin/friends.json', 'DELETE', { id, revision: Number(form.dataset.revision) });
         form.closest<HTMLDialogElement>('dialog')?.close();
         (form.closest('.admin-record-row') || form).remove();
       });

@@ -1,9 +1,10 @@
-import { createMessage, getDatabase, hasReachedMessageSubmissionLimit, listPublishedMessages } from '../../../lib/db';
+import { createMessage, hasReachedMessageSubmissionLimit, listPublishedMessages } from '../../../lib/db';
 import { fingerprintIp, getClientIp } from '../../../lib/network';
 import { HttpError, json, readJsonObject, readPositiveId, requirePublicActivityAllowance, route, requireSameOrigin } from '../../../lib/http';
 import { getArticle } from '../../../lib/articles';
-import { parseNotificationEmail, queueAdminNotification, queueReplyNotification, replyNotificationsConfigured } from '../../../lib/reply-notifications';
+import { parseNotificationEmail, queueAdminNotification, queueReplyNotification, replyNotificationsConfigured, requestMessageNotificationVerification } from '../../../lib/reply-notifications';
 import { readReaderSession } from '../../../lib/readers';
+import { completeCommentOperation, ensureCommentIdentity, readCommentOperationId } from '../../../lib/comment-submissions';
 import { getReaderNotificationEmail } from '../../../lib/reader-account';
 
 export const GET = route(({ url }) => {
@@ -19,9 +20,13 @@ export const POST = route(async ({ request, clientAddress, cookies }) => {
   const body = await readJsonObject(request);
   if (body.website) return json({ ok: true });
   const reader = readReaderSession(cookies);
+  const operationId = readCommentOperationId(body.operationId);
+  if (body.submissionIdentity !== undefined && body.submissionIdentity !== (reader ? `reader:${reader.id}` : 'anonymous')) throw new HttpError(409, '登录身份已变化，请在当前身份下重新提交');
+  const identity = reader ? `reader:${reader.id}` : ensureCommentIdentity(cookies, new URL(request.url));
   const nickname = reader?.displayName ?? (typeof body.nickname === 'string' ? body.nickname.trim() : '');
   const content = typeof body.content === 'string' ? body.content.trim() : '';
   const parentId = body.parentId == null ? null : readPositiveId(body.parentId);
+  const replyTargetId = body.replyTargetId == null ? parentId : readPositiveId(body.replyTargetId);
   const articleId = body.articleId == null ? null : readPositiveId(body.articleId);
   const quoteMessageId = body.quoteMessageId == null ? null : readPositiveId(body.quoteMessageId);
   if (body.quoteContent !== undefined && typeof body.quoteContent !== 'string') throw new HttpError(400, '引用内容格式不正确');
@@ -37,12 +42,17 @@ export const POST = route(async ({ request, clientAddress, cookies }) => {
   if (content.includes('\u0000')) throw new HttpError(400, '留言包含不支持的字符');
   const wantsNotification = body.notifyReply === true && replyNotificationsConfigured && (!reader || Boolean(email));
   if (wantsNotification && !email) throw new HttpError(400, '接收回复通知需要填写邮箱');
-  const id = getDatabase().transaction(() => {
+  const result = completeCommentOperation(identity, operationId, {
+    parentId, replyTargetId, articleId, quoteMessageId, quoteContent, nickname: reader ? null : nickname, content,
+    email: reader ? null : email, notifyReply: body.notifyReply === true,
+  }, () => {
     if (hasReachedMessageSubmissionLimit(fingerprintHash)) throw new HttpError(429, '留言和评论已达提交上限，请稍后再试');
-    const createdId = createMessage({ parentId, articleId, quoteMessageId, quoteContent, nickname, content, fingerprintHash, readerId: reader?.id, email: wantsNotification ? email : '', notifyReply: wantsNotification });
-    if (reader && parentId) queueReplyNotification(parentId, createdId);
+    const createdId = createMessage({ parentId, replyTargetId, articleId, quoteMessageId, quoteContent, nickname, content, fingerprintHash, readerId: reader?.id, email: wantsNotification ? email : '', notifyReply: wantsNotification, emailVerified: Boolean(reader && email) });
+    if (reader && replyTargetId) queueReplyNotification(replyTargetId, createdId);
+    const verificationQueued = !reader && wantsNotification && requestMessageNotificationVerification(createdId);
     queueAdminNotification('message', createdId);
-    return createdId;
-  }).immediate();
-  return json({ ok: true, id, status: reader ? 'published' : 'pending', message: reader ? '已公开发表。' : '留言已送达，审核后会公开展示。' }, 201);
+    return { status: 201, body: { ok: true, id: createdId, status: reader ? 'published' : 'pending',
+      message: (reader ? '已公开发表。' : '留言已送达，审核后会公开展示。') + (verificationQueued ? '请查看验证邮件，确认后才会启用回复通知。' : '') } };
+  });
+  return json(result.body, result.status);
 });

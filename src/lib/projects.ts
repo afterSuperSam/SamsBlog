@@ -2,6 +2,8 @@ import { siteConfig } from '../config/site';
 import { serverConfig } from '../config/server';
 import { getDatabase } from './db';
 import { HttpError } from './http';
+import { isMaintenanceMode } from './maintenance';
+import { auditAdminMutation } from './admin-audit';
 
 export const projectStatusLabels = { active: '活跃', maintenance: '维护', archived: '归档' } as const;
 export type ProjectStatus = keyof typeof projectStatusLabels;
@@ -15,7 +17,8 @@ export function getProjectSettings() {
   const projects = (database.prepare(`SELECT id,repository,name,description,url,keyword,status,visible,position
     FROM blog_projects WHERE deleted_at IS NULL ORDER BY position,id`).all() as Array<Omit<ProjectRecord, 'visible'> & { visible: number }> )
     .map((project) => ({ ...project, visible: Boolean(project.visible) }));
-  return { projects };
+  const { revision } = database.prepare("SELECT revision FROM content_revisions WHERE scope='projects'").get() as { revision: number };
+  return { projects, revision };
 }
 
 // 后台项目输入、排序和可见性在一个事务中保存。
@@ -50,7 +53,11 @@ export function saveProjectSettings(input: Record<string, unknown>) {
   const ids = entries.flatMap((project) => project.id === undefined ? [] : [project.id]);
   if (new Set(ids).size !== ids.length) throw new HttpError(400, '项目编号不能重复');
   const database = getDatabase();
-  database.transaction(() => {
+  const event = { objectType: 'projects' as const, objectId: null, operation: 'update' as const, revision: typeof input.revision === 'number' ? input.revision : null };
+  auditAdminMutation(event, () => {
+    if (!Number.isSafeInteger(input.revision) || Number(input.revision) < 1) throw new HttpError(400, '请携带有效的项目集合版本');
+    const changed = database.prepare("UPDATE content_revisions SET revision=revision+1 WHERE scope='projects' AND revision=?").run(input.revision).changes;
+    if (!changed) throw new HttpError(409, '项目列表已变化，当前输入已保留，请刷新核对后重新编辑');
     const currentIds = (database.prepare('SELECT id FROM blog_projects WHERE deleted_at IS NULL').all() as Array<{ id: number }>).map((project) => project.id);
     if (ids.length !== currentIds.length || ids.some((id) => !currentIds.includes(id))) throw new HttpError(409, '项目列表已变化，请刷新后重新编辑');
     const now = new Date().toISOString();
@@ -62,7 +69,8 @@ export function saveProjectSettings(input: Record<string, unknown>) {
       if (project.id === undefined) create.run({ ...project, now });
       else update.run({ ...project, now });
     }
-  })();
+    event.revision = Number(input.revision) + 1;
+  });
   return getProjectSettings();
 }
 
@@ -101,6 +109,7 @@ export function getProjectCommit(repository: string): Promise<string | undefined
   if (!/^[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(repository)
     || !isVisibleRepository(repository)) throw new Error('Unknown project repository');
   const cached = commits.get(repository);
+  if (isMaintenanceMode()) return Promise.resolve(cached?.date);
   if (cached?.pending) return cached.pending;
   if (cached && cached.expires > Date.now()) return Promise.resolve(cached.date);
   const entry = { date: cached?.date, expires: 0, pending: undefined as Promise<string | undefined> | undefined };

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -6,7 +7,7 @@ import type { APIContext, APIRoute } from 'astro';
 import { getDatabase, createMessage as createStoredMessage, createAdminReply, deleteMessage, listPublishedMessages, listAllMessages, updateMessageStatus } from '../src/lib/db';
 import { saveArticle, withdrawArticle } from '../src/lib/articles';
 import { recordPageView, getArticleAnalytics, hashVisitorToken } from '../src/lib/stats';
-import { createAdminSession } from '../src/lib/admin-auth';
+import { adminCookie, createAdminSession } from '../src/lib/admin-auth';
 import { listFriends, listFriendApplications, reviewFriendApplication } from '../src/lib/friends';
 import { POST as postComment, GET as getComments } from '../src/pages/api/guestbook/messages.json';
 import { POST as react } from '../src/pages/api/articles/reactions.json';
@@ -27,15 +28,42 @@ const content = { title: '互动验证', content: '正文', source: 'original', 
 let sequence = 0;
 async function call(handler: APIRoute, route: string, body?: unknown, token = '11111111-1111-4111-8111-111111111111', method = 'POST', origin = 'https://blog.example.com', clientAddress = `203.0.113.${++sequence}`) {
   return await handler({ url: new URL(route, 'https://blog.example.com'),
-    request: new Request(new URL(route, 'https://blog.example.com'), { method, headers: { 'content-type': 'application/json', origin }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }),
+    request: new Request(new URL(route, 'https://blog.example.com'), { method, headers: { 'content-type': 'application/json', origin }, ...(body === undefined ? {} : { body: JSON.stringify(handler === postComment && body && typeof body === 'object' ? { operationId: randomUUID(), ...body } : body) }) }),
     clientAddress,
-    cookies: { get: (name: string) => ({ value: name === 'samsblog_admin' ? createAdminSession() : token }), set: vi.fn() },
+    cookies: { get: (name: string) => ({ value: name === adminCookie.name ? createAdminSession() : token }), set: vi.fn() },
   } as unknown as APIContext) as Response;
 }
 
 describe('public submission quotas', () => {
   const submit = (handler: APIRoute, route: string, body: unknown, clientAddress = '198.51.100.1') =>
     call(handler, route, body, undefined, 'POST', undefined, clientAddress);
+
+  it('replays the original response without a second message or quota charge and rejects changed reuse', async () => {
+    const operationId = randomUUID();
+    const message = { operationId, nickname: '幂等访客', content: '响应丢失后重试' };
+    expect((await submit(postComment, '/api/guestbook/messages.json', { ...message, submissionIdentity: 'reader:999' }, '198.51.100.210')).status).toBe(409);
+    const first = await submit(postComment, '/api/guestbook/messages.json', message, '198.51.100.211');
+    const original = await first.json(); expect(first.status).toBe(201);
+    await submit(postComment, '/api/guestbook/messages.json', { ...message, operationId: randomUUID(), content: '用完第二次额度' }, '198.51.100.211');
+    const replay = await submit(postComment, '/api/guestbook/messages.json', message, '198.51.100.211');
+    expect(replay.status).toBe(201); expect(await replay.json()).toEqual(original);
+    expect(getDatabase().prepare('SELECT COUNT(*) AS count FROM messages WHERE content=?').get(message.content)).toEqual({ count: 1 });
+    expect((await submit(postComment, '/api/guestbook/messages.json', { ...message, content: '同编号不同正文' }, '198.51.100.211')).status).toBe(409);
+    const anotherIdentity = await call(postComment, '/api/guestbook/messages.json', message, randomUUID(), 'POST', undefined, '198.51.100.212');
+    expect(anotherIdentity.status).toBe(201); expect((await anotherIdentity.json()).id).not.toBe(original.id);
+  });
+
+  it('rolls back the message, notification and operation result together on failure', async () => {
+    const { completeCommentOperation } = await import('../src/lib/comment-submissions');
+    const operationId = randomUUID();
+    expect(() => completeCommentOperation('reader:rollback', operationId, { content: '回滚提交' }, () => {
+      const id = createStoredMessage({ nickname: '事务测试', content: '回滚提交', fingerprintHash: 'rollback-submission' });
+      getDatabase().prepare("INSERT INTO mail_notifications(kind,message_id,created_at,updated_at) VALUES('message',?,?,?)").run(id, new Date().toISOString(), new Date().toISOString());
+      throw new Error('submission fixture failure');
+    })).toThrow('submission fixture failure');
+    expect(getDatabase().prepare('SELECT 1 FROM messages WHERE fingerprint_hash=?').get('rollback-submission')).toBeUndefined();
+    expect(getDatabase().prepare('SELECT 1 FROM message_submissions WHERE operation_id=?').get(operationId)).toBeUndefined();
+  });
 
   it('shares a request quota across public write endpoints before invalid input can reach storage', async () => {
     const source = '198.51.100.200';

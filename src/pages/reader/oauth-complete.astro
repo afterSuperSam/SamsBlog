@@ -1,20 +1,21 @@
 ---
 import '../../styles/global.css';
 import '../../styles/surfaces.css';
-import { readReaderSession } from '../../lib/readers';
+import { readReaderOAuthFlow } from '../../lib/reader-oauth';
 
 Astro.response.headers.set('Cache-Control', 'private, no-store');
 Astro.response.headers.set('Referrer-Policy', 'no-referrer');
 Astro.response.headers.set('X-Robots-Tag', 'noindex, nofollow');
 Astro.response.headers.set('Vary', 'Cookie');
+const flowId = Astro.url.searchParams.getAll('flow').length === 1 ? Astro.url.searchParams.get('flow') : null;
 const completed = Astro.url.searchParams.getAll('result').length === 1
-  && Astro.url.searchParams.get('result') === 'success' && Boolean(readReaderSession(Astro.cookies));
+  && Astro.url.searchParams.get('result') === 'success' && readReaderOAuthFlow(Astro.cookies, flowId).status === 'completed';
 ---
 <!doctype html>
 <html lang="zh-CN">
   <head><meta charset="utf-8" /><meta name="viewport" content="width=device-width" /><title>读者登录 · SamsBlog</title></head>
   <body>
-    <main class="oauth-completion c2-surface" data-oauth-completion data-result={completed ? 'success' : 'error'}>
+    <main class="oauth-completion c2-surface" data-oauth-completion data-result={completed ? 'success' : 'error'} data-flow-id={flowId || ''}>
       <span class="section-kicker">SamsBlog</span>
       <h1>{completed ? '登录已完成' : '这次登录未完成'}</h1>
       <p>{completed ? '请返回原来的页面查看登录状态。' : '请返回原来的页面重新选择登录方式。'}</p>
@@ -30,7 +31,7 @@ const completed = Astro.url.searchParams.getAll('result').length === 1
   // 完成消息只提示父页重新查询同源会话，不传递身份、授权码或令牌。
   if (root && window.opener) {
     try {
-      window.opener.postMessage({ type: 'samsblog-reader-oauth', status: root.dataset.result === 'success' ? 'success' : 'error' }, window.location.origin);
+      window.opener.postMessage({ type: 'samsblog-reader-oauth', status: root.dataset.result === 'success' ? 'success' : 'error', flowId: root.dataset.flowId }, window.location.origin);
       window.close();
     } catch {
       const help = root.querySelector<HTMLElement>('[data-oauth-help]');

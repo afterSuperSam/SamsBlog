@@ -11,14 +11,15 @@ import { readerConfig } from '../src/config/readers';
 import { siteConfig } from '../src/config/site';
 import { getDatabase } from '../src/lib/db';
 import { verifyAdminSession } from '../src/lib/admin-auth';
-import { blogsClubCallback, finishBlogsClubLogin, startBlogsClubLogin, finishReaderOAuth, startReaderOAuth } from '../src/lib/reader-oauth';
+import { blogsClubCallback, finishBlogsClubLogin, startBlogsClubLogin, finishReaderOAuth, startReaderOAuth, cancelReaderOAuthFlow, readReaderOAuthFlow, startReaderOAuthFlow } from '../src/lib/reader-oauth';
 import { createReaderCodeEmail, readReaderEmail, sendReaderEmailCode, verifyReaderEmailCode } from '../src/lib/reader-email';
 import { readerUpstreamRequest } from '../src/lib/reader-transport';
-import { endReaderSession, getReaderAuthOptions, readReaderSession, readerCookieName, readerFlowCookieName,
+import { createReaderIdentityLink, cancelReaderIdentityLink, linkReaderIdentity, readReaderBindingToken, endReaderSession, getReaderAuthOptions, readReaderSession, readerCookieName, readerFlowCookieName,
   readerPrivateHash, readerTokenHash, resolveReaderIdentity, startReaderSession, takeReaderAllowance, type ReaderCookies } from '../src/lib/readers';
 import { POST as requestCode } from '../src/pages/api/reader/email-code.json';
 import { POST as emailLogin } from '../src/pages/api/reader/email-login.json';
 import { POST as oauthStart } from '../src/pages/api/reader/oauth/blogsclub.json';
+import { POST as beginIdentityLink } from '../src/pages/api/reader/identities.json';
 import { POST as logout } from '../src/pages/api/reader/logout.json';
 import { GET as session } from '../src/pages/api/reader/session.json';
 
@@ -239,7 +240,7 @@ describe('BlogsClub OAuth boundary', () => {
     successfulOAuth();
     const response = await blogsClubCallback({ url: callback, cookies });
     expect(response.status).toBe(303);
-    expect(response.headers.get('Location')).toBe('/reader/oauth-complete?result=success');
+    expect(response.headers.get('Location')).toMatch(/^\/reader\/oauth-complete\?result=success&flow=[A-Za-z0-9_-]{43}$/);
     expect(await response.text()).toBe('');
     const signedIn = await (await session({ cookies } as APIContext)).json();
     expect(signedIn.authenticatedAt).toEqual(expect.any(Number));
@@ -295,10 +296,10 @@ describe('BlogsClub OAuth boundary', () => {
       .mockResolvedValueOnce(Response.json({ status: 200, data: { openid: '456', blog_name: '错误身份' } }));
     const response = await blogsClubCallback({ url: callback, cookies });
     expect(response.status).toBe(303);
-    expect(response.headers.get('Location')).toBe('/reader/oauth-complete?result=error');
+    expect(response.headers.get('Location')).toMatch(/^\/reader\/oauth-complete\?result=error&flow=[A-Za-z0-9_-]{43}$/);
     expect(response.headers.get('Referrer-Policy')).toBe('no-referrer');
     expect(response.headers.get('Cache-Control')).toContain('no-store');
-    expect(values.has(readerFlowCookieName)).toBe(false);
+    expect(values.has(readerFlowCookieName)).toBe(true);
     expect(readReaderSession(cookies)).toBeNull();
     expect(console.warn).toHaveBeenCalledWith('Reader OAuth callback rejected');
     expect(getDatabase().prepare('SELECT count(*) AS count FROM readers').get()).toEqual({ count: 0 });
@@ -315,9 +316,9 @@ describe('OAuth completion window', () => {
     const postMessage = vi.fn();
     const close = vi.fn();
     const button = { hidden: true, addEventListener: vi.fn() };
-    const root = { dataset: { result }, querySelector: () => button };
+    const root = { dataset: { result, flowId: 'fixture-flow' }, querySelector: () => button };
     runInNewContext(compiled, { document: { querySelector: () => root }, window: { opener: { postMessage }, close, location: { origin: 'https://blog.example.com' } } });
-    expect(postMessage).toHaveBeenCalledExactlyOnceWith({ type: 'samsblog-reader-oauth', status: result === 'success' ? 'success' : 'error' }, 'https://blog.example.com');
+    expect(postMessage).toHaveBeenCalledExactlyOnceWith({ type: 'samsblog-reader-oauth', status: result === 'success' ? 'success' : 'error', flowId: 'fixture-flow' }, 'https://blog.example.com');
     expect(close).toHaveBeenCalledOnce();
     expect(button.hidden).toBe(false);
   });
@@ -335,12 +336,20 @@ describe('OAuth completion window', () => {
     runInNewContext(compiled, { document: { querySelector: () => root }, window });
     expect(close).not.toHaveBeenCalled();
     expect(help.textContent).toContain('浏览器限制');
-    expect(source).toContain('Boolean(readReaderSession(Astro.cookies))');
+    expect(source).toContain("readReaderOAuthFlow(Astro.cookies, flowId).status === 'completed'");
     expect(source).toContain("'Cache-Control', 'private, no-store'");
   });
 });
 
 describe('email login codes', () => {
+  it('does not send login or binding codes to an address suppressed after a complaint', async () => {
+    const email = 'suppressed-login@example.com';
+    getDatabase().prepare('INSERT INTO mail_suppressions(email_hash,reason,created_at) VALUES (?,?,?)')
+      .run(readerTokenHash(email), 'complained', new Date().toISOString());
+    await sendReaderEmailCode(email, 'suppressed-source');
+    expect(fetch).not.toHaveBeenCalled();
+    expect(getDatabase().prepare('SELECT COUNT(*) AS count FROM reader_email_codes').get()).toEqual({ count: 0 });
+  });
   it('keeps three-digit leading zeros and rejects the old six-digit protocol', async () => {
     const { cookies } = cookieJar(); const mailbox = captureEmail();
     const email = 'leading@example.com';
@@ -509,5 +518,123 @@ describe('reader transport and API guards', () => {
     expect(takeReaderAllowance(limit, 10000)).toBe(true);
     expect(takeReaderAllowance(limit, 10999)).toBe(false);
     expect(takeReaderAllowance(limit, 11000)).toBe(true);
+  });
+});
+
+
+describe('explicit account links and exact OAuth completion', () => {
+  const signedIn = (subject = 'original') => {
+    const jar = cookieJar(); const reader = resolveReaderIdentity('github', subject, '已有账号', null);
+    startReaderSession(jar.cookies, reader, 'github'); return { ...jar, reader };
+  };
+  const callbackFor = (url: string) => { const callback = new URL('/', siteConfig.siteUrl); callback.searchParams.set('state', new URL(url).searchParams.get('state')!); callback.searchParams.set('code', 'fixture-code'); return callback; };
+  it('requires the authenticated same-origin JSON boundary and enforces per-account binding limits', async () => {
+    const account = signedIn();
+    expect((await beginIdentityLink(context('/api/reader/identities.json', { provider: 'email' }, account.cookies, 'https://attacker.example'))).status).toBe(403);
+    expect((await beginIdentityLink(context('/api/reader/identities.json', { provider: 'email' }, cookieJar().cookies))).status).toBe(401);
+    expect((await beginIdentityLink(context('/api/reader/identities.json', { provider: 'unknown' }, account.cookies))).status).toBe(400);
+    for (let index = 0; index < readerConfig.identityLinkLimit; index++) createReaderIdentityLink(account.cookies, 'email', `source-${index}`);
+    expect(() => createReaderIdentityLink(account.cookies, 'email', 'another-source')).toThrow('过于频繁');
+  });
+  it('requires recent proof, binds the challenge to reader/session/provider, and consumes it once', () => {
+    const first = signedIn(); const second = signedIn('other');
+    const token = createReaderIdentityLink(first.cookies, 'blogsclub', 'link-source');
+    const hash = readReaderBindingToken(token);
+    expect(() => linkReaderIdentity(second.cookies, hash, 'blogsclub', 'new-subject')).toThrow('绑定已失效');
+    expect(() => linkReaderIdentity(first.cookies, hash, 'google', 'new-subject')).toThrow('绑定已失效');
+    expect(linkReaderIdentity(first.cookies, hash, 'blogsclub', 'new-subject').id).toBe(first.reader.id);
+    expect(() => linkReaderIdentity(first.cookies, hash, 'blogsclub', 'another')).toThrow('绑定已失效');
+    expect(resolveReaderIdentity('blogsclub', 'new-subject', '新名字', null).id).toBe(first.reader.id);
+    getDatabase().prepare('UPDATE reader_sessions SET created_at=?').run(Date.now() - readerConfig.recentAuthenticationSeconds * 1000);
+    expect(() => createReaderIdentityLink(first.cookies, 'email', 'link-source')).toThrow('重新验证');
+  });
+  it('refuses identities already owned elsewhere, cancelled links and changed sessions', () => {
+    const first = signedIn(); const second = signedIn('other');
+    const token = createReaderIdentityLink(first.cookies, 'github', 'link-source');
+    expect(() => linkReaderIdentity(first.cookies, readReaderBindingToken(token), 'github', 'other')).toThrow('其他账号');
+    expect(resolveReaderIdentity('github', 'other', '', null).id).toBe(second.reader.id);
+    cancelReaderIdentityLink(first.cookies, token);
+    expect(() => linkReaderIdentity(first.cookies, readReaderBindingToken(token), 'github', 'new')).toThrow('绑定已失效');
+    const fresh = createReaderIdentityLink(first.cookies, 'email', 'link-source');
+    startReaderSession(first.cookies, second.reader, 'github');
+    expect(() => linkReaderIdentity(first.cookies, readReaderBindingToken(fresh), 'email', 'new')).toThrow('绑定已失效');
+  });
+  it('separates email binding codes from login and keeps the proven current session', async () => {
+    const account = signedIn(); const mailbox = captureEmail(); const token = createReaderIdentityLink(account.cookies, 'email', 'link-source');
+    const originalSession = account.values.get(readerCookieName);
+    await sendReaderEmailCode('backup@example.com', 'link-source', { cookies: account.cookies, token });
+    expect(() => verifyReaderEmailCode('backup@example.com', mailbox.code(), 'login-source', cookieJar().cookies)).toThrow('验证码无效');
+    expect(verifyReaderEmailCode('backup@example.com', mailbox.code(), 'link-source', account.cookies, { bindingToken: token }).id).toBe(account.reader.id);
+    expect(account.values.get(readerCookieName)).toBe(originalSession);
+    expect(getDatabase().prepare('SELECT COUNT(*) AS count FROM readers').get()).toEqual({ count: 1 });
+    expect(() => verifyReaderEmailCode('backup@example.com', mailbox.code(), 'link-source', account.cookies, { bindingToken: token })).toThrow('绑定已失效');
+  });
+  it('does not confirm another flow, a different browser or an unrelated login in another tab', async () => {
+    const account = signedIn();
+    const flow = startReaderOAuthFlow('blogsclub', account.cookies, 'flow-source', {});
+    const other = resolveReaderIdentity('email', 'unrelated-email', '另一个账号', null);
+    startReaderSession(account.cookies, other, 'email');
+    expect(readReaderOAuthFlow(account.cookies, flow.flowId).status).toBe('pending');
+    expect(readReaderOAuthFlow(cookieJar().cookies, flow.flowId).status).toBe('expired');
+    expect(readReaderOAuthFlow(account.cookies, 'z'.repeat(43)).status).toBe('expired');
+    successfulOAuth(); await finishBlogsClubLogin(callbackFor(flow.url), account.cookies);
+    expect(readReaderOAuthFlow(account.cookies, flow.flowId).status).toBe('completed');
+    startReaderSession(account.cookies, other, 'email');
+    expect(readReaderOAuthFlow(account.cookies, flow.flowId).status).toBe('expired');
+  });
+  it('cancels pending and exchanging flows atomically before they can create a session', async () => {
+    const jar = cookieJar(); const flow = startReaderOAuthFlow('blogsclub', jar.cookies, 'flow-source', {});
+    expect(cancelReaderOAuthFlow(jar.cookies, flow.flowId).status).toBe('cancelled');
+    await expect(finishBlogsClubLogin(callbackFor(flow.url), jar.cookies)).rejects.toThrow('已过期或已使用');
+    expect(fetch).not.toHaveBeenCalled();
+    const active = startReaderOAuthFlow('blogsclub', jar.cookies, 'flow-source', {});
+    let release!: (response: Response) => void;
+    vi.stubGlobal('fetch', vi.fn().mockImplementationOnce(() => new Promise<Response>((resolve) => { release = resolve; }))
+      .mockResolvedValueOnce(Response.json({ status: 200, data: { openid: '123', blog_name: '测试' } })));
+    const exchange = finishBlogsClubLogin(callbackFor(active.url), jar.cookies);
+    expect(readReaderOAuthFlow(jar.cookies, active.flowId).status).toBe('processing');
+    cancelReaderOAuthFlow(jar.cookies, active.flowId);
+    release(Response.json({ status: 200, access_token: 'fixture', token_type: 'Bearer', openid: '123' }));
+    await expect(exchange).rejects.toThrow('已取消或过期');
+    expect(readReaderSession(jar.cookies)).toBeNull();
+    expect(getDatabase().prepare('SELECT COUNT(*) AS count FROM readers').get()).toEqual({ count: 0 });
+  });
+  it('keeps completed flows completed during late cancellation and rejects replay', async () => {
+    const jar = cookieJar(); const flow = startReaderOAuthFlow('blogsclub', jar.cookies, 'flow-source', {}); successfulOAuth();
+    await finishBlogsClubLogin(callbackFor(flow.url), jar.cookies);
+    expect(cancelReaderOAuthFlow(jar.cookies, flow.flowId).status).toBe('completed');
+    await expect(finishBlogsClubLogin(callbackFor(flow.url), jar.cookies)).rejects.toThrow('已过期或已使用');
+  });
+  it('rejects expired links and older flows superseded by a concurrent browser start', async () => {
+    const account = signedIn(); const token = createReaderIdentityLink(account.cookies, 'blogsclub', 'link-source');
+    getDatabase().prepare('UPDATE reader_identity_links SET expires_at=?').run(Date.now());
+    expect(() => linkReaderIdentity(account.cookies, readReaderBindingToken(token), 'blogsclub', 'expired')).toThrow('绑定已失效');
+    const first = startReaderOAuthFlow('blogsclub', account.cookies, 'flow-source', {});
+    const second = startReaderOAuthFlow('blogsclub', account.cookies, 'flow-source', {});
+    expect(readReaderOAuthFlow(account.cookies, first.flowId).status).toBe('expired');
+    await expect(finishBlogsClubLogin(callbackFor(first.url), account.cookies)).rejects.toThrow('已过期或已使用');
+    getDatabase().prepare('UPDATE reader_oauth_states SET expires_at=? WHERE flow_id=?').run(Date.now(), second.flowId);
+    expect(readReaderOAuthFlow(account.cookies, second.flowId).status).toBe('expired');
+    await expect(finishBlogsClubLogin(callbackFor(second.url), account.cookies)).rejects.toThrow('已过期或已使用');
+    expect(fetch).not.toHaveBeenCalled();
+  });
+  it('will not use a new email identity to reauthenticate an existing account', async () => {
+    const account = signedIn(); const mailbox = captureEmail();
+    await sendReaderEmailCode('new-account@example.com', 'reauth-source');
+    await expect(Promise.resolve().then(() => verifyReaderEmailCode('new-account@example.com', mailbox.code(), 'reauth-source', account.cookies, { reauthenticate: true }))).rejects.toThrow('当前账号已绑定');
+    expect(readReaderSession(account.cookies)?.id).toBe(account.reader.id);
+    expect(getDatabase().prepare('SELECT COUNT(*) AS count FROM readers').get()).toEqual({ count: 1 });
+  });
+  it('completes an explicit OAuth link without switching accounts and rejects reauthentication using a new identity', async () => {
+    const account = signedIn(); const token = createReaderIdentityLink(account.cookies, 'blogsclub', 'link-source');
+    const flow = startReaderOAuthFlow('blogsclub', account.cookies, 'flow-source', { intent: 'link', bindingToken: token }); successfulOAuth();
+    const originalSession = account.values.get(readerCookieName);
+    expect((await finishBlogsClubLogin(callbackFor(flow.url), account.cookies)).id).toBe(account.reader.id);
+    expect(account.values.get(readerCookieName)).toBe(originalSession);
+    expect(readReaderOAuthFlow(account.cookies, flow.flowId).status).toBe('completed');
+    const reauthentication = startReaderOAuthFlow('blogsclub', account.cookies, 'flow-source', { intent: 'reauthenticate' }); successfulOAuth('456');
+    await expect(finishBlogsClubLogin(callbackFor(reauthentication.url), account.cookies)).rejects.toThrow('已绑定');
+    expect(readReaderSession(account.cookies)?.id).toBe(account.reader.id);
+    expect(getDatabase().prepare('SELECT COUNT(*) AS count FROM readers').get()).toEqual({ count: 1 });
   });
 });

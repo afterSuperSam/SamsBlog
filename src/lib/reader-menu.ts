@@ -54,6 +54,7 @@ export function initializeReaderLogin() {
   let departed = false;
   let step: 'email' | 'code' = 'email';
   let sentEmail = '';
+  let reauthenticating = false;
   const emailAddress = () => email.value.trim().toLowerCase();
   const codeSlots = initializeReaderCodeSlots(panel.querySelector<HTMLElement>('[data-reader-code-slots]')!, code, () => submitCode());
   const controls = () => {
@@ -112,6 +113,7 @@ export function initializeReaderLogin() {
     codeSlots.reset(); codeVerification.reset();
     changeStep('email');
     const reauthenticate = Boolean((event as CustomEvent<{ reauthenticate?: boolean }>).detail?.reauthenticate);
+    reauthenticating = reauthenticate;
     if (!reauthenticate && session) session = { ...session, reader: null };
     controls();
     accountContent.hidden = true; loginContent.hidden = false;
@@ -143,7 +145,7 @@ export function initializeReaderLogin() {
   };
   const finishLogin = () => { if (!departed && panel.isConnected) window.location.replace('/reader'); };
   const codeVerification = createReaderCodeVerification(
-    (credentials) => requestJson('/api/reader/email-login.json', 'POST', credentials, '登录暂时未能完成，请稍后重新输入验证码。'),
+    (credentials) => requestJson('/api/reader/email-login.json', 'POST', { ...credentials, reauthenticate: reauthenticating }, '登录暂时未能完成，请稍后重新输入验证码。'),
     () => codeSlots.accept(), finishLogin,
   );
   const requestCode = () => {
@@ -196,7 +198,7 @@ export function initializeReaderLogin() {
     const provider = session?.options.providers.find((item) => item.id === button.dataset.readerProvider);
     if (!provider?.enabled) return;
     oauthController = new AbortController();
-    const authorization = openReaderOAuthPopup(provider.startUrl, oauthController.signal);
+    const authorization = openReaderOAuthPopup(provider.startUrl, oauthController.signal, { intent: reauthenticating ? 'reauthenticate' : 'login' });
     cancelOAuth.hidden = false;
     let completed = false;
     void perform(async () => {
@@ -208,7 +210,7 @@ export function initializeReaderLogin() {
   panel.querySelector('[data-reader-passkey-login]')!.addEventListener('click', () => { if (step !== 'email') return; void perform(async () => {
     setReaderFeedback(feedback, '请在设备上验证 Passkey…');
     const { startAuthentication } = await import('@simplewebauthn/browser').catch(() => { throw new Error('Passkey 组件未能加载，请刷新页面后重试。'); });
-    const result = await requestJson<{ error?: string; options: Parameters<typeof startAuthentication>[0]['optionsJSON'] }>('/api/reader/passkeys/login-options.json', 'POST', {}, '暂时无法使用 Passkey。');
+    const result = await requestJson<{ error?: string; options: Parameters<typeof startAuthentication>[0]['optionsJSON'] }>('/api/reader/passkeys/login-options.json', 'POST', { reauthenticate: reauthenticating }, '暂时无法使用 Passkey。');
     let response;
     try { response = await startAuthentication({ optionsJSON: result.options }); }
     catch { throw new Error('Passkey 验证未完成，可以重试或使用其他方式登录。'); }

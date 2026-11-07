@@ -39,7 +39,7 @@ function storeChallenge(kind: 'register' | 'login', challenge: string, cookies: 
     database.prepare('DELETE FROM reader_passkey_challenges WHERE expires_at<=?').run(now);
     if (validReaderToken(previous)) database.prepare('DELETE FROM reader_passkey_challenges WHERE token_hash=?').run(readerTokenHash(previous));
     database.prepare('INSERT INTO reader_passkey_challenges(token_hash,challenge,kind,reader_id,session_hash,created_at,expires_at) VALUES (?,?,?,?,?,?,?)')
-      .run(readerTokenHash(token), challenge, kind, readerId, kind === 'register' && validReaderToken(session) ? readerTokenHash(session) : null,
+      .run(readerTokenHash(token), challenge, kind, readerId, readerId !== null && validReaderToken(session) ? readerTokenHash(session) : null,
         now, now + readerConfig.passkeyChallengeSeconds * 1000);
   }).immediate();
   cookies.set(readerPasskeyCookieName, token, { ...readerCookieOptions(), maxAge: readerConfig.passkeyChallengeSeconds });
@@ -116,10 +116,12 @@ export async function verifyPasskeyRegistration(cookies: ReaderCookies, body: Re
   return listReaderPasskeys(reader.id);
 }
 
-export async function createPasskeyLoginOptions(cookies: ReaderCookies) {
+export async function createPasskeyLoginOptions(cookies: ReaderCookies, reauthenticate = false) {
+  const reader = reauthenticate ? readReaderSession(cookies) : null;
+  if (reauthenticate && !reader) throw new HttpError(401, '请先登录读者账号');
   const options = await generateAuthenticationOptions({ rpID: relyingPartyId, userVerification: 'required', allowCredentials: [],
     timeout: readerConfig.passkeyChallengeSeconds * 1000 });
-  storeChallenge('login', options.challenge, cookies);
+  storeChallenge('login', options.challenge, cookies, reader?.id ?? null);
   return options;
 }
 
@@ -132,6 +134,13 @@ export async function verifyPasskeyLogin(cookies: ReaderCookies, body: Record<st
     FROM reader_passkeys p JOIN readers r ON r.id=p.reader_id WHERE p.credential_id=? AND p.deleted_at IS NULL AND r.deleted_at IS NULL`)
     .get(response.id) as { id: number; reader_id: number; public_key: Buffer; counter: number; transports: string; webauthn_user_id: string } | undefined;
   if (!passkey || assertion.userHandle !== passkey.webauthn_user_id) throw new HttpError(400, '通行密钥验证未通过，请使用其他方式登录');
+  const requireOriginalAccount = () => {
+    if (challenge.reader_id === null) return;
+    const session = cookies.get(readerCookieName)?.value;
+    if (passkey.reader_id !== challenge.reader_id || readReaderSession(cookies)?.id !== challenge.reader_id
+      || !validReaderToken(session) || readerTokenHash(session) !== challenge.session_hash) throw new HttpError(403, '请使用当前账号已绑定的 Passkey 验证');
+  };
+  requireOriginalAccount();
   let verification;
   try {
     verification = await verifyAuthenticationResponse({ response: response as unknown as AuthenticationResponseJSON,
@@ -140,6 +149,7 @@ export async function verifyPasskeyLogin(cookies: ReaderCookies, body: Record<st
   } catch { throw new HttpError(400, '通行密钥验证未通过，请重新尝试'); }
   if (!verification.verified) throw new HttpError(400, '通行密钥验证未通过，请重新尝试');
   return database.transaction(() => {
+    requireOriginalAccount();
     const changed = database.prepare(`UPDATE reader_passkeys SET counter=?,backed_up=?,last_used_at=? WHERE id=? AND counter=? AND deleted_at IS NULL
       AND EXISTS(SELECT 1 FROM readers WHERE id=reader_id AND deleted_at IS NULL)`)
       .run(verification.authenticationInfo.newCounter, Number(verification.authenticationInfo.credentialBackedUp), new Date().toISOString(), passkey.id, passkey.counter).changes;

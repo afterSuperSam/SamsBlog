@@ -7,7 +7,7 @@ import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { readerConfig } from '../src/config/readers';
 import { createMessage, listPublishedMessages, updateMessageStatus, deleteMessage, getDatabase } from '../src/lib/db';
 import { saveArticle, withdrawArticle } from '../src/lib/articles';
-import { getReaderAccount, listReaderComments, updateReaderAvatar, updateReaderProfile } from '../src/lib/reader-account';
+import { getReaderAccount, getReaderNotificationEmail, listReaderComments, updateReaderAvatar, updateReaderProfile } from '../src/lib/reader-account';
 import { readReaderSession, resolveReaderIdentity, startReaderSession, type ReaderCookies, type ReaderPublic } from '../src/lib/readers';
 import { changeMediaVisibility, getMedia, mediaResponse, saveMedia } from '../src/lib/media';
 import { GET, PATCH } from '../src/pages/api/reader/account.json';
@@ -130,7 +130,7 @@ describe('reader account isolation', () => {
     const articleId = saveArticle({ title: '通知邮箱验证', content: '正文', source: 'original', category: 'journal' });
     let submission = 0;
     const postWith = async (extra = {}, caller = cookies) => {
-      const response = await postComment({ ...context(caller, 'POST', { content: '通知地址隔离验证', nickname: '匿名访客', notifyReply: true, email: { forged: 'attacker@example.com' }, ...extra }, '/api/guestbook/messages.json'), clientAddress: `198.51.100.${++submission}` });
+      const response = await postComment({ ...context(caller, 'POST', { operationId: randomUUID(), content: '通知地址隔离验证', nickname: '匿名访客', notifyReply: true, email: { forged: 'attacker@example.com' }, ...extra }, '/api/guestbook/messages.json'), clientAddress: `198.51.100.${++submission}` });
       expect(response.status).toBe(201);
       const { id } = await response.json();
       return getDatabase().prepare('SELECT id,email,notify_reply AS notifyReply FROM messages WHERE id=?').get(id) as { id: number; email: string; notifyReply: number };
@@ -138,19 +138,22 @@ describe('reader account isolation', () => {
     const unset = await postWith();
     expect(unset).toMatchObject({ email: '', notifyReply: 0 });
     updateReaderProfile(reader, { ...profile, notificationEmail: 'first@example.com' });
+    expect(getReaderNotificationEmail(reader.id)).toBe('');
+    getDatabase().prepare('UPDATE readers SET notification_email=notification_email_pending,notification_email_pending=NULL,notification_email_verified_at=? WHERE id=?').run(new Date().toISOString(), reader.id);
     const root = await postWith({ articleId });
     expect(root).toMatchObject({ email: 'first@example.com', notifyReply: 1 });
     expect(await postWith({ articleId, parentId: root.id })).toMatchObject({ email: 'first@example.com', notifyReply: 1 });
     expect(await postWith({ notifyReply: false })).toMatchObject({ email: '', notifyReply: 0 });
     updateReaderProfile(reader, { ...profile, notificationEmail: 'second@example.com' });
-    expect(await postWith()).toMatchObject({ email: 'second@example.com', notifyReply: 1 });
+    expect(await postWith()).toMatchObject({ email: 'first@example.com', notifyReply: 1 });
+    expect(getReaderAccount(reader)).toMatchObject({ notificationEmail: 'second@example.com', notificationEmailVerified: false, verifiedNotificationEmail: 'first@example.com' });
     updateReaderProfile(reader, { ...profile, notificationEmail: '' });
     expect(await postWith()).toMatchObject({ email: '', notifyReply: 0 });
-    expect(getDatabase().prepare('SELECT email FROM messages WHERE id=?').get(root.id)).toEqual({ email: 'first@example.com' });
+    expect(getDatabase().prepare('SELECT email,notify_reply FROM messages WHERE id=?').get(root.id)).toEqual({ email: '', notify_reply: 0 });
     expect(JSON.stringify(listPublishedMessages(60, articleId))).not.toMatch(/first@example.com|notificationEmail|notify_reply|email/);
     const anonymous = { ...cookies, get: () => undefined } as ReaderCookies;
     expect(await postWith({ email: 'anonymous@example.com' }, anonymous)).toMatchObject({ email: 'anonymous@example.com', notifyReply: 1 });
-    expect((await postComment(context(anonymous, 'POST', { content: '匿名校验', nickname: '匿名访客', email: { invalid: true } }, '/api/guestbook/messages.json'))).status).toBe(400);
+    expect((await postComment(context(anonymous, 'POST', { operationId: randomUUID(), content: '匿名校验', nickname: '匿名访客', email: { invalid: true } }, '/api/guestbook/messages.json'))).status).toBe(400);
     expect(fetch).not.toHaveBeenCalled();
   });
 

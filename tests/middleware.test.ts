@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { onRequest } from '../src/middleware';
-import { createAdminSession } from '../src/lib/admin-auth';
+import { adminCookie, createAdminSession } from '../src/lib/admin-auth';
 import { readerFlowCookieName } from '../src/lib/readers';
+import { serverConfig } from '../src/config/server';
 
 vi.mock('astro:middleware', () => ({ defineMiddleware: (handler: unknown) => handler }));
 vi.mock('../src/lib/reply-notifications', () => ({ scheduleReplyNotifications: vi.fn() }));
@@ -17,6 +18,24 @@ function context(path = '/about', headers: Record<string, string> = {}, values: 
 const page = () => new Response('<html>fixture</html>', { headers: { 'content-type': 'text/html' } });
 
 describe('public page view statistics boundary', () => {
+  it('keeps public reads available while blocking maintenance writes and OAuth GET callbacks', async () => {
+    const previous = serverConfig.maintenanceMode; serverConfig.maintenanceMode = true;
+    try {
+      const next = vi.fn(async () => page());
+      const pageResponse = await onRequest(context('/about'), next);
+      if (!(pageResponse instanceof Response)) throw new Error('Middleware did not return a response');
+      expect(pageResponse.status).toBe(200);
+      for (const pathname of ['/?code=fixture&state=fixture', '/api/reader/oauth/github.json', '/api/reader/oauth/google/callback.json']) {
+        const response = await onRequest(context(pathname), next);
+        if (!(response instanceof Response)) throw new Error('Middleware did not return a response');
+        expect(response.status).toBe(503); expect(response.headers.get('Retry-After')).toBe(String(serverConfig.maintenanceRetrySeconds));
+      }
+      const write = context('/api/admin/login.json'); write.request = new Request(write.url, { method: 'POST' });
+      const writeResponse = await onRequest(write, next);
+      if (!(writeResponse instanceof Response)) throw new Error('Middleware did not return a response');
+      expect(writeResponse.status).toBe(503); expect(next).toHaveBeenCalledTimes(1);
+    } finally { serverConfig.maintenanceMode = previous; }
+  });
   it('does not count an HTML fetch before a visible browser confirms it', async () => {
     for (let index = 0; index < 3; index++) await onRequest(context(), async () => page());
     expect(statistics.recordPageView).not.toHaveBeenCalled();
@@ -38,7 +57,7 @@ describe('public page view statistics boundary', () => {
     expect(request.cookies.set).not.toHaveBeenCalled();
   });
   it('excludes administrators and unsuccessful responses', async () => {
-    const administrator = context('/about', {}, { samsblog_admin: createAdminSession() });
+    const administrator = context('/about', {}, { [adminCookie.name]: createAdminSession() });
     await onRequest(administrator, async () => page());
     expect(administrator.cookies.set).not.toHaveBeenCalled();
     const failure = context(); await onRequest(failure, async () => new Response('', { status: 404, headers: { 'content-type': 'text/html' } }));
@@ -80,7 +99,7 @@ describe('public page view statistics boundary', () => {
       expect(response.headers.get('Referrer-Policy')).toBe('no-referrer');
       expect(await response.text()).toBe('');
       expect(callback.cookies.set).not.toHaveBeenCalled();
-      expect(callback.cookies.delete).toHaveBeenCalledWith(readerFlowCookieName, expect.objectContaining({ path: '/', secure: true }));
+      expect(callback.cookies.delete).not.toHaveBeenCalledWith(readerFlowCookieName, expect.anything());
     } finally { warning.mockRestore(); }
   });
 });

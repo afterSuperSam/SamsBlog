@@ -3,8 +3,8 @@ import { readerConfig } from '../config/readers';
 import { getDatabase } from './db';
 import { HttpError, route } from './http';
 import { getMedia, removeUnusedAvatar, saveMedia } from './media';
-import { parseNotificationEmail } from './reply-notifications';
-import { listReaderPasskeys, readReaderSession, type ReaderPublic } from './readers';
+import { parseNotificationEmail, requestReaderNotificationVerification, revokeReaderNotificationVerification } from './reply-notifications';
+import { getReaderAuthOptions, listReaderIdentities, listReaderPasskeys, readReaderSession, type ReaderPublic } from './readers';
 
 // 私有账户响应连同错误统一禁止缓存，身份只从服务端会话获取。
 export const readerAccountRoute = (handler: APIRoute): APIRoute => async (context) => {
@@ -23,18 +23,22 @@ export function requireReaderAccount(cookies: Parameters<typeof readReaderSessio
 export function getReaderAccount(reader: ReaderPublic) {
   const database = getDatabase();
   const details = database.prepare(`SELECT display_name AS displayName,avatar_url AS avatarUrl,
-    website_url AS websiteUrl,notification_email AS notificationEmail,created_at AS createdAt FROM readers WHERE id=? AND deleted_at IS NULL`).get(reader.id) as {
-      displayName: string; avatarUrl: string | null; websiteUrl: string; notificationEmail: string | null; createdAt: string;
+    website_url AS websiteUrl,notification_email AS notificationEmail,notification_email_pending AS pendingEmail,
+    notification_email_verified_at AS notificationEmailVerifiedAt,created_at AS createdAt FROM readers WHERE id=? AND deleted_at IS NULL`).get(reader.id) as {
+      displayName: string; avatarUrl: string | null; websiteUrl: string; notificationEmail: string | null; pendingEmail: string | null; notificationEmailVerifiedAt: string | null; createdAt: string;
     } | undefined;
   if (!details) throw new HttpError(401, '读者登录已失效，请重新登录');
   const commentCount = (database.prepare('SELECT COUNT(*) AS count FROM messages WHERE reader_id=? AND deleted_at IS NULL').get(reader.id) as { count: number }).count;
-  const { notificationEmail, ...publicDetails } = details;
-  return { reader: { ...reader, ...publicDetails }, notificationEmail: notificationEmail || '', commentCount, passkeys: listReaderPasskeys(reader.id) };
+  const { notificationEmail, pendingEmail, notificationEmailVerifiedAt, ...publicDetails } = details;
+  return { reader: { ...reader, ...publicDetails }, notificationEmail: pendingEmail ?? notificationEmail ?? '',
+    notificationEmailVerified: Boolean(notificationEmail && notificationEmailVerifiedAt && !pendingEmail),
+    verifiedNotificationEmail: notificationEmailVerifiedAt ? notificationEmail || '' : '',
+    commentCount, passkeys: listReaderPasskeys(reader.id), identities: listReaderIdentities(reader.id), authOptions: getReaderAuthOptions() };
 }
 
 // 通知地址独立于登录身份，仅用于当前账号设置和未来留言的收件快照。
 export function getReaderNotificationEmail(readerId: number) {
-  const row = getDatabase().prepare('SELECT notification_email AS email FROM readers WHERE id=? AND deleted_at IS NULL').get(readerId) as { email: string | null } | undefined;
+  const row = getDatabase().prepare('SELECT notification_email AS email FROM readers WHERE id=? AND deleted_at IS NULL AND notification_email_verified_at IS NOT NULL').get(readerId) as { email: string | null } | undefined;
   return row?.email || '';
 }
 
@@ -54,9 +58,20 @@ export function updateReaderProfile(reader: ReaderPublic, input: Record<string, 
   }
   if (input.notificationEmail !== undefined && typeof input.notificationEmail !== 'string') throw new HttpError(400, '请填写有效的邮箱地址');
   const notificationEmail = input.notificationEmail === undefined ? undefined : parseNotificationEmail(input.notificationEmail);
-  const result = getDatabase().prepare('UPDATE readers SET display_name=?,website_url=?,notification_email=CASE WHEN ? THEN ? ELSE notification_email END,updated_at=? WHERE id=? AND deleted_at IS NULL')
-    .run(displayName, websiteUrl, Number(notificationEmail !== undefined), notificationEmail || null, new Date().toISOString(), reader.id);
-  if (!result.changes) throw new HttpError(401, '读者登录已失效，请重新登录');
+  getDatabase().transaction(() => {
+    const current = getDatabase().prepare('SELECT notification_email AS email,notification_email_pending AS pending FROM readers WHERE id=? AND deleted_at IS NULL').get(reader.id) as { email: string | null; pending: string | null } | undefined;
+    if (!current) throw new HttpError(401, '读者登录已失效，请重新登录');
+    if (notificationEmail !== undefined) {
+      if (!notificationEmail) {
+        revokeReaderNotificationVerification(reader.id);
+        getDatabase().prepare('UPDATE readers SET notification_email=NULL,notification_email_pending=NULL,notification_email_verified_at=NULL WHERE id=?').run(reader.id);
+      } else {
+        getDatabase().prepare('UPDATE readers SET notification_email_pending=? WHERE id=?').run(notificationEmail === current.email ? null : notificationEmail, reader.id);
+      }
+    }
+    getDatabase().prepare('UPDATE readers SET display_name=?,website_url=?,updated_at=? WHERE id=?').run(displayName, websiteUrl, new Date().toISOString(), reader.id);
+    if (notificationEmail) requestReaderNotificationVerification(reader.id);
+  }).immediate();
   return { ...reader, displayName };
 }
 

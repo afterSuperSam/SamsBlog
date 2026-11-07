@@ -99,7 +99,7 @@ describe('comment list refresh', () => {
     vi.stubGlobal('HTMLDetailsElement', DetailsStub);
     vi.stubGlobal('document', { createElement: (tag: string) => tag === 'details' ? new DetailsStub() : new ElementStub(tag), createElementNS: (_namespace: string, tag: string) => new ElementStub(tag) });
     const list = new ElementStub();
-    const base: MessageRecord = { id: 1, parentId: null, articleId: 1, nickname: 'SuperSam', isAdmin: false, content: '访客内容', status: 'published', createdAt: '2026-10-25T00:00:00Z', quoteMessageId: null, quoteContent: '', quoteNickname: '' };
+    const base: MessageRecord = { id: 1, parentId: null, replyTargetId: null, replyTargetNickname: '', articleId: 1, nickname: 'SuperSam', isAdmin: false, content: '访客内容', status: 'published', createdAt: '2026-10-25T00:00:00Z', quoteMessageId: null, quoteContent: '', quoteNickname: '' };
     const replies = Array.from({ length: 5 }, (_, index) => ({ ...base, id: index + 2, parentId: 1, isAdmin: index === 0, content: index === 1 ? '长'.repeat(181) : '<script>纯文本</script>', quoteMessageId: 1, quoteContent: '访客内容', quoteNickname: 'SuperSam' }));
     renderCommentList(list as unknown as HTMLElement, [{ ...base, replies }], 6);
     const nodes = list.descendants();

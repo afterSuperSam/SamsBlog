@@ -9,6 +9,20 @@ const storage = () => {
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe('comment body drafts', () => {
+  it('preserves a submission ID through refresh while changes to other request fields start a new operation', () => {
+    const memory = storage(); const key = 'anonymous/guestbook:root';
+    let store = createCommentDraftStore(memory, () => 100); store.save(key, '同一正文');
+    const state = { notifyReply: true, quoteMessageId: 3, quoteContent: '原评论引用片段' };
+    const first = store.capture(key, '同一正文', 'a'.repeat(64), state);
+    store = createCommentDraftStore(memory, () => 100);
+    expect(store.submissionState(key)).toEqual(state);
+    expect(store.capture(key, '同一正文', 'a'.repeat(64), state).operationId).toBe(first.operationId);
+    const changedEmail = store.capture(key, '同一正文', 'b'.repeat(64));
+    expect(changedEmail.operationId).not.toBe(first.operationId);
+    expect(store.complete(first)).toBe(false);
+    expect(store.read(key)).toBe('同一正文');
+    expect(memory.getItem(siteConfig.commentDrafts.storageKey)).not.toContain('@');
+  });
   it('isolates reader, anonymous, article, reply and administrator namespaces', () => {
     const memory = storage(); const store = createCommentDraftStore(memory, () => 100);
     const targets = [['anonymous', 'guestbook:root'], ['reader:1', 'guestbook:root'], ['reader:2', 'guestbook:root'], ['reader:1', 'article:2:root'], ['reader:1', 'article:2:reply:3:4']];

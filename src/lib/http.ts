@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro';
 import { readAdminSession } from './admin-auth';
 import { serverConfig } from '../config/server';
+import { isMaintenanceMode, maintenanceResponse } from './maintenance';
 
 export class HttpError extends Error {
   constructor(public status: number, message: string, public code?: 'reauth_required') { super(message); }
@@ -62,6 +63,7 @@ export function errorResponse(error: unknown) {
 }
 
 export const route = (handler: APIRoute): APIRoute => async (context) => {
+  if (isMaintenanceMode() && !['GET', 'HEAD', 'OPTIONS'].includes(context.request.method)) return maintenanceResponse();
   try { return await handler(context); }
   catch (error) { return errorResponse(error); }
 };
@@ -82,7 +84,7 @@ export function requirePublicActivityAllowance(fingerprint: string, now = Date.n
   activity.count++;
 }
 
-export const adminRoute = (handler: APIRoute): APIRoute => route((context) => {
+export const adminRoute = (handler: APIRoute): APIRoute => route(async (context) => {
   if (!readAdminSession(context.cookies)) return json({ error: '未授权' }, 401);
   if (!['GET', 'HEAD', 'OPTIONS'].includes(context.request.method)) {
     requireSameOrigin(context.request);
@@ -90,6 +92,8 @@ export const adminRoute = (handler: APIRoute): APIRoute => route((context) => {
     if (adminMutations.expiresAt <= now) adminMutations = { count: 0, expiresAt: now + serverConfig.adminMutationWindowSeconds * 1000 };
     if (adminMutations.count >= serverConfig.adminMutationLimit) throw new HttpError(429, '后台操作过于频繁，请稍后再试');
     adminMutations.count++;
+    const { withAdminAuditBoundary } = await import('./admin-audit');
+    return withAdminAuditBoundary(context.request, () => handler(context));
   }
   return handler(context);
 });

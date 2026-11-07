@@ -25,6 +25,8 @@ export const readerConfig = {
   passkeyGlobalLimit: boundedInteger('READER_PASSKEY_GLOBAL_LIMIT', 2000, 10000),
   passkeyAlgorithms: [-7, -257],
   oauthSeconds: boundedInteger('READER_OAUTH_SECONDS', 600, 900),
+  identityLinkSeconds: boundedInteger('READER_IDENTITY_LINK_SECONDS', 600, 900),
+  identityLinkLimit: boundedInteger('READER_IDENTITY_LINK_LIMIT', 20, 100),
   codeLength: 3,
   codeSeconds: boundedInteger('READER_CODE_SECONDS', 600, 900),
   codeAttempts: boundedInteger('READER_CODE_ATTEMPTS', 3, 3),
@@ -43,3 +45,10 @@ export const readerConfig = {
   upstreamTimeoutMilliseconds: boundedInteger('READER_UPSTREAM_TIMEOUT_MILLISECONDS', 8000, 15000),
   upstreamMaximumBytes: boundedInteger('READER_UPSTREAM_MAXIMUM_BYTES', 65536, 262144),
 };
+
+if (readerConfig.recentAuthenticationSeconds > readerConfig.sessionSeconds
+  || readerConfig.identityLinkSeconds > readerConfig.recentAuthenticationSeconds
+  || readerConfig.identityLinkSeconds > readerConfig.oauthSeconds
+  || readerConfig.passkeyChallengeSeconds > readerConfig.recentAuthenticationSeconds) {
+  throw new Error('Invalid reader configuration: authentication and challenge lifetimes are inconsistent');
+}
