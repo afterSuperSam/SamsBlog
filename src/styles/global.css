@@ -13,10 +13,11 @@
 .rss-source__attribute { color: var(--summer-pink); }
 
 :root {
-  --surface-corner-small: 12px;
-  --surface-corner-medium: 18px;
-  --surface-corner-large: 28px;
-  --surface-corner-pill: 24px;
+  --surface-corner-small: 14px;
+  --surface-corner-medium: 24px;
+  --surface-corner-large: 36px;
+  --surface-corner-pill: 30px;
+  --surface-corner-avatar: 18px;
   --surface-control-shadow: drop-shadow(0 12px 20px rgba(7,4,3,.2));
   --footer-bottom-space: 28px;
   --admin-sidebar-width: 174px;
@@ -32,7 +33,7 @@
   --reader-card-gap: 16px;
   --reader-account-block-gap: 26px;
   --reader-navigation-avatar-size: 32px;
-  --reader-corner-size: 52px;
+  --reader-corner-size: 64px;
   --reader-account-surface: color-mix(in srgb,var(--reader-paper) 42%,transparent);
   --reader-summary-surface: color-mix(in srgb,var(--reader-paper) 48%,transparent);
   --reader-passkey-surface: color-mix(in srgb,var(--reader-paper) 40%,transparent);
@@ -57,7 +58,7 @@
   --reader-code-slot-size: clamp(72px,8vw,96px);
   --reader-code-slot-height: clamp(100px,9vw,108px);
   --reader-code-slot-gap: 12px;
-  --reader-code-corner-size: 32px;
+  --reader-code-corner-size: 40px;
   --reader-code-digit-size: 2.5rem;
   --reader-code-digit-rise: 6px;
   --reader-code-slot-surface: color-mix(in srgb,var(--reader-accent) 10%,var(--reader-paper));
@@ -125,8 +126,8 @@
   --project-ink-duration: 900ms;
   --message-wall-height: 34rem;
   --paper-extra-height: 30px;
-  --guestbook-form-corner-size: 40px;
-  --guestbook-note-corner-size: 32px;
+  --guestbook-form-corner-size: 52px;
+  --guestbook-note-corner-size: 42px;
   --guestbook-paper-shadow: 0 14px 15px rgba(7, 4, 3, .16);
   --message-wall-fade: 120px;
   --message-wall-blur: 6px;
@@ -247,6 +248,10 @@
     radial-gradient(ellipse at 94% 52%, color-mix(in oklab,var(--glow-pink) 4%,transparent), transparent 64%),
     radial-gradient(ellipse at 44% 110%, color-mix(in oklab,var(--glow-orange) 3%,transparent), transparent 70%),
     linear-gradient(180deg, var(--bg), color-mix(in oklab, var(--bg) 98%, var(--surface) 2%) 52%, var(--bg));
+  --flow-bg-home:
+    radial-gradient(ellipse at 8% 16%, color-mix(in oklab,var(--glow-blue) 5%,transparent), transparent 60%),
+    radial-gradient(ellipse at 44% 110%, color-mix(in oklab,var(--glow-orange) 3%,transparent), transparent 70%),
+    linear-gradient(180deg, var(--bg), color-mix(in oklab, var(--bg) 98%, var(--surface) 2%) 52%, var(--bg));
   --gradient-surface:
     radial-gradient(circle at 82% 14%, color-mix(in oklab, var(--accent) 5%, transparent), transparent 40%),
     linear-gradient(155deg, color-mix(in oklab, var(--surface) 98%, var(--surface-2) 2%), var(--surface));
@@ -299,9 +304,9 @@
   --ease: var(--ease-out);
   --motion-drift: 18s;
   --ambient-halo-size: min(48vw,620px);
-  --ambient-silk-color: #61757f;
-  --ambient-silk-sheen: #b6aaa0;
-  --ambient-silk-opacity: .18;
+  --constellation-line-opacity: .22;
+  --constellation-drift-duration: 26s;
+  --constellation-fade-duration: 600ms;
   --ambient-rest-strength: .6;
   --ambient-shift-duration: 1100ms;
   --ambient-halo-opacity: .12;
@@ -331,9 +336,6 @@
 
 :root[data-theme="light"] {
   --surface-control-shadow: drop-shadow(0 12px 20px rgba(119,166,186,.12));
-  --ambient-silk-color: #bacdd3;
-  --ambient-silk-sheen: #edf3f4;
-  --ambient-silk-opacity: .14;
   --reader-control-shadow: #294b5d08;
   --reader-ripple-color: #447d90;
   --reader-paper: #fffaf2;
@@ -410,6 +412,10 @@
   --flow-bg:
     radial-gradient(ellipse at 8% 16%, color-mix(in srgb,var(--glow-blue) 14%,transparent), transparent 60%),
     radial-gradient(ellipse at 94% 52%, color-mix(in srgb,var(--glow-pink) 8%,transparent), transparent 64%),
+    radial-gradient(ellipse at 44% 110%, color-mix(in srgb,var(--glow-orange) 7.5%,transparent), transparent 70%),
+    linear-gradient(180deg, #fcfeff 0%, #f5fbff 48%, #fbfdff 100%);
+  --flow-bg-home:
+    radial-gradient(ellipse at 8% 16%, color-mix(in srgb,var(--glow-blue) 14%,transparent), transparent 60%),
     radial-gradient(ellipse at 44% 110%, color-mix(in srgb,var(--glow-orange) 7.5%,transparent), transparent 70%),
     linear-gradient(180deg, #fcfeff 0%, #f5fbff 48%, #fbfdff 100%);
   --gradient-surface:
@@ -534,6 +540,7 @@ p {
 @media(forced-colors:active){.paper-input-label>span:first-child{background:none;color:CanvasText}.paper-input-label:focus-within>span:first-child{color:Highlight}.paper-caret{display:none}.has-paper-caret :is(input,textarea){caret-color:Highlight!important}}
 
 body { position: relative; isolation: isolate; }
+body.home-page { background-image: var(--flow-bg-home); }
 
 /* 微弱静态颗粒仅作为背景，不覆盖正文和图片。 */
 :root body::before{z-index:0;opacity:.025;pointer-events:none;animation:none;transition:none}

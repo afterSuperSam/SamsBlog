@@ -1,18 +1,34 @@
 ---
+import { siteConfig } from '../config/site';
+import { ambientMotePositions } from '../lib/ambient-particles';
 const showPinkHalo = Astro.url.pathname !== '/';
+const particles = ambientMotePositions.slice(0, siteConfig.effects.particleCount);
+const constellationSlots = Array.from({ length: siteConfig.effects.constellation.desktopLineCount });
 ---
 
 <div class="ambient-scene" aria-hidden="true" data-ambient-scene>
-  <canvas class="ambient-silk" data-ambient-silk></canvas>
   <div class="ambient-atmosphere ambient-atmosphere--blue"><div class="ambient-halo ambient-halo--blue"></div></div>
   {showPinkHalo && <div class="ambient-atmosphere ambient-atmosphere--pink"><div class="ambient-halo ambient-halo--pink"></div></div>}
-
+  <div class="ambient-field">
+    {[0, 1].map(() => <svg class="ambient-constellation" viewBox="0 0 100 100" preserveAspectRatio="none" data-constellation>
+      {constellationSlots.map(() => <path vector-effect="non-scaling-stroke" />)}
+    </svg>)}
+    {particles.map(([left, top], index) => <i class:list={['ambient-mote', { 'ambient-mote--desktop': index >= siteConfig.effects.mobileParticleCount }]} data-mote-left={left} data-mote-top={top} />)}
+  </div>
 </div>
 
 <style>
   .ambient-scene{position:fixed;inset:0;overflow:hidden;z-index:0;pointer-events:none;contain:strict}
-  .ambient-silk{position:absolute;inset:0;width:100%;height:100%;opacity:0;pointer-events:none}
-  .ambient-silk[data-silk-ready]{opacity:var(--ambient-silk-opacity)}
+  .ambient-mote{position:absolute;left:var(--mote-left);top:var(--mote-top);translate:-50% -50%;width:4px;height:4px;border-radius:50%;background:var(--summer-blue);opacity:.4;visibility:hidden;animation:constellation-twinkle var(--mote-duration,var(--motion-drift)) ease-in-out infinite alternate;animation-delay:var(--mote-delay,0s)}
+  .ambient-scene[data-particles-ready] .ambient-mote{visibility:visible}
+  .ambient-mote:nth-of-type(3n){width:7px;height:7px;background:var(--summer-pink);border-radius:1px;rotate:45deg}
+  .ambient-mote:nth-of-type(5n){width:11px;height:11px;background:var(--summer-orange);clip-path:polygon(50% 0,60% 38%,100% 50%,60% 62%,50% 100%,40% 62%,0 50%,40% 38%);border-radius:0}
+  .ambient-field{position:absolute;inset:0;animation:constellation-drift var(--constellation-drift-duration) ease-in-out infinite alternate}
+  .ambient-constellation{position:absolute;inset:0;width:100%;height:100%;overflow:visible;opacity:0}
+  .ambient-constellation path{fill:none;stroke:var(--summer-blue);stroke-width:.65;stroke-linecap:round;stroke-linejoin:round;opacity:calc(var(--constellation-line-opacity) * var(--constellation-scroll-opacity,.6));transition:opacity var(--constellation-fade-duration) var(--ease-out)}
+  .ambient-constellation path:nth-child(3n){stroke:var(--summer-pink)}
+  @keyframes constellation-drift{from{transform:translate(-8px,12px)}to{transform:translate(22px,-45px)}}
+  @keyframes constellation-twinkle{0%,100%{opacity:.2}55%{opacity:.55}}
   .ambient-atmosphere{position:absolute;inset:0;opacity:var(--ambient-rest-strength);transition:opacity var(--ambient-shift-duration) var(--ease-out)}
   :global(.home-page[data-home-atmosphere="blue"]) .ambient-atmosphere--blue{opacity:1}
   :global(.motion-paused) .ambient-atmosphere{transition:none}
@@ -22,7 +38,7 @@ const showPinkHalo = Astro.url.pathname !== '/';
   :global(.page-hidden) .ambient-scene *{animation-play-state:paused!important}
   :global(.motion-paused) .ambient-scene{opacity:.4}
   @media(prefers-reduced-motion:reduce){.ambient-scene *{animation:none!important}.ambient-atmosphere{transition:none}.ambient-scene{opacity:.35}}
-  @media(max-width:720px){.ambient-halo{width:80vw}.ambient-halo--pink{width:110vw;right:-35%;bottom:-8%}}
+  @media(max-width:720px){.ambient-mote--desktop{display:none}.ambient-halo{width:80vw}.ambient-halo--pink{width:110vw;right:-35%;bottom:-8%}}
 </style>
 
 <script>
@@ -65,7 +81,7 @@ const showPinkHalo = Astro.url.pathname !== '/';
 </script>
 
 <script>
-  import { initializeAmbientSilk } from '../lib/ambient-silk';
-  const silkCanvas = document.querySelector<HTMLCanvasElement>('[data-ambient-silk]');
-  if (silkCanvas) initializeAmbientSilk(silkCanvas);
+  import { initializeAmbientParticles } from '../lib/ambient-particles';
+  const ambientScene = document.querySelector<HTMLElement>('[data-ambient-scene]');
+  if (ambientScene) initializeAmbientParticles(ambientScene);
 </script>

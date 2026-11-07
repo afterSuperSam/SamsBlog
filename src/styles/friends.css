@@ -90,7 +90,7 @@
 .friend-card.c2-shape::before,.friend-card.c2-shape::after{inset:0;border-radius:0;clip-path:var(--c2-clip)}
 .friend-card.c2-shape:is(:hover,:focus-within){box-shadow:none}
 .friend-card.c2-shape:has(.friend-card__copy:focus-visible){outline:0}.friend-card__copy:focus-visible strong{text-decoration:underline;text-underline-offset:5px}
-.friend-card__icon.c2-clip{--c2-corner:var(--surface-corner-medium)}
+.friend-card__icon.c2-clip{--c2-corner:var(--surface-corner-avatar)}
 .friend-card__rss.c2-shape{--c2-corner:var(--surface-corner-small);border-radius:0}.friend-card__rss.c2-shape::before{clip-path:var(--c2-clip);transform:none}
 .friend-deck .friend-card .friend-card__paper{--c2-background:var(--friend-deck-paper);--c2-shadow:drop-shadow(0 16px 18px var(--friend-deck-shadow))}
 .friend-deck .friend-card__media{position:relative;inset:auto;grid-column:1;width:100%;height:var(--friend-deck-image-height);--c2-corner:var(--surface-corner-medium)}

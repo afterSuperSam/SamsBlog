@@ -10,8 +10,11 @@ export const siteConfig = {
     { href: '/about', label: '关于' },
     { href: '/reader', label: '读者' },
   ],
-  effects: { pointerTiltDegrees: 2.5 },
-  ambientSilk: { framesPerSecond: 12, resolutionScale: .45, pixelRatioLimit: 1, maximumPixels: 280000, maximumFrameMilliseconds: 200, speed: 1.15, scale: .55, rotation: .28, depth: .22, sheen: .12, wave: .48, breathingSeconds: 24, breathingStrength: .08, edgeFade: .4 },
+  effects: {
+    particleCount: 40, mobileParticleCount: 12, pointerTiltDegrees: 2.5,
+    twinkle: { minimumSeconds: 15, rangeSeconds: 12, delayCycleSeconds: 18 },
+    constellation: { desktopLineCount: 6, mobileLineCount: 3, desktopPointCount: 10, mobilePointCount: 6, connectionProbability: .5, refreshMilliseconds: 4200, fadeMilliseconds: 1100, maximumDistanceRatio: .26, maximumDegree: 2, scrollPeriodScreens: 2 },
+  },
   navigation: { sectionActivationRatio: 0.35 },
   analytics: { visibleMilliseconds: 10000 },
   network: { sampleCount: 3, timeoutMilliseconds: 5000 },
@@ -130,14 +133,21 @@ if (![reading.fontSizeMinimum, reading.fontSizeMaximum, reading.fontSizeDefault,
   || !reading.typographyStorageKey) throw new Error('Invalid reading typography configuration');
 
 const friendDeck = siteConfig.friendDeck;
-const ambientSilk = siteConfig.ambientSilk;
-if (!Object.values(ambientSilk).every((value) => Number.isFinite(value) && value > 0)
-  || ![ambientSilk.framesPerSecond, ambientSilk.maximumPixels, ambientSilk.maximumFrameMilliseconds].every(Number.isSafeInteger)
-  || ambientSilk.framesPerSecond > 20 || ambientSilk.maximumPixels > 500000 || ambientSilk.maximumFrameMilliseconds > 250
-  || ambientSilk.resolutionScale > .75 || ambientSilk.pixelRatioLimit > 1.5 || ambientSilk.speed > 2
-  || ambientSilk.scale > 1 || ambientSilk.rotation > Math.PI || ambientSilk.depth > .3 || ambientSilk.sheen > .3
-  || ambientSilk.wave > 1 || ambientSilk.breathingSeconds < 10 || ambientSilk.breathingStrength > .2 || ambientSilk.edgeFade > 1) {
-  throw new Error('Invalid ambient silk configuration');
+const effects = siteConfig.effects;
+const constellation = effects.constellation;
+if (![effects.particleCount, effects.mobileParticleCount].every((value) => Number.isSafeInteger(value) && value >= 0 && value <= 60)
+  || effects.mobileParticleCount > effects.particleCount
+  || !Object.values(effects.twinkle).every((value) => Number.isSafeInteger(value) && value > 0 && value <= 60)
+  || ![constellation.desktopLineCount, constellation.mobileLineCount, constellation.desktopPointCount, constellation.mobilePointCount, constellation.maximumDegree, constellation.refreshMilliseconds, constellation.fadeMilliseconds].every((value) => Number.isSafeInteger(value) && value > 0)
+  || constellation.desktopPointCount > effects.particleCount || constellation.mobilePointCount > effects.mobileParticleCount
+  || constellation.mobileLineCount > constellation.desktopLineCount || constellation.maximumDegree > 3
+  || constellation.desktopLineCount > constellation.desktopPointCount * constellation.maximumDegree / 2
+  || constellation.mobileLineCount > constellation.mobilePointCount * constellation.maximumDegree / 2
+  || constellation.refreshMilliseconds <= constellation.fadeMilliseconds * 2
+  || !Number.isFinite(constellation.connectionProbability) || constellation.connectionProbability < 0 || constellation.connectionProbability > 1
+  || !Number.isFinite(constellation.maximumDistanceRatio) || constellation.maximumDistanceRatio <= 0 || constellation.maximumDistanceRatio > 1
+  || !Number.isFinite(constellation.scrollPeriodScreens) || constellation.scrollPeriodScreens <= 0) {
+  throw new Error('Invalid ambient particle configuration');
 }
 
 if (!Object.values(friendDeck).every((value) => Number.isFinite(value) && value > 0)

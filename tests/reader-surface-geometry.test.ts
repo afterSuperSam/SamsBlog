@@ -32,7 +32,7 @@ describe('reader surface geometry', () => {
       previous = value;
     }
   });
-  it.each([[940, 260, 52], [320, 700, 52], [110, 44, 100], [1, 1, 50]])('keeps every control point in the box %s × %s and closes a monotone outline', (width, height, radius) => {
+  it.each([[940, 260, 64], [320, 700, 64], [72, 100, 40], [96, 108, 40], [110, 44, 100], [1, 1, 50]])('keeps every control point in the box %s × %s and closes a monotone outline', (width, height, radius) => {
     const path = createReaderSurfacePath(width, height, radius);
     expect(path.endsWith(' Z')).toBe(true);
     expect(path.match(/C/g)).toHaveLength(8);

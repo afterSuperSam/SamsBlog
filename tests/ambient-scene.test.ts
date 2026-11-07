@@ -30,7 +30,7 @@ function createAmbientScene(options: { hidden?: boolean; paused?: boolean; reduc
   return { classes, windowEvents, documentEvents, buttonEvents, attributes, button, label, media, document, storage, schedule };
 }
 
-describe('ambient motion preferences after particle removal', () => {
+describe('shared ambient motion preferences', () => {
   it('keeps the shared pause control and persists its accessible state', () => {
     const scene = createAmbientScene();
     expect(scene.classes.has('motion-paused')).toBe(false);
