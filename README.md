@@ -38,7 +38,9 @@
 
 ### 读者身份
 
-顶部“关于”右侧新增“读者”，桌面与手机导航均进入 `/reader`。支持邮箱六位验证码和 BlogsClub 登录；邮箱验证后自动注册，无需密码。未配置的方式禁用并显示“暂未开放”。登录后可查看姓名、头像及退出，读者会话独立于站长管理权限。不同方式不按相同邮箱自动合并账户。
+顶部“关于”右侧的头像与“读者”打开导航下方的小面板，支持邮箱六位验证码、BlogsClub、GitHub、Google 和 Passkey；未配置的提供方禁用。邮箱验证后自动注册，无需密码。登录后显示头像、昵称、当前登录方式、我的账号与退出；读者会话独立于站长管理权限。不同方式不按相同邮箱自动合并账户。面板打开时锁定背景滚动，关闭后恢复位置；低高度屏幕允许面板内部滚动，支持 Escape、背景点击与键盘焦点恢复。
+
+`/reader` 为正常滚动的账号页，可修改昵称和个人网站、管理 Passkey、分页查看本人未删除的留言与评论，以及注册时间和累计留言与评论次数。昵称修改同步既有署名；隐藏文章不返回标题或跳转地址。Passkey 添加和移除需15分钟内重新验证，移除需二次点击；重验后自行重新选择操作，不自动重放请求，切换账号先清空旧资料。
 
 登录读者的称呼由服务端身份决定，提交后直接公开；匿名留言、评论和回复先审核，待审内容不会插入公开列表。两者都只能回复已公开父帖。登录邮箱不自动填入回复通知邮箱，已有本机称呼和通知邮箱继续保留。验证码和登录邮箱不存入 localStorage；读者页及含身份的页面禁止共享缓存。
 
@@ -172,8 +174,10 @@ pnpm dev:background
 | `SITE_LAUNCHED_AT` | 严格 `YYYY-MM-DD`，默认 `2026-08-22`；按北京时间自然日计数，当天为第1天 |
 | `HOST`、`PORT` | 生产使用 `127.0.0.1`、`4321`，通过 Nginx 提供公网服务 |
 | `READER_BLOGSCLUB_CLIENT_ID`、`READER_BLOGSCLUB_CLIENT_SECRET` | BlogsClub 审核通过后的客户端凭证，仅写服务端环境；不提交仓库或进入公开配置 |
+| `READER_GITHUB_CLIENT_ID`、`READER_GITHUB_CLIENT_SECRET` | GitHub App 用户 OAuth 的服务端凭证 |
+| `READER_GOOGLE_CLIENT_ID`、`READER_GOOGLE_CLIENT_SECRET` | Google Web 客户端凭证；测试模式仅允许登记的测试用户 |
 
-读者邮箱验证码沿用 `BLOG_SECRET`、`RESEND_API_KEY` 和已验证域名的 `MAIL_FROM`，不需要新增邮件模板。BlogsClub 使用 OAuth 2 基础资料授权；回调必须是 `PUBLIC_SITE_URL` 的 HTTPS 根路径，例如 `https://blog.example.com/`，与提供方登记地址完全匹配。当前真实应用仍待 BlogsClub 审核通过；本地模拟验证不代表真实授权已开通。客户端凭证保持空值时，页面禁用该方式，不把真实 AppKey 写入文档。
+读者邮箱验证码沿用 `BLOG_SECRET`、`RESEND_API_KEY` 和已验证域名的 `MAIL_FROM`，不需要新增邮件模板。BlogsClub 使用 OAuth 2 基础资料授权；回调必须是 `PUBLIC_SITE_URL` 的 HTTPS 根路径，例如 `https://blog.example.com/`，与提供方登记地址完全匹配。BlogsClub 应用已审核通过；本地模拟验证不代表已完成真实授权验收。客户端凭证保持空值时，页面禁用该方式，不把真实 AppKey 写入文档。 GitHub 与 Google 分别登记 `PUBLIC_SITE_URL` 下的 `/api/reader/oauth/github/callback.json`、`/api/reader/oauth/google/callback.json`；授权成功均转入 `/reader`。Google 使用 OIDC 与 PKCE；BlogsClub 使用原生 OAuth 2。Passkey 使用 SimpleWebAuthn，生产需 HTTPS，凭据绑定站点域名；更换域名不会迁移已有凭据。
 
 哈希生成命令的参数可能进入终端历史，请在可信终端生成并妥善处理历史。`.env` 及 `.env.*` 均不提交 Git，仅保留 `.env.example`；生产环境文件权限设为 `600`。开发服务读取本地环境，生产业务代码只读进程环境，管理密钥不应写进构建产物。
 
@@ -203,10 +207,13 @@ Astro 构建配置按 `.env` → `.env.local` → `.env.<mode>` → `.env.<mode>
 | --- | --- |
 | 有效期 | `READER_SESSION_SECONDS=2592000`、`READER_OAUTH_SECONDS=600`、`READER_CODE_SECONDS=600` |
 | 邮箱验证码 | `READER_CODE_ATTEMPTS=5`、`READER_EMAIL_COOLDOWN_SECONDS=60` |
+| 账号管理 | `READER_RECENT_AUTHENTICATION_SECONDS=900`、`READER_ACCOUNT_PAGE_SIZE=20`、`READER_PROFILE_SOURCE_LIMIT=30` |
+| Passkey | `READER_PASSKEY_CHALLENGE_SECONDS=300`、`READER_PASSKEY_MAXIMUM_COUNT=10`、`READER_PASSKEY_REQUEST_MAXIMUM_BYTES=65536` |
+| Passkey 额度 | `READER_PASSKEY_SOURCE_LIMIT=60`、`READER_PASSKEY_GLOBAL_LIMIT=2000` |
 | 持久额度窗口 | `READER_QUOTA_WINDOW_SECONDS=3600` |
 | 发送验证码额度 | `READER_EMAIL_ADDRESS_LIMIT=5`、`READER_EMAIL_SOURCE_LIMIT=10`、`READER_EMAIL_GLOBAL_LIMIT=100` |
 | 验证额度 | `READER_VERIFY_SOURCE_LIMIT=30`、`READER_VERIFY_GLOBAL_LIMIT=1000` |
-| BlogsClub 登录额度 | `READER_OAUTH_SOURCE_LIMIT=30`、`READER_OAUTH_GLOBAL_LIMIT=1000` |
+| OAuth 登录额度 | `READER_OAUTH_SOURCE_LIMIT=30`、`READER_OAUTH_GLOBAL_LIMIT=1000` |
 | 请求边界 | `READER_REQUEST_MAXIMUM_BYTES=4096`、`READER_UPSTREAM_TIMEOUT_MILLISECONDS=8000`、`READER_UPSTREAM_MAXIMUM_BYTES=65536` |
 
 读者会话默认30天，验证码默认10分钟、最多5次验证；读者认证额度持久化到 SQLite，重启不清零。读者身份不保存原始登录邮箱或提供方令牌；邮箱身份使用规范化邮箱的稳定摘要，验证码和邮箱额度使用带密钥摘要。回复通知邮箱是用户另外自愿填写的资料，仍按原通知规则保存。
@@ -225,10 +232,15 @@ Astro 构建配置按 `.env` → `.env.local` → `.env.<mode>` → `.env.<mode>
 | --- | --- | --- |
 | `/api/admin/login.json` | POST／公开限速 | `{password}`；登录 Cookie；401密码错误、429限速、503配置不可用 |
 | `/api/admin/logout.json` | POST／管理员 | 清除管理 Cookie |
-| `/api/reader/session.json` | GET／当前浏览器 | `{reader,options}`，只返回读者公开姓名、头像及可用登录方式 |
+| `/api/reader/session.json` | GET／当前浏览器 | `{reader,options}`，只返回读者公开姓名、头像、当前登录方式及可用登录方式 |
 | `/api/reader/email-code.json` | POST／同源限速 | `{email}`；统一成功消息及验证码有效期／重发间隔 |
 | `/api/reader/email-login.json` | POST／同源限速 | `{email,code}`；成功返回 `{reader}` 并设置独立读者会话 |
 | `/api/reader/oauth/blogsclub.json` | POST／同源限速 | 返回 `{url}`，整页前往 BlogsClub；回调到已登记根路径后303转入 `/reader` |
+| `/api/reader/oauth/github.json`、`/api/reader/oauth/google.json` | POST／同源限速 | 返回 `{url}`，整页授权；固定提供方回调成功后303转入 `/reader` |
+| `/api/reader/account.json` | GET/PATCH／当前读者 | 私有资料、注册时间、累计评论数和 Passkey；PATCH `{displayName,websiteUrl}` |
+| `/api/reader/comments.json?page=1` | GET／当前读者 | 本人未删除评论分页，包含审核状态；非公开文章不返回标题或链接 |
+| `/api/reader/passkeys/{register,login}-{options,verify}.json` | POST／同源限速 | options 返回挑战；verify 验证浏览器凭据。注册需已登录且近期验证 |
+| `/api/reader/passkeys.json` | GET/DELETE／当前读者 | 私有凭据列表；DELETE `{id}` 需近期验证，超时401 `code: reauth_required` |
 | `/api/reader/logout.json` | POST／同源 | 撤销当前读者会话并清除 Cookie |
 | `/api/admin/articles.json` | GET/POST/PATCH/DELETE／管理员 | GET含软删除；创建／编辑用 `title,coverUrl?,cardLayout?,source,category,tags?,content,originalAuthor?,originalUrl?`；布局枚举 `left/right/text`；编辑加 `id`，恢复 `{id,restore:true}`，删除 `{id}` |
 | `/api/admin/messages.json` | GET/PATCH/POST/DELETE／管理员 | 全部未删除线程；`{id,status}` 审核；`{parentId,content}` 回复；`{id}` 删除 |

@@ -1,133 +1,49 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
-import { getReaderAuthOptions, readReaderSession } from '../lib/readers';
+import { readReaderSession } from '../lib/readers';
 import '../styles/reader.css';
-
 const reader = readReaderSession(Astro.cookies);
-const options = getReaderAuthOptions();
 Astro.response.headers.set('Cache-Control', 'private, no-store');
 Astro.response.headers.set('Vary', 'Cookie');
 Astro.response.headers.set('Referrer-Policy', 'no-referrer');
 Astro.response.headers.set('X-Robots-Tag', 'noindex, nofollow');
 ---
-<BaseLayout title="读者" description="登录或注册你的 SamsBlog 读者身份。" bodyClass="reader-page">
-  <section class="shell reader-space" aria-labelledby="reader-title" data-reader-space>
-    <header class="reader-intro" data-reveal>
-      <span class="section-kicker">READER</span>
-      <h1 id="reader-title">见字如面<span aria-hidden="true"> ✧</span></h1>
-      <p>把路过的心情，留成有名字的纸条。</p>
-      <p class="reader-intro__small">登录或注册后，使用读者身份参与留言与讨论。</p>
-      <a href="/content">先去读点什么 <span aria-hidden="true">↗</span></a>
-    </header>
-    <div class="reader-paper" data-reveal>
-      <section class="reader-account" data-reader-account hidden={!reader} aria-labelledby="reader-account-title">
-        <div class="reader-avatar" aria-hidden="true"><span data-reader-initial>{Array.from(reader?.displayName || '读')[0]}</span><img data-reader-avatar src={reader?.avatarUrl || undefined} hidden={!reader?.avatarUrl} alt="" width="72" height="72" referrerpolicy="no-referrer" /></div>
-        <span class="section-kicker">很高兴又见到你</span>
-        <h2 id="reader-account-title" data-reader-name tabindex="-1">{reader?.displayName || '读者'}</h2>
-        <p>你已登录，可以用这个名字留下留言和回复。</p>
-        <div class="reader-account__actions"><a href="/#guestbook">写张纸条 <span aria-hidden="true">↗</span></a><button type="button" data-reader-logout data-reader-enabled="true" disabled>退出登录</button></div>
+<BaseLayout title="我的账号" description="管理读者资料、Passkey 和自己的留言。" bodyClass="reader-page">
+  <section class="shell reader-account-page" data-reader-account-page data-reader-id={reader?.id || ''} aria-labelledby="reader-account-title">
+    <header class="reader-account-intro"><span class="section-kicker">ACCOUNT</span><h1 id="reader-account-title">我的账号</h1><p>安放你的名字，也收好写过的纸条。</p></header>
+    <section class="reader-paper" data-account-signed-out hidden={Boolean(reader)}><h2>先和我们打个招呼</h2><p>登录后可以修改资料、管理 Passkey 和查看自己的留言。</p><button type="button" data-account-login>打开登录面板 <span aria-hidden="true">↗</span></button></section>
+    <div data-account-content hidden={!reader}>
+      <section class="reader-paper reader-account-summary" aria-label="读者资料">
+        <div class="reader-avatar" aria-hidden="true"><span data-account-initial>{Array.from(reader?.displayName || '读')[0]}</span><img data-account-avatar src={reader?.avatarUrl || undefined} hidden={!reader?.avatarUrl} alt="" width="72" height="72" referrerpolicy="no-referrer" /></div>
+        <div><h2 data-account-name>{reader?.displayName}</h2><p data-account-method></p></div>
+        <dl><div><dt>注册时间</dt><dd><time data-account-created>—</time></dd></div><div><dt>累计留言与评论</dt><dd data-account-comment-count>—</dd></div></dl>
       </section>
-      <section data-reader-login hidden={Boolean(reader)} aria-labelledby="reader-login-title">
-        <h2 id="reader-login-title" tabindex="-1">登录 / 注册</h2>
-        <p class="reader-help">第一次来？验证邮箱后会自动创建读者身份，无需设置密码。</p>
-        <form method="post" action="/api/reader/email-login.json" data-reader-form novalidate>
-          <label class="reader-field" for="reader-email">邮箱地址<input id="reader-email" name="email" type="email" inputmode="email" autocomplete="email" maxlength="254" required disabled data-reader-enabled={String(options.email)} aria-describedby="reader-email-help" placeholder="you@example.com" /></label>
-          <p class="reader-help" id="reader-email-help">{options.email ? '验证码只发送到你填写的邮箱，邮箱不会公开。' : '邮箱登录暂未开放，请稍后再来。'}</p>
-          <div class="reader-code-row"><label class="reader-field" for="reader-code">六位验证码<input id="reader-code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required disabled data-reader-enabled={String(options.email)} /></label><button type="button" data-reader-send disabled data-reader-enabled={String(options.email)}>发送验证码</button></div>
-          <button class="reader-submit" type="submit" disabled data-reader-enabled={String(options.email)}>验证并进入 <span aria-hidden="true">↗</span></button>
-        </form>
-        <div class="reader-divider"><span>也可以使用</span></div>
-        <div class="reader-providers" role="group" aria-label="其他登录方式">
-          {options.providers.map((provider) => <button type="button" data-reader-provider={provider.id} disabled data-reader-enabled={String(provider.enabled)} aria-describedby={!provider.enabled ? 'reader-provider-help' : undefined}><span>{provider.name}</span>{!provider.enabled && <small>暂未开放</small>}</button>)}
-        </div>
-        {options.providers.some((provider) => !provider.enabled) && <p class="reader-help" id="reader-provider-help">灰色的登录方式暂未开放。</p>}
-        <p class="reader-help reader-privacy">不同登录方式分别保留身份，不会因为邮箱相同自动合并。回复通知仍由留言时填写的邮箱决定。</p>
-      </section>
-      <p class="reader-feedback" data-reader-feedback role="status" aria-live="polite" aria-atomic="true">{Astro.url.searchParams.get('error') === 'oauth' ? '这次登录未能完成，请重新选择登录方式。' : ''}</p>
-      <noscript><p>登录需要启用 JavaScript。文章仍可正常阅读。</p></noscript>
+      <div class="reader-account-grid">
+        <section class="reader-paper reader-account-wide" aria-labelledby="reader-profile-title"><h2 id="reader-profile-title">我的资料</h2><p class="reader-help">昵称用于留言和评论，保存后以前的署名也会更新。</p>
+          <form method="post" action="/api/reader/account.json" data-account-profile novalidate>
+            <label class="reader-field">昵称<input name="displayName" value={reader?.displayName || ''} minlength="2" maxlength="48" autocomplete="nickname" required disabled /></label>
+            <label class="reader-field">个人网站 · 可选<input name="websiteUrl" type="url" maxlength="2048" placeholder="https://example.com" autocomplete="url" disabled /></label>
+            <footer><button type="submit" disabled>保存资料 <span aria-hidden="true">↗</span></button><a data-account-website hidden target="_blank" rel="noopener noreferrer">打开我的网站 ↗</a></footer>
+            <p class="reader-feedback" data-profile-feedback role="status" aria-live="polite"></p>
+          </form>
+        </section>
+        <section class="reader-paper reader-account-wide" aria-labelledby="reader-passkeys-title"><h2 id="reader-passkeys-title">我的 Passkey</h2><p class="reader-help">使用设备上的指纹、面容或屏幕锁登录。添加和移除前需要近期验证身份。</p>
+          <ul class="reader-passkeys" data-account-passkeys></ul><p class="reader-help" data-passkeys-empty>正在读取…</p>
+          <form class="reader-passkey-add" method="post" data-passkey-add novalidate><label class="reader-field">给设备起个名字<input name="label" maxlength="120" placeholder="例如：我的笔记本" required disabled /></label><button type="submit" disabled>添加 Passkey <span aria-hidden="true">＋</span></button></form>
+          <p class="reader-feedback" data-passkey-feedback role="status" aria-live="polite"></p>
+        </section>
+        <section class="reader-paper reader-account-wide" aria-labelledby="reader-comments-title"><h2 id="reader-comments-title" tabindex="-1">我的留言与评论</h2><p class="reader-help">仅你自己可以在这里查看尚未公开的内容。</p>
+          <ol class="reader-comments" data-account-comments></ol><p class="reader-help" data-comments-empty>正在读取…</p>
+          <nav class="reader-pagination" aria-label="我的留言分页"><button type="button" data-comments-previous disabled>上一页</button><span data-comments-page>—</span><button type="button" data-comments-next disabled>下一页</button></nav>
+          <p class="reader-feedback" data-comments-feedback role="status" aria-live="polite"></p>
+        </section>
+      </div>
     </div>
+    <p class="reader-feedback" data-account-feedback role="status" aria-live="polite">{Astro.url.searchParams.get('error') === 'oauth' ? '这次登录未能完成，请重新打开登录面板。' : ''}</p>
+    <noscript><p>账号管理需要启用 JavaScript，文章仍可正常阅读。</p></noscript>
   </section>
 </BaseLayout>
 <script>
-  import { requestJson } from '../lib/client-request';
-  import type { ReaderPublic } from '../lib/readers';
-  const root = document.querySelector<HTMLElement>('[data-reader-space]')!;
-  const form = root.querySelector<HTMLFormElement>('[data-reader-form]')!;
-  const email = form.elements.namedItem('email') as HTMLInputElement;
-  const code = form.elements.namedItem('code') as HTMLInputElement;
-  const feedback = root.querySelector<HTMLElement>('[data-reader-feedback]')!;
-  const send = root.querySelector<HTMLButtonElement>('[data-reader-send]')!;
-  const avatar = root.querySelector<HTMLImageElement>('[data-reader-avatar]')!;
-  let busy = false;
-  let navigating = false;
-  const controls = [...root.querySelectorAll<HTMLButtonElement | HTMLInputElement>('button,input')];
-  const available = new Map(controls.map((control) => [control, control.dataset.readerEnabled === 'true']));
-  const setBusy = (value: boolean) => {
-    busy = value; root.setAttribute('aria-busy', String(value));
-    controls.forEach((control) => { control.disabled = value || !available.get(control); });
-  };
-  const renderReader = (reader: ReaderPublic | null, focus = true) => {
-    root.querySelector<HTMLElement>('[data-reader-account]')!.hidden = !reader;
-    root.querySelector<HTMLElement>('[data-reader-login]')!.hidden = Boolean(reader);
-    const name = root.querySelector<HTMLElement>('[data-reader-name]')!;
-    name.textContent = reader?.displayName || '读者';
-    root.querySelector<HTMLElement>('[data-reader-initial]')!.textContent = Array.from(reader?.displayName || '读')[0];
-    avatar.hidden = !reader?.avatarUrl;
-    if (reader?.avatarUrl) avatar.src = reader.avatarUrl; else avatar.removeAttribute('src');
-    if (focus) { if (reader) name.focus(); else if (!email.disabled) email.focus(); else root.querySelector<HTMLElement>('#reader-login-title')?.focus(); }
-  };
-  avatar.addEventListener('error', () => { avatar.hidden = true; });
-  if (avatar.complete && !avatar.naturalWidth) avatar.hidden = true;
-  const perform = async (action: () => Promise<void>) => {
-    if (busy) return;
-    setBusy(true);
-    try { await action(); }
-    catch (error) { feedback.textContent = error instanceof Error ? error.message : '暂时未能完成，输入已保留。'; }
-    finally { if (!navigating) setBusy(false); }
-  };
-  const validEmail = () => {
-    email.value = email.value.trim();
-    if (email.checkValidity()) { email.removeAttribute('aria-invalid'); return true; }
-    feedback.textContent = '请填写有效的邮箱地址。'; email.setAttribute('aria-invalid', 'true'); email.focus(); return false;
-  };
-  send.addEventListener('click', () => {
-    if (busy || !validEmail()) return;
-    void perform(async () => {
-      feedback.textContent = '正在发送验证码…';
-      const result = await requestJson<{ message: string }>('/api/reader/email-code.json', 'POST', { email: email.value }, '验证码暂时无法发送，请稍后重试。');
-      feedback.textContent = result.message || '验证码已发送，请查看邮箱。';
-      setBusy(false); code.focus();
-    });
-  });
-  form.addEventListener('submit', (event) => {
-    event.preventDefault();
-    if (busy || !validEmail()) return;
-    if (!/^[0-9]{6}$/.test(code.value.trim())) { feedback.textContent = '请输入六位数字验证码。'; code.setAttribute('aria-invalid', 'true'); code.focus(); return; }
-    code.removeAttribute('aria-invalid');
-    void perform(async () => {
-      feedback.textContent = '正在验证…';
-      const result = await requestJson<{ error?: string; reader: ReaderPublic }>('/api/reader/email-login.json', 'POST', { email: email.value, code: code.value.trim() }, '暂时无法登录，输入已保留。');
-      form.reset(); renderReader(result.reader); feedback.textContent = '登录成功，欢迎回来。';
-    });
-  });
-  root.querySelector('[data-reader-logout]')!.addEventListener('click', () => void perform(async () => {
-    await requestJson('/api/reader/logout.json', 'POST', {}, '退出未能完成，请重试。');
-    setBusy(false); renderReader(null); feedback.textContent = '已退出登录。';
-  }));
-  root.querySelectorAll<HTMLButtonElement>('[data-reader-provider]').forEach((button) => button.addEventListener('click', () => void perform(async () => {
-    feedback.textContent = `正在前往 ${button.textContent?.trim()}…`;
-    const result = await requestJson<{ error?: string; url: string }>(`/api/reader/oauth/${button.dataset.readerProvider}.json`, 'POST', {}, '暂时无法开始登录，请重试。');
-    const address = new URL(result.url);
-    if (!['http:', 'https:'].includes(address.protocol)) throw new Error('登录地址暂时不可用，请重试。');
-    window.location.assign(address.href); navigating = true;
-  })));
-  window.addEventListener('pageshow', (event) => {
-    if (!event.persisted) return;
-    navigating = false; setBusy(false);
-    void perform(async () => {
-      const result = await requestJson<{ error?: string; reader: ReaderPublic | null }>('/api/reader/session.json', 'GET', undefined, '登录状态暂时无法更新，请刷新页面。');
-      renderReader(result.reader, false);
-    });
-  });
-  setBusy(false);
+  import { initializeReaderAccount } from '../lib/reader-account-client';
+  initializeReaderAccount();
 </script>

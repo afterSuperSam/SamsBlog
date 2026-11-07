@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import fs from 'node:fs';
 import path from 'node:path';
+import { randomBytes } from 'node:crypto';
 import { serverConfig } from '../config/server';
 import { siteConfig } from '../config/site';
 import { HttpError } from './http';
@@ -454,6 +455,43 @@ export function getDatabase() {
         CREATE INDEX confirmed_visitors_reader_idx ON confirmed_site_visitors(reader_id);`);
         connection.prepare('INSERT INTO schema_migrations (id,applied_at) VALUES (?,?)').run('20261107-reader-accounts', new Date().toISOString());
       }
+      if (!appliedMigrations.has('20261107-reader-account-passkeys')) {
+        connection.exec(`ALTER TABLE readers ADD COLUMN website_url TEXT NOT NULL DEFAULT '';
+          ALTER TABLE readers ADD COLUMN webauthn_user_id TEXT;
+          CREATE UNIQUE INDEX readers_webauthn_user_idx ON readers(webauthn_user_id);
+          CREATE TABLE reader_identities_expanded (
+            provider TEXT NOT NULL CHECK(provider IN ('blogsclub','email','github','google')), subject TEXT NOT NULL,
+            reader_id INTEGER NOT NULL REFERENCES readers(id), PRIMARY KEY(provider,subject)
+          );
+          INSERT INTO reader_identities_expanded SELECT * FROM reader_identities;
+          DROP TABLE reader_identities;
+          ALTER TABLE reader_identities_expanded RENAME TO reader_identities;
+          ALTER TABLE reader_oauth_states ADD COLUMN provider TEXT NOT NULL DEFAULT 'blogsclub' CHECK(provider IN ('blogsclub','github','google'));
+          ALTER TABLE reader_oauth_states ADD COLUMN pkce_verifier TEXT;
+          ALTER TABLE reader_oauth_states ADD COLUMN nonce TEXT;
+          CREATE TABLE reader_passkeys (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, credential_id TEXT NOT NULL UNIQUE,
+            reader_id INTEGER NOT NULL REFERENCES readers(id), public_key BLOB NOT NULL,
+            counter INTEGER NOT NULL CHECK(counter>=0), transports TEXT NOT NULL CHECK(json_valid(transports) AND json_type(transports)='array'),
+            label TEXT NOT NULL CHECK(length(label) BETWEEN 1 AND 60),
+            device_type TEXT NOT NULL CHECK(device_type IN ('singleDevice','multiDevice')),
+            backed_up INTEGER NOT NULL CHECK(backed_up IN (0,1)), created_at TEXT NOT NULL, last_used_at TEXT, deleted_at TEXT
+          );
+          CREATE INDEX reader_passkeys_reader_idx ON reader_passkeys(reader_id);
+          ALTER TABLE reader_sessions ADD COLUMN login_method TEXT CHECK(login_method IN ('email','blogsclub','github','google','passkey'));
+          ALTER TABLE reader_sessions ADD COLUMN passkey_id INTEGER REFERENCES reader_passkeys(id);
+          UPDATE reader_sessions SET login_method=(SELECT provider FROM reader_identities WHERE reader_id=reader_sessions.reader_id)
+            WHERE (SELECT count(*) FROM reader_identities WHERE reader_id=reader_sessions.reader_id)=1;
+          CREATE TABLE reader_passkey_challenges (
+            token_hash TEXT PRIMARY KEY, challenge TEXT NOT NULL,
+            kind TEXT NOT NULL CHECK(kind IN ('register','login')), reader_id INTEGER REFERENCES readers(id), session_hash TEXT,
+            created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL
+          );
+          CREATE INDEX reader_passkey_challenge_expiry_idx ON reader_passkey_challenges(expires_at);`);
+        const updateHandle = connection.prepare('UPDATE readers SET webauthn_user_id=? WHERE id=?');
+        for (const row of connection.prepare('SELECT id FROM readers').all() as Array<{ id: number }>) updateHandle.run(randomBytes(32).toString('base64url'), row.id);
+        connection.prepare('INSERT INTO schema_migrations (id,applied_at) VALUES (?,?)').run('20261107-reader-account-passkeys', new Date().toISOString());
+      }
       connection.exec('CREATE UNIQUE INDEX IF NOT EXISTS friends_active_url_idx ON friends(url) WHERE deleted_at IS NULL');
       connection.exec('CREATE INDEX IF NOT EXISTS blog_articles_type_created_idx ON blog_articles(content_type, created_at DESC, id DESC) WHERE deleted_at IS NULL');
       connection.exec('CREATE INDEX IF NOT EXISTS friends_public_idx ON friends(visible, created_at ASC)');
@@ -507,16 +545,18 @@ function listMessageThreads(limit: number, publishedOnly: boolean, articleId: nu
   const scope = publishedOnly ? 'AND messages.article_id IS ?' : '';
   const parameters = publishedOnly ? [articleId, limit] : [limit];
   // 引用随原评论公开状态解析，原文或其根线程隐藏后不再返回引用快照。
-  const selection = `SELECT messages.id, messages.article_id, messages.parent_id, messages.nickname, messages.content,
+  const selection = `SELECT messages.id, messages.article_id, messages.parent_id, COALESCE(author.display_name,messages.nickname) AS nickname, messages.content,
     messages.status, messages.created_at, messages.fingerprint_hash = 'admin' AS is_admin,
-    quote.id AS quote_message_id, CASE WHEN quote.fingerprint_hash = 'admin' THEN 'SuperSam' ELSE COALESCE(quote.nickname, '') END AS quote_nickname,
+    quote.id AS quote_message_id, CASE WHEN quote.fingerprint_hash = 'admin' THEN 'SuperSam' ELSE COALESCE(quote_author.display_name,quote.nickname, '') END AS quote_nickname,
     CASE WHEN quote.id IS NOT NULL THEN messages.quote_content ELSE '' END AS quote_content
     FROM messages LEFT JOIN messages AS quote ON quote.id = messages.quote_message_id
       AND messages.article_id IS NOT NULL AND quote.article_id = messages.article_id
       AND quote.deleted_at IS NULL AND quote.status = 'published' AND instr(quote.content, messages.quote_content) > 0
       AND (quote.parent_id IS NULL OR EXISTS (SELECT 1 FROM messages AS quote_root
         WHERE quote_root.id = quote.parent_id AND quote_root.parent_id IS NULL
-          AND quote_root.article_id = quote.article_id AND quote_root.deleted_at IS NULL AND quote_root.status = 'published'))`;
+          AND quote_root.article_id = quote.article_id AND quote_root.deleted_at IS NULL AND quote_root.status = 'published'))
+    LEFT JOIN readers author ON author.id=messages.reader_id AND author.deleted_at IS NULL
+    LEFT JOIN readers quote_author ON quote_author.id=quote.reader_id AND quote_author.deleted_at IS NULL`;
   const roots = getDatabase().prepare(`${selection}
     WHERE messages.parent_id IS NULL AND messages.deleted_at IS NULL ${visibility} ${scope}
     ORDER BY messages.created_at DESC, messages.id DESC LIMIT ?`).all(...parameters) as Record<string, unknown>[];

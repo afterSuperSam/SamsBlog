@@ -5,6 +5,10 @@ const endpoints = {
   token: 'https://www.blogsclub.org/Oauth/getOauthData?action=token',
   profile: 'https://www.blogsclub.org/Oauth/getOauthData?action=userinfo',
   email: 'https://api.resend.com/emails',
+  githubToken: 'https://github.com/login/oauth/access_token',
+  githubProfile: 'https://api.github.com/user',
+  googleToken: 'https://oauth2.googleapis.com/token',
+  googleKeys: 'https://www.googleapis.com/oauth2/v3/certs',
 };
 
 // 只访问固定认证服务；截止时间包含正文，不跟随重定向，也不传播含令牌的底层异常。

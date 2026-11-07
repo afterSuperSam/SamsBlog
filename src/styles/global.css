@@ -19,6 +19,9 @@
   --admin-editor-width: 1240px;
   --admin-login-heading-size: clamp(3.5rem,7.5vw,5.75rem);
   --reader-width: 940px;
+  --reader-menu-width: 420px;
+  --reader-font-size: 1.125rem;
+  --reader-menu-gap: 12px;
   --reader-paper: #303133;
   --reader-accent: #a7ddec;
   --reader-pink: #f2b8cf;

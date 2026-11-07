@@ -3,7 +3,7 @@ import { readAdminSession } from './admin-auth';
 import { serverConfig } from '../config/server';
 
 export class HttpError extends Error {
-  constructor(public status: number, message: string) { super(message); }
+  constructor(public status: number, message: string, public code?: 'reauth_required') { super(message); }
 }
 
 export const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), {
@@ -55,7 +55,7 @@ export function requireSameOrigin(request: Request) {
 
 // API 错误分类与管理鉴权边界
 export function errorResponse(error: unknown) {
-  if (error instanceof HttpError) return json({ error: error.message }, error.status);
+  if (error instanceof HttpError) return json({ error: error.message, ...(error.code ? { code: error.code } : {}) }, error.status);
   if (error instanceof Error && 'code' in error && error.code === 'SQLITE_CONSTRAINT_UNIQUE') return json({ error: '这个地址已经存在' }, 409);
   console.error('API request failed', error);
   return json({ error: '服务暂时无法完成请求，请稍后再试' }, 500);

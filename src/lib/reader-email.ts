@@ -71,6 +71,6 @@ export function verifyReaderEmailCode(email: string, code: unknown, sourceHash: 
   if (!verified) throw new HttpError(400, '验证码无效或已过期，请重新获取');
   const identity = readerTokenHash(`verified-email:${email}`);
   const reader = resolveReaderIdentity('email', identity, `读者${readerToken().slice(0, 8)}`, null);
-  startReaderSession(cookies, reader);
+  startReaderSession(cookies, reader, 'email');
   return reader;
 }

@@ -9,6 +9,15 @@ const boundedInteger = (name: string, fallback: number, maximum: number) => {
 // 读者认证独立于管理权限，所有时间和配额在此校验。
 export const readerConfig = {
   sessionSeconds: boundedInteger('READER_SESSION_SECONDS', 30 * 86400, 90 * 86400),
+  recentAuthenticationSeconds: boundedInteger('READER_RECENT_AUTHENTICATION_SECONDS', 900, 3600),
+  accountPageSize: boundedInteger('READER_ACCOUNT_PAGE_SIZE', 20, 100),
+  profileSourceLimit: boundedInteger('READER_PROFILE_SOURCE_LIMIT', 30, 100),
+  passkeyChallengeSeconds: boundedInteger('READER_PASSKEY_CHALLENGE_SECONDS', 300, 600),
+  passkeyMaximumCount: boundedInteger('READER_PASSKEY_MAXIMUM_COUNT', 10, 20),
+  passkeyRequestMaximumBytes: boundedInteger('READER_PASSKEY_REQUEST_MAXIMUM_BYTES', 65536, 131072),
+  passkeySourceLimit: boundedInteger('READER_PASSKEY_SOURCE_LIMIT', 60, 200),
+  passkeyGlobalLimit: boundedInteger('READER_PASSKEY_GLOBAL_LIMIT', 2000, 10000),
+  passkeyAlgorithms: [-7, -257],
   oauthSeconds: boundedInteger('READER_OAUTH_SECONDS', 600, 900),
   codeSeconds: boundedInteger('READER_CODE_SECONDS', 600, 900),
   codeAttempts: boundedInteger('READER_CODE_ATTEMPTS', 5, 10),

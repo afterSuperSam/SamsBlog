@@ -1,13 +1,14 @@
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createHash, generateKeyPairSync, sign } from 'node:crypto';
 import type { APIContext } from 'astro';
 import { beforeAll, beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { readerConfig } from '../src/config/readers';
 import { siteConfig } from '../src/config/site';
 import { getDatabase } from '../src/lib/db';
 import { verifyAdminSession } from '../src/lib/admin-auth';
-import { blogsClubCallback, finishBlogsClubLogin, startBlogsClubLogin } from '../src/lib/reader-oauth';
+import { blogsClubCallback, finishBlogsClubLogin, startBlogsClubLogin, finishReaderOAuth, startReaderOAuth } from '../src/lib/reader-oauth';
 import { readReaderEmail, sendReaderEmailCode, verifyReaderEmailCode } from '../src/lib/reader-email';
 import { readerUpstreamRequest } from '../src/lib/reader-transport';
 import { endReaderSession, getReaderAuthOptions, readReaderSession, readerCookieName, readerFlowCookieName,
@@ -22,12 +23,16 @@ beforeAll(async () => { vi.stubEnv('BLOG_DATA_DIR', await mkdtemp(join(tmpdir(),
 beforeEach(() => {
   vi.stubEnv('READER_BLOGSCLUB_CLIENT_ID', 'fixture-app');
   vi.stubEnv('READER_BLOGSCLUB_CLIENT_SECRET', 'fixture-client-secret');
+  vi.stubEnv('READER_GITHUB_CLIENT_ID', 'fixture-github-app');
+  vi.stubEnv('READER_GITHUB_CLIENT_SECRET', 'fixture-github-secret');
+  vi.stubEnv('READER_GOOGLE_CLIENT_ID', 'fixture-google-app');
+  vi.stubEnv('READER_GOOGLE_CLIENT_SECRET', 'fixture-google-secret');
   vi.stubEnv('BLOG_SECRET', 'fixture-reader-secret-with-at-least-32-characters');
   vi.stubEnv('RESEND_API_KEY', 'fixture-email-key');
   vi.stubEnv('MAIL_FROM', 'sender@example.com');
   vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Unexpected external request')));
   vi.spyOn(console, 'warn').mockImplementation(() => {});
-  getDatabase().exec('DELETE FROM reader_sessions; DELETE FROM reader_oauth_states; DELETE FROM reader_email_codes; DELETE FROM reader_auth_limits; DELETE FROM reader_identities; DELETE FROM readers;');
+  getDatabase().exec('DELETE FROM reader_sessions; DELETE FROM reader_passkey_challenges; DELETE FROM reader_passkeys; DELETE FROM reader_oauth_states; DELETE FROM reader_email_codes; DELETE FROM reader_auth_limits; DELETE FROM reader_identities; DELETE FROM readers;');
 });
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.restoreAllMocks(); vi.useRealTimers(); });
 
@@ -93,7 +98,7 @@ describe('reader identities and sessions', () => {
   it('stores only session hashes, rotates old sessions, enforces expiry and revokes on logout', () => {
     const { cookies, values } = cookieJar();
     const reader = resolveReaderIdentity('blogsclub', '123', '测试读者', null);
-    startReaderSession(cookies, reader);
+    startReaderSession(cookies, reader, 'blogsclub');
     const previous = values.get(readerCookieName)!;
     expect(verifyAdminSession(previous)).toBe(false);
     expect(readReaderSession(cookies)).toEqual(reader);
@@ -101,7 +106,7 @@ describe('reader identities and sessions', () => {
     expect(cookies.set).toHaveBeenCalledWith(readerCookieName, expect.any(String), expect.objectContaining({ httpOnly: true, secure: true, sameSite: 'lax' }));
     expect(readerCookieName.startsWith('__Host-')).toBe(true);
     expect(readerFlowCookieName.startsWith('__Host-')).toBe(true);
-    startReaderSession(cookies, reader);
+    startReaderSession(cookies, reader, 'blogsclub');
     const current = values.get(readerCookieName)!;
     expect(current).not.toBe(previous);
     values.set(readerCookieName, previous);
@@ -110,7 +115,7 @@ describe('reader identities and sessions', () => {
     endReaderSession(cookies);
     values.set(readerCookieName, current);
     expect(readReaderSession(cookies)).toBeNull();
-    startReaderSession(cookies, reader);
+    startReaderSession(cookies, reader, 'blogsclub');
     getDatabase().prepare('UPDATE reader_sessions SET expires_at=?').run(Date.now());
     expect(readReaderSession(cookies)).toBeNull();
   });
@@ -119,11 +124,106 @@ describe('reader identities and sessions', () => {
     vi.stubEnv('READER_BLOGSCLUB_CLIENT_SECRET', '');
     const options = getReaderAuthOptions();
     expect(options.email).toBe(true);
-    expect(options.providers.map((provider) => provider.id)).toEqual(['blogsclub']);
+    expect(options.providers.map((provider) => provider.id)).toEqual(['blogsclub', 'github', 'google']);
     expect(options.providers[0]!.enabled).toBe(false);
     expect(JSON.stringify(options)).not.toContain('fixture-email-key');
     vi.stubEnv('RESEND_API_KEY', '');
     expect(getReaderAuthOptions().email).toBe(false);
+  });
+});
+
+describe('GitHub App user OAuth and Google OIDC', () => {
+  const signingKeys = generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const wrongKeys = generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const publicKey = { ...signingKeys.publicKey.export({ format: 'jwk' }), kid: 'fixture-google-key', alg: 'RS256', use: 'sig' };
+
+  function begin(provider: 'github' | 'google', cookies: ReaderCookies) {
+    const authorization = new URL(startReaderOAuth(provider, cookies, `fixture-${provider}`));
+    const callback = new URL(authorization.searchParams.get('redirect_uri')!);
+    callback.searchParams.set('state', authorization.searchParams.get('state')!);
+    callback.searchParams.set('code', 'fixture-code');
+    return { authorization, callback };
+  }
+
+  function googleToken(nonce: string, claims: Record<string, unknown> = {}, invalidSignature = false) {
+    const header = Buffer.from(JSON.stringify({ alg: 'RS256', kid: publicKey.kid })).toString('base64url');
+    const payload = Buffer.from(JSON.stringify({ iss: 'https://accounts.google.com', sub: 'google-subject-123', aud: 'fixture-google-app',
+      iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 300, nonce, name: 'Google 测试读者', email: 'untrusted@example.com', email_verified: false, ...claims })).toString('base64url');
+    const message = `${header}.${payload}`;
+    return `${message}.${sign('RSA-SHA256', Buffer.from(message), invalidSignature ? wrongKeys.privateKey : signingKeys.privateKey).toString('base64url')}`;
+  }
+
+  function googleFetch(token: string) {
+    const mocked = vi.fn(async (url: URL) => {
+      if (url.href === 'https://oauth2.googleapis.com/token') return Response.json({ token_type: 'Bearer', access_token: 'fixture-google-access-token', id_token: token });
+      if (url.href === 'https://www.googleapis.com/oauth2/v3/certs') return Response.json({ keys: [publicKey] });
+      throw new Error('Unexpected mock destination');
+    });
+    vi.stubGlobal('fetch', mocked);
+    return mocked;
+  }
+
+  it('uses GitHub App client credentials plus S256 PKCE, then immutable /user id without email merging', async () => {
+    const { cookies } = cookieJar();
+    const { authorization, callback } = begin('github', cookies);
+    expect(authorization.origin + authorization.pathname).toBe('https://github.com/login/oauth/authorize');
+    expect(authorization.searchParams.get('scope')).toBeNull();
+    expect(authorization.searchParams.get('code_challenge_method')).toBe('S256');
+    const state = getDatabase().prepare("SELECT pkce_verifier FROM reader_oauth_states WHERE provider='github'").get() as { pkce_verifier: string };
+    expect(authorization.searchParams.get('code_challenge')).toBe(createHash('sha256').update(state.pkce_verifier).digest('base64url'));
+    const fetched = vi.fn().mockResolvedValueOnce(Response.json({ token_type: 'bearer', access_token: 'fixture-github-user-token' }))
+      .mockResolvedValueOnce(Response.json({ id: 123, login: 'fixture-login', name: 'GitHub 读者', email: 'untrusted@example.com' }));
+    vi.stubGlobal('fetch', fetched);
+    const reader = await finishReaderOAuth('github', callback, cookies);
+    expect(reader.loginMethod).toBe('github');
+    expect(readReaderSession(cookies)?.loginMethod).toBe('github');
+    const request = fetched.mock.calls[0]![1] as RequestInit;
+    expect((request.body as URLSearchParams).get('client_secret')).toBe('fixture-github-secret');
+    expect((request.body as URLSearchParams).get('code_verifier')).toBe(state.pkce_verifier);
+    expect(String(fetched.mock.calls[1]![0])).toBe('https://api.github.com/user');
+    expect(getDatabase().prepare('SELECT provider,subject FROM reader_identities').all()).toEqual([{ provider: 'github', subject: '123' }]);
+    getDatabase().prepare('UPDATE readers SET display_name=? WHERE id=?').run('自定义昵称', reader.id);
+    expect(resolveReaderIdentity('github', '123', '提供方新昵称', null).displayName).toBe('自定义昵称');
+    await expect(finishReaderOAuth('github', callback, cookies)).rejects.toMatchObject({ status: 400 });
+  });
+
+  it('rejects provider mix-up and wrong callback paths without consuming another provider state', async () => {
+    const { cookies } = cookieJar();
+    const { callback } = begin('github', cookies);
+    callback.pathname = '/api/reader/oauth/google/callback.json';
+    await expect(finishReaderOAuth('google', callback, cookies)).rejects.toMatchObject({ status: 400 });
+    expect(getDatabase().prepare('SELECT count(*) AS count FROM reader_oauth_states').get()).toEqual({ count: 1 });
+    await expect(finishReaderOAuth('github', callback, cookies)).rejects.toMatchObject({ status: 400 });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('verifies a signed Google ID token with nonce and PKCE and uses only sub for identity', async () => {
+    const { cookies } = cookieJar();
+    const { authorization, callback } = begin('google', cookies);
+    expect(authorization.searchParams.get('scope')).toBe('openid profile');
+    expect(authorization.searchParams.get('nonce')).toHaveLength(43);
+    const mocked = googleFetch(googleToken(authorization.searchParams.get('nonce')!));
+    const reader = await finishReaderOAuth('google', callback, cookies);
+    expect(reader.loginMethod).toBe('google');
+    expect(readReaderSession(cookies)).toEqual(reader);
+    expect(getDatabase().prepare('SELECT provider,subject FROM reader_identities').all()).toEqual([{ provider: 'google', subject: 'google-subject-123' }]);
+    const request = mocked.mock.calls[0] as unknown as [URL, RequestInit];
+    expect((request[1].body as URLSearchParams).get('code_verifier')).toHaveLength(43);
+    expect(mocked.mock.calls.every(([url]) => ['https://oauth2.googleapis.com/token', 'https://www.googleapis.com/oauth2/v3/certs'].includes(url.href))).toBe(true);
+  });
+
+  it.each(['signature', 'nonce', 'issuer', 'audience', 'expiry'])('rejects invalid Google %s through the real OIDC library', async (invalid) => {
+    const { cookies } = cookieJar();
+    const { authorization, callback } = begin('google', cookies);
+    const claims: Record<string, unknown> = {};
+    if (invalid === 'issuer') claims.iss = 'https://attacker.example';
+    if (invalid === 'audience') claims.aud = 'wrong-client';
+    if (invalid === 'expiry') claims.exp = Math.floor(Date.now() / 1000) - 600;
+    googleFetch(googleToken(invalid === 'nonce' ? 'wrong-nonce' : authorization.searchParams.get('nonce')!, claims, invalid === 'signature'));
+    await expect(finishReaderOAuth('google', callback, cookies)).rejects.toMatchObject({ status: 502 });
+    expect(readReaderSession(cookies)).toBeNull();
+    expect(getDatabase().prepare('SELECT count(*) AS count FROM readers').get()).toEqual({ count: 0 });
+    await expect(finishReaderOAuth('google', callback, cookies)).rejects.toMatchObject({ status: 400 });
   });
 });
 
@@ -141,7 +241,7 @@ describe('BlogsClub OAuth boundary', () => {
     const fetchRequest = successfulOAuth();
     const reader = await finishBlogsClubLogin(callback, cookies);
     expect(readReaderSession(cookies)?.id).toBe(reader.id);
-    expect(Object.keys(reader).sort()).toEqual(['avatarUrl', 'displayName', 'id']);
+    expect(Object.keys(reader).sort()).toEqual(['avatarUrl', 'displayName', 'id', 'loginMethod']);
     const identities = getDatabase().prepare('SELECT provider,subject FROM reader_identities').all();
     expect(identities).toEqual([{ provider: 'blogsclub', subject: '123' }]);
     const requestOptions = fetchRequest.mock.calls[0]![1] as RequestInit;
