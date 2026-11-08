@@ -329,6 +329,8 @@ pnpm audit
 
 仓库无独立 e2e 套件。按 [视觉验收清单](design/README.md#验收清单) 检查生产构建；本地开发页、源码审查、单测通过均不等同于已上线或完成无障碍认证。
 
+2026-11-07 22:28（北京时间）已部署v1.37.0（4912a6c；运行代码e4b0892）。固定提交独立构建，未提交修改未发布；check、42个文件600项测试、build与audit通过。GitHub Release传包并校验SHA-256；独立Linux依赖补齐27个纯JavaScript包，生产副本9项迁移及原业务记录逐字段保留通过。线上页面、23项资源、CSP及数据库完整性通过。RESEND_WEBHOOK_SECRET已配置并重启，BLOG_SECRET保持原值；公网无签名400、正确签名诊断200。11月8日09:53补齐三种OAuth的六项环境凭据，入口与回调地址校验通过；Passkey挑战接口正常。已处理两条真实email.delivered回执；未代替用户完成第三方账号授权或核对Resend控制台投递状态，本轮未进行浏览器视觉验收。
+
 ## 数据与部署
 
 公开写入按来源 IP 的 HMAC 指纹计数，不保存完整 IP。友链申请在滚动一小时内最多成功 2 次；留言和文章评论在滚动一分钟内合计最多成功 2 次，超额返回 HTTP 429，不入库、不排队发信。配额由 SQLite 中已接受的记录计算，服务重启不清零。旧的 `MESSAGE_COOLDOWN_SECONDS` 和 `FRIEND_APPLICATION_COOLDOWN_SECONDS` 不再生效。
@@ -344,6 +346,8 @@ pnpm audit
 域名迁移遇到友链地址冲突时，优先保留已使用新域名的记录，其余记录软删除并保留原编号、内容和缓存后迁移；不会覆盖新记录的编辑内容。冲突记录不能直接恢复为重复地址。首页、RSS 和跨站卡片按所需数量查询；站点地图与相邻文章不读取全部正文。
 
 Linux 部署流程：
+
+现用2GB生产机只接收固定提交的构建产物，不执行下述完整安装与构建；这些步骤在构建环境完成。锁文件一致时可复用既有Linux依赖；依赖变化须核对并准备适配产物，不上传Windows原生模块。本次在独立目录复制既有Linux依赖并补齐27个纯JavaScript包，未修改旧目录。跨平台产物须核对Astro内嵌路径并用独立生产数据副本启动验证。发布包与SHA256SUMS通过[GitHub Release](https://github.com/afterSuperSam/SamsBlog/releases/tag/v1.37.0)传递，不打包实际.env、数据库、uploads、私钥或服务器手册。发布前备份数据库、uploads及环境，验证迁移后原子切换current。新增配置逐项核对，不能以保留旧环境代替新功能配置验收：三种OAuth需各自CLIENT_ID/CLIENT_SECRET，邮件回执需独立RESEND_WEBHOOK_SECRET；BLOG_SECRET保持原值。Passkey需在生产域名首次登录账号后登记，开发域名的凭据不能直接使用。当前路径、备份与回退信息以私密Server.md为准。
 
 1. 安装 Node.js 22.12+、pnpm、Nginx 和 SQLite CLI；创建 `samsblog` 用户及 `/opt/samsblog/shared/data`，仅授予必要的数据目录写权限。
 2. 源码放到 `/opt/samsblog/current`，配置 `/etc/samsblog.env`，使用绝对 `BLOG_DATA_DIR`。不复制 Windows 的 `node_modules`、本机 `.env` 或旧构建产物。
