@@ -137,7 +137,7 @@ OAuth 在点击时打开独立授权窗口，保留原页面的位置和输入�
 6. 部署代码及 `public/media/branding/mail-*` 图片并重启博客；邮件与图片链接使用 `siteConfig.rss.siteUrl`，应可从公网访问。先用 Resend 官方 `delivered@resend.dev` 测试地址验证模板，再用自己授权的测试邮箱验证实际收件。服务商接受请求只记为“已提交”，不等同于已经到达收件箱。免费转发没有个人邮箱收件箱或 SMTP，本方案只承担博客通知与收取回复。
 7. 确认已部署 v1.37.0 或后续兼容接口，再在 Resend 添加 `https://blog.moesam.com/api/notifications/resend.json`，订阅 `email.delivered`、`email.bounced`、`email.complained`。将该 Webhook 的 Signing Secret（`whsec_` 开头，不是 `RESEND_API_KEY`）写入生产进程环境的 `RESEND_WEBHOOK_SECRET`，按发布流程计划重启生效；新地址部署时按 `PUBLIC_SITE_URL` 替换域名。邮件 tags 由后端自动添加，无需控制台配置，回传规则见 [Resend Tags](https://resend.com/docs/dashboard/emails/tags)。本地模拟不代替真实控制台与收件验证。
 
-通知邮箱独立于登录身份验证。匿名留言勾选通知后仅排队发送受限验证邀请，GET `/notifications/verify?token=...` 只展示确认页；本人显式同源 POST 后才激活该条留言。账号新地址也需确认后生效；令牌默认1小时、单次使用，数据库只存摘要。历史留言和账号地址迁移为未验证，不自动发信。
+通知邮箱独立于登录身份验证。匿名留言勾选通知后仅排队发送受限验证邀请，GET `/notifications/verify?token=...` 只展示确认页；本人显式同源 POST 后才激活该条留言。确认页使用 `Referrer-Policy: strict-origin`，来源地址不携带路径和令牌，同时保留 HTTPS 同源表单的 Origin；不能改为会令表单 Origin 变成 null 的 `no-referrer`。账号新地址也需确认后生效；令牌默认1小时、单次使用，数据库只存摘要。历史留言和账号地址迁移为未验证，不自动发信。
 
 通知共用持久队列，超时／429／5xx 退避重试，默认最多5次、退避上限1小时，累计间隔与请求超时必须小于所配有效期（默认23小时）。首次投递前保存请求正文，重试复用正文和幂等键。服务重启后首次请求恢复队列。访客回信按真实回复目标排队，投递前复核目标、根帖、文章公开状态、邮箱验证、订阅及地址抑制；先回复再审核公开的留言会补排通知。退订清除该评论邮箱与订阅；完成、取消或永久失败清除请求正文，已提交的邮件不能撤回。API 密钥未配置时不实际发信。官方设置说明：[Resend 验证域名](https://resend.com/docs/dashboard/domains/introduction)、[发布模板](https://resend.com/docs/api-reference/templates/publish-template)。
 

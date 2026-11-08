@@ -4,7 +4,7 @@ import '../../styles/articles.css';
 import { confirmNotificationEmail } from '../../lib/reply-notifications';
 import { HttpError, readRequestBytes, requireSameOrigin } from '../../lib/http';
 Astro.response.headers.set('Cache-Control', 'private, no-store');
-Astro.response.headers.set('Referrer-Policy', 'no-referrer');
+Astro.response.headers.set('Referrer-Policy', 'strict-origin');
 Astro.response.headers.set('X-Robots-Tag', 'noindex, nofollow');
 let message = '';
 if (Astro.request.method === 'POST') {
